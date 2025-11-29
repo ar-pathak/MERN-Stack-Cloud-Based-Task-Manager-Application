@@ -1,20 +1,20 @@
 import { createBrowserRouter } from "react-router";
 import { lazy, Suspense } from "react";
 import App from "./App";
-const Login = lazy(() => import("./pages/Login"));
+const AuthPage = lazy(() => import("./features/authentication/pages/AuthPage"));
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: (
-        <App/>
+      <App />
     ),
     children: [
       {
-        path: "/login",
+        path: "/auth",
         element: (
           <Suspense fallback={<div>Loading...</div>}>
-            <Login />
+            <AuthPage />
           </Suspense>
         ),
       },
