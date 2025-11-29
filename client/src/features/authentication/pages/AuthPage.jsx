@@ -1,16 +1,16 @@
-import React, { useState } from "react";
+import React, { lazy, Suspense, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Badge from "../components/Badge";
 import Avatar from "../components/Avatar";
 import AuthTabs from "../components/AuthTabs";
-import LoginForm from "./LoginForm";
-import SignupForm from "./SignupForm";
-import ForgotPasswordForm from "./ForgotPasswordForm";
-import ResetPasswordForm from "./ResetPasswordForm";
-import EmailVerificationNotice from "./EmailVerificationNotice";
 import { views } from "../utils/view";
+import LazyLoader from "../../../common/components/LazyLoader";
 
-
+const LoginForm = lazy(() => import("./LoginForm"))
+const SignupForm = lazy(() => import("./SignupForm"))
+const ResetPasswordForm = lazy(() => import("./ResetPasswordForm"))
+const ForgotPasswordForm = lazy(() => import("./ForgotPasswordForm"))
+const EmailVerificationNotice = lazy(() => import("./EmailVerificationNotice"))
 
 const containerVariants = {
     hidden: { opacity: 0, y: 30 },
@@ -152,11 +152,14 @@ export default function AuthPage() {
                                     animate="visible"
                                     exit="exit"
                                 >
-                                    <LoginForm
-                                        onSwitch={(view) => setActiveView(view)}
-                                        onSubmit={(payload) => handleSubmit(payload, "login")}
-                                        loading={loading}
-                                    />
+                                    <Suspense fallback={<LazyLoader />}>
+
+                                        <LoginForm
+                                            onSwitch={(view) => setActiveView(view)}
+                                            onSubmit={(payload) => handleSubmit(payload, "login")}
+                                            loading={loading}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
 
@@ -168,11 +171,14 @@ export default function AuthPage() {
                                     animate="visible"
                                     exit="exit"
                                 >
-                                    <SignupForm
-                                        onSwitch={(view) => setActiveView(view)}
-                                        onSubmit={(payload) => handleSubmit(payload, "signup")}
-                                        loading={loading}
-                                    />
+                                    <Suspense fallback={<LazyLoader />}>
+
+                                        <SignupForm
+                                            onSwitch={(view) => setActiveView(view)}
+                                            onSubmit={(payload) => handleSubmit(payload, "signup")}
+                                            loading={loading}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
 
@@ -184,13 +190,16 @@ export default function AuthPage() {
                                     animate="visible"
                                     exit="exit"
                                 >
-                                    <ForgotPasswordForm
-                                        onSwitch={(view) => setActiveView(view)}
-                                        onSubmit={(payload) =>
-                                            handleSubmit(payload, "forgot-password")
-                                        }
-                                        loading={loading}
-                                    />
+                                    <Suspense fallback={<LazyLoader />}>
+
+                                        <ForgotPasswordForm
+                                            onSwitch={(view) => setActiveView(view)}
+                                            onSubmit={(payload) =>
+                                                handleSubmit(payload, "forgot-password")
+                                            }
+                                            loading={loading}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
 
@@ -202,13 +211,16 @@ export default function AuthPage() {
                                     animate="visible"
                                     exit="exit"
                                 >
-                                    <ResetPasswordForm
-                                        onSwitch={(view) => setActiveView(view)}
-                                        onSubmit={(payload) =>
-                                            handleSubmit(payload, "reset-password")
-                                        }
-                                        loading={loading}
-                                    />
+                                    <Suspense fallback={<LazyLoader />}>
+
+                                        <ResetPasswordForm
+                                            onSwitch={(view) => setActiveView(view)}
+                                            onSubmit={(payload) =>
+                                                handleSubmit(payload, "reset-password")
+                                            }
+                                            loading={loading}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
 
@@ -220,9 +232,11 @@ export default function AuthPage() {
                                     animate="visible"
                                     exit="exit"
                                 >
-                                    <EmailVerificationNotice
-                                        onBackToLogin={() => setActiveView(views.LOGIN)}
-                                    />
+                                    <Suspense fallback={<LazyLoader />}>
+                                        <EmailVerificationNotice
+                                            onBackToLogin={() => setActiveView(views.LOGIN)}
+                                        />
+                                    </Suspense>
                                 </motion.div>
                             )}
                         </AnimatePresence>
