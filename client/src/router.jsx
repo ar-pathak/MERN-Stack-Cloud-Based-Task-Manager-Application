@@ -4,6 +4,7 @@ import App from "./App";
 import LoadingPage from "./common/components/LoadingPage";
 import ErrorPage from "./common/components/ErrorPage";
 const AuthPage = lazy(() => import("./features/authentication/pages/AuthPage"));
+const HomePage = lazy(() => import("./features/home/pages/HomePage"))
 
 const router = createBrowserRouter([
   {
@@ -13,6 +14,14 @@ const router = createBrowserRouter([
     ),
     errorElement: <ErrorPage />,
     children: [
+      {
+        path: "/home",
+        element: (
+          <Suspense fallback={<LoadingPage />}>
+            <HomePage />
+          </Suspense>
+        ),
+      },
       {
         path: "/auth",
         element: (
