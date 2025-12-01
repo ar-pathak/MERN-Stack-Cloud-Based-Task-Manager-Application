@@ -1,8 +1,8 @@
-
 import AnimatedBackground from "../components/AnimatedBackground";
-import DashboardContent from "../components/DashboardContent";
-import DashboardHeader from "../components/DashboardHeader";
+import DashboardContent from "../features/overview/components/DashboardContent";
+import DashboardHeader from "../features/overview/components/DashboardHeader";
 import DashboardSidebar from "../components/DashboardSidebar";
+import { Outlet } from "react-router";
 
 const DashboardPage = () => {
     return (
@@ -16,9 +16,8 @@ const DashboardPage = () => {
             {/* Content container */}
             <div className="relative z-10 flex min-h-screen">
                 <DashboardSidebar />
-                <main className="flex-1 flex flex-col">
-                    <DashboardHeader />
-                    <DashboardContent />
+                <main className="flex-1">
+                    <Outlet />
                 </main>
             </div>
         </div>
