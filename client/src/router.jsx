@@ -5,6 +5,7 @@ import LoadingPage from "./common/components/LoadingPage";
 import ErrorPage from "./common/components/ErrorPage";
 const AuthPage = lazy(() => import("./features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("./features/home/pages/HomePage"))
+const DashboardPage = lazy(() => import("./features/dashboard/pages/DashboardPage"))
 
 const router = createBrowserRouter([
   {
@@ -14,6 +15,14 @@ const router = createBrowserRouter([
     ),
     errorElement: <ErrorPage />,
     children: [
+      {
+        path: "/",
+        element: (
+          <Suspense fallback={<LoadingPage />}>
+            <DashboardPage />
+          </Suspense>
+        ),
+      },
       {
         path: "/home",
         element: (
@@ -30,6 +39,7 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
+
     ],
   },
 ]);
