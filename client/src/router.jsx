@@ -3,10 +3,11 @@ import { lazy, Suspense } from "react";
 import App from "./App";
 import LoadingPage from "./common/components/LoadingPage";
 import ErrorPage from "./common/components/ErrorPage";
-import Overview from "./features/dashboard/features/overview/pages/Overview";
 const AuthPage = lazy(() => import("./features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("./features/home/pages/HomePage"))
 const DashboardPage = lazy(() => import("./features/dashboard/pages/DashboardPage"))
+const Overview = lazy(() => import("./features/dashboard/features/overview/pages/Overview"))
+const MyTasksPage = lazy(() => import("./features/dashboard/features/myTasks/pages/MyTasksPage"))
 
 const router = createBrowserRouter([
   {
@@ -33,6 +34,14 @@ const router = createBrowserRouter([
               </Suspense>
             ),
           },
+          {
+            path: "/my-tasks",
+            element: (
+              <Suspense fallback={<LoadingPage />}>
+                <MyTasksPage />
+              </Suspense>
+            ),
+          },
         ]
       },
       {
@@ -51,7 +60,6 @@ const router = createBrowserRouter([
           </Suspense>
         ),
       },
-
     ],
   },
 ]);
