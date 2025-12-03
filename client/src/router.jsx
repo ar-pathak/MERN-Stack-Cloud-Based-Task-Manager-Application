@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import App from "./App";
 import LoadingPage from "./common/components/LoadingPage";
 import ErrorPage from "./common/components/ErrorPage";
+import ProjectsPage from "./features/dashboard/features/projects/pages/ProjectsPage";
 const AuthPage = lazy(() => import("./features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("./features/home/pages/HomePage"))
 const DashboardPage = lazy(() => import("./features/dashboard/pages/DashboardPage"))
@@ -39,6 +40,14 @@ const router = createBrowserRouter([
             element: (
               <Suspense fallback={<LoadingPage />}>
                 <MyTasksPage />
+              </Suspense>
+            ),
+          },
+          {
+            path: "/projects",
+            element: (
+              <Suspense fallback={<LoadingPage />}>
+                <ProjectsPage />
               </Suspense>
             ),
           },
