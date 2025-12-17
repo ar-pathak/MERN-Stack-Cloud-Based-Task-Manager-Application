@@ -10,8 +10,9 @@ const HomePage = lazy(() => import("./features/home/pages/HomePage"))
 const DashboardPage = lazy(() => import("./features/dashboard/pages/DashboardPage"))
 const Overview = lazy(() => import("./features/dashboard/features/overview/pages/Overview"))
 const MyTasksPage = lazy(() => import("./features/dashboard/features/myTasks/pages/MyTasksPage"))
+const SchedulePage = lazy(() => import("./features/dashboard/features/schedule/pages/SchedulePage"));
 
-const withSuspense = ( Component ) => (
+const withSuspense = (Component) => (
   <Suspense fallback={<LoadingPage />}>
     <Component />
   </Suspense>
@@ -35,6 +36,7 @@ const router = createBrowserRouter([
           { path: "my-tasks", element: withSuspense(MyTasksPage) },
           { path: "projects", element: withSuspense(ProjectsPage) },
           { path: "activity", element: withSuspense(ActivityPage) },
+          { path: "schedule", element: withSuspense(SchedulePage) },
         ],
       },
       {
