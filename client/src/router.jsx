@@ -11,6 +11,13 @@ const DashboardPage = lazy(() => import("./features/dashboard/pages/DashboardPag
 const Overview = lazy(() => import("./features/dashboard/features/overview/pages/Overview"))
 const MyTasksPage = lazy(() => import("./features/dashboard/features/myTasks/pages/MyTasksPage"))
 
+const withSuspense = ( Component ) => (
+  <Suspense fallback={<LoadingPage />}>
+    <Component />
+  </Suspense>
+);
+
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -19,48 +26,16 @@ const router = createBrowserRouter([
     ),
     errorElement: <ErrorPage />,
     children: [
+
       {
-        path: "/",
-        element: (
-          <Suspense fallback={<LoadingPage />}>
-            <DashboardPage />
-          </Suspense>
-        ),
-        errorElement: <ErrorPage />,
+        path: "dashboard",
+        element: withSuspense(DashboardPage),
         children: [
-          {
-            path: "/overview",
-            element: (
-              <Suspense fallback={<LoadingPage />}>
-                <Overview />
-              </Suspense>
-            ),
-          },
-          {
-            path: "/my-tasks",
-            element: (
-              <Suspense fallback={<LoadingPage />}>
-                <MyTasksPage />
-              </Suspense>
-            ),
-          },
-          {
-            path: "/projects",
-            element: (
-              <Suspense fallback={<LoadingPage />}>
-                <ProjectsPage />
-              </Suspense>
-            ),
-          },
-          {
-            path: "/activity",
-            element: (
-              <Suspense fallback={<LoadingPage />}>
-                <ActivityPage />
-              </Suspense>
-            ),
-          },
-        ]
+          { index: true, element: withSuspense(Overview) },
+          { path: "my-tasks", element: withSuspense(MyTasksPage) },
+          { path: "projects", element: withSuspense(ProjectsPage) },
+          { path: "activity", element: withSuspense(ActivityPage) },
+        ],
       },
       {
         path: "/home",

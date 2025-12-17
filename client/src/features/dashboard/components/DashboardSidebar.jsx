@@ -1,12 +1,17 @@
 import { motion } from "framer-motion";
 import { Activity, CalendarDays, Cloud, FolderKanban, ListChecks } from "lucide-react";
+import { NavLink } from "react-router";
+
+
 const DashboardSidebar = () => {
+
+
     const navItems = [
-        { label: "Overview", icon: Cloud, active: true },
-        { label: "My Tasks", icon: ListChecks },
-        { label: "Projects", icon: FolderKanban },
-        { label: "Activity", icon: Activity },
-        { label: "Schedule", icon: CalendarDays },
+        { label: "Overview", icon: Cloud, path: "/dashboard" },
+        { label: "My Tasks", icon: ListChecks, path: "/dashboard/my-tasks" },
+        { label: "Projects", icon: FolderKanban, path: "/dashboard/projects" },
+        { label: "Activity", icon: Activity, path: "/dashboard/activity" },
+        { label: "Schedule", icon: CalendarDays, path: "/dashboard/schedule" },
     ];
 
     return (
@@ -31,28 +36,33 @@ const DashboardSidebar = () => {
             </div>
 
             <nav className="flex-1 space-y-1 px-3 py-4">
-                {navItems.map(({ label, icon: Icon, active }) => (
-                    <motion.button
-                        key={label}
-                        whileHover={{ x: 4, scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
-                        className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition
-              ${active
-                                ? "bg-slate-900/70 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.18)] border border-slate-700/70"
-                                : "text-slate-400 hover:bg-slate-900/40 hover:text-slate-100"
-                            }`}
-                    >
-                        <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900/60">
-                            <Icon className="h-4 w-4 text-sky-400" />
-                            {active && (
-                                <motion.span
-                                    layoutId="sidebar-active-dot"
-                                    className="absolute -right-1 h-1.5 w-1.5 rounded-full bg-sky-400"
-                                />
-                            )}
-                        </div>
-                        <span>{label}</span>
-                    </motion.button>
+                {navItems.map(({ label, icon: Icon, path }) => (
+                    <NavLink key={label} to={path} end>
+                        {({ isActive }) => (
+                            <motion.div
+                                whileHover={{ x: 4, scale: 1.01 }}
+                                whileTap={{ scale: 0.98 }}
+                                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition
+            ${isActive
+                                        ? "bg-slate-900/70 text-sky-100 shadow-[0_0_20px_rgba(56,189,248,0.18)] border border-slate-700/70"
+                                        : "text-slate-400 hover:bg-slate-900/40 hover:text-slate-100"
+                                    }`}
+                            >
+                                <div className="relative flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900/60">
+                                    <Icon className="h-4 w-4 text-sky-400" />
+
+                                    {isActive && (
+                                        <motion.span
+                                            layoutId="sidebar-active-dot"
+                                            className="absolute -right-1 h-1.5 w-1.5 rounded-full bg-sky-400"
+                                        />
+                                    )}
+                                </div>
+
+                                <span>{label}</span>
+                            </motion.div>
+                        )}
+                    </NavLink>
                 ))}
             </nav>
 
