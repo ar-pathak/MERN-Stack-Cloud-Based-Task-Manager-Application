@@ -1,5 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { Link } from "react-router";
 
 function CTASection() {
     return (
@@ -26,10 +27,10 @@ function CTASection() {
                     </div>
                     <div className="flex flex-col gap-2 text-xs text-slate-50 sm:text-[13px]">
                         <div className="flex gap-2">
-                            <button className="inline-flex items-center gap-2 rounded-xl bg-slate-950/90 px-4 py-2.5 text-sm font-semibold text-cyan-200 shadow-md shadow-slate-900/80 ring-1 ring-cyan-400/60">
+                            <Link to={'auth'} className="inline-flex items-center gap-2 rounded-xl bg-slate-950/90 px-4 py-2.5 text-sm font-semibold text-cyan-200 shadow-md shadow-slate-900/80 ring-1 ring-cyan-400/60">
                                 Get started free
                                 <ArrowRight className="h-4 w-4" />
-                            </button>
+                            </Link>
                             <button className="rounded-xl bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-100 ring-1 ring-slate-700/80">
                                 Talk to us
                             </button>

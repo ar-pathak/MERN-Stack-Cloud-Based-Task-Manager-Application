@@ -35,7 +35,7 @@ const router = createBrowserRouter([
         element: withSuspense(HomePage),
       },
       {
-        path: "auth",
+        path: "home/auth",
         element: withSuspense(AuthPage),
       },
       {

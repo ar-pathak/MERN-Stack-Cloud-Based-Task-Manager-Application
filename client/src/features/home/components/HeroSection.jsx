@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Link } from "react-router";
 import { fadeUp, stagger } from "./AnimationHelpers";
 import { ArrowRight, CheckCircle2, ShieldCheck, Sparkles } from "lucide-react";
 import Column from "./Column";
@@ -46,13 +47,13 @@ function HeroSection() {
                     variants={fadeUp}
                     className="mt-6 flex flex-wrap items-center gap-3"
                 >
-                    <button className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-cyan-500/30 hover:bg-cyan-300">
+                    <Link to={'auth'} className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-lg shadow-cyan-500/30 hover:bg-cyan-300">
                         Create free workspace
                         <ArrowRight className="h-4 w-4" />
-                    </button>
-                    <button className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-200 ring-1 ring-slate-600/70 hover:ring-slate-400">
+                    </Link>
+                    <Link to={'auth'} className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-200 ring-1 ring-slate-600/70 hover:ring-slate-400">
                         Explore live demo
-                    </button>
+                    </Link>
                 </motion.div>
 
                 <motion.div
