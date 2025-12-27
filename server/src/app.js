@@ -4,22 +4,19 @@ require("dotenv").config();
 const { userAuth } = require('./middleware/auth')
 const connectDB = require('./config/database')
 
+const User = require('./models/user')
+const authRoutes = require('./modules/auth/auth.routes')
+
+
 
 const app = express();
 const port = 3000;
 
-app.get('/hello/:id', userAuth, (req, res) => {
-    res.status(200).json({ "success": true })
-})
 
+app.use(express.json())
 
-connectDB()
-    .then(() => {
-        app.listen(port, () => {
-            console.log(`server are Listening on port ${port}`)
-            console.log("DB connected successfully")
-        })
-    })
+app.use('/auth',authRoutes)
+
 
 app.use('/', (err, req, res, next) => {
     if (err) {
@@ -27,3 +24,16 @@ app.use('/', (err, req, res, next) => {
     }
     res.send("Hello world");
 })
+
+connectDB()
+    .then(() => {
+        app.listen(port, () => {
+            console.log("DB connected successfully")
+            console.log(`server are Listening on port ${port}`)
+        })
+    })
+    .catch((err) => {
+        console.log('MongoDb connection ERROR: ', err)
+    })
+
+
