@@ -1,5 +1,4 @@
 const mongoose = require('mongoose')
-
 const { Schema } = mongoose
 
 const userSchema = new Schema({
@@ -21,8 +20,8 @@ const userSchema = new Schema({
 
     passwordHash: {
         type: String,
-        // required: true,
-        // select: false, // prevents accidental exposure
+        required: true,
+        select: false, // prevents accidental exposure
     },
 
     isActive: {
