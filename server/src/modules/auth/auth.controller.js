@@ -41,6 +41,8 @@ const AuthController = {
 
             const token = req.cookies.refreshToken;
             const result = await AuthService.logOut(token);
+            res.clearCookie("accessToken");
+            res.clearCookie("refreshToken");
             return res.json(result)
         } catch (error) {
             return res.status(400).json({ error: error.message });
@@ -51,12 +53,26 @@ const AuthController = {
         if (!token) return res.status(401).json({ message: "No refresh token" });
 
         try {
-            const result = AuthService.refresh(token);
-            res.json(result);
+            const result = await AuthService.refresh(token);
+            res.cookie("accessToken", result.accessToken, {
+                httpOnly: true,
+                secure: true,
+                sameSite: "strict",
+                maxAge: 15 * 60 * 1000
+            });
 
-        } catch {
-            res.status(403).json({ message: "Invalid or expired refresh token" });
+            res.cookie("refreshToken", result.refreshToken, {
+                httpOnly: true,
+                secure: true,
+                sameSite: "strict",
+                maxAge: 7 * 24 * 60 * 60 * 1000
+            });
+            res.json({ message: "refresh token successful" });
+
+        } catch (error) {
+            return res.status(403).json({ message: error.message });
         }
+
     }
 }
 

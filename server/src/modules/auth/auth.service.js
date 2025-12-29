@@ -1,4 +1,5 @@
 const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
 const User = require("../../models/user");
 const RefreshToken = require('../../models/RefreshToken')
 const { generateAccessToken, generateRefreshToken } = require('../utils/Token')
@@ -37,7 +38,7 @@ const AuthService = {
     if (!isMatch) {
       throw new Error("Invalid email or password");
     }
-    const accessToken = generateAccessToken(user._id);
+    const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user._id);
 
     //Invalidate old tokens on login
@@ -59,22 +60,42 @@ const AuthService = {
     if (token) {
       await RefreshToken.deleteOne({ token });
     }
-    res.clearCookie("refreshToken");
-    res.json({ message: "Logged out successfully" });
+    return ({ message: "Logged out successfully" });
   },
   refresh: async (token) => {
-    const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
+    try {
 
-    // check DB
-    const stored = await RefreshToken.findOne({ token });
-    if (!stored) return res.status(403).json({ message: "Invalid token" });
+      if (!token) throw new Error("No refresh token");
 
-    // issue new access token
-    const accessToken = generateAccessToken(decoded.id)
+      // Verify JWT signature
+      const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
 
-    return accessToken
+      // Check DB
+      const storedToken = await RefreshToken.findOne({ token });
+      if (!storedToken) {
+        throw new Error("Invalid refresh token");
+      }
+
+      // OPTIONAL: rotate refresh token
+      await RefreshToken.deleteOne({ token });
+
+      const newAccessToken = generateAccessToken(decoded.id);
+      const newRefreshToken = generateRefreshToken(decoded.id);
+
+      await RefreshToken.create({
+        user: decoded.id,
+        token: newRefreshToken,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken
+      };
+    } catch (error) {
+      throw new Error(error)
+    }
   }
-
 };
 
 module.exports = AuthService;
