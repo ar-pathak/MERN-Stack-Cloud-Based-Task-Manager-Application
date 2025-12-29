@@ -37,8 +37,8 @@ const AuthService = {
     if (!isMatch) {
       throw new Error("Invalid email or password");
     }
-    const accessToken = generateAccessToken(user);
-    const refreshToken = generateRefreshToken(user);
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
 
     //Invalidate old tokens on login
     await RefreshToken.deleteMany({ user: user._id });
@@ -61,6 +61,18 @@ const AuthService = {
     }
     res.clearCookie("refreshToken");
     res.json({ message: "Logged out successfully" });
+  },
+  refresh: async (token) => {
+    const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
+
+    // check DB
+    const stored = await RefreshToken.findOne({ token });
+    if (!stored) return res.status(403).json({ message: "Invalid token" });
+
+    // issue new access token
+    const accessToken = generateAccessToken(decoded.id)
+
+    return accessToken
   }
 
 };

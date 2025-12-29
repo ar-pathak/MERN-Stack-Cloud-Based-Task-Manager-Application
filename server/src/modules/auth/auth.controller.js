@@ -46,8 +46,18 @@ const AuthController = {
             return res.status(400).json({ error: error.message });
         }
     },
-    
+    refresh: async (req, res) => {
+        const token = req.cookies.refreshToken;
+        if (!token) return res.status(401).json({ message: "No refresh token" });
 
+        try {
+            const result = AuthService.refresh(token);
+            res.json(result);
+
+        } catch {
+            res.status(403).json({ message: "Invalid or expired refresh token" });
+        }
+    }
 }
 
 
