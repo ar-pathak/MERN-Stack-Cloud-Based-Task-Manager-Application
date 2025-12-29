@@ -1,5 +1,7 @@
 const bcrypt = require('bcrypt')
 const User = require("../../models/user");
+const RefreshToken = require('../../models/RefreshToken')
+const { generateAccessToken, generateRefreshToken } = require('../utils/Token')
 
 const AuthService = {
   signUp: async ({ name, email, password }) => {
@@ -35,11 +37,30 @@ const AuthService = {
     if (!isMatch) {
       throw new Error("Invalid email or password");
     }
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    //Invalidate old tokens on login
+    await RefreshToken.deleteMany({ user: user._id });
+
+    // Store refresh token in DB
+    await RefreshToken.create({
+      user: user._id,
+      token: refreshToken,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
 
     return {
-      message: "Login successful",
-      userId: user._id,
+      accessToken,
+      refreshToken
     };
+  },
+  logOut: async (token) => {
+    if (token) {
+      await RefreshToken.deleteOne({ token });
+    }
+    res.clearCookie("refreshToken");
+    res.json({ message: "Logged out successfully" });
   }
 
 };

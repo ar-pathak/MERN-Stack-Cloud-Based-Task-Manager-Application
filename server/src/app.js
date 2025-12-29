@@ -1,4 +1,5 @@
 const express = require('express')
+const cookieParser = require('cookie-parser')
 require("dotenv").config();
 
 const { userAuth } = require('./middleware/auth')
@@ -14,8 +15,14 @@ const port = 3000;
 
 
 app.use(express.json())
+app.use(cookieParser())
 
-app.use('/auth',authRoutes)
+app.use('/auth', authRoutes)
+
+app.get("/user", (req, res) => {
+    console.log(req.cookies)
+    res.send("checking cookie..")
+})
 
 
 app.use('/', (err, req, res, next) => {
