@@ -7,10 +7,10 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.post('/createWorkspaces', workspaceController.createWorkspace);
-router.get('/workspaces', workspaceController.getAllWorkspaces);
-router.get('/workspaces/:id', workspaceController.getWorkspaceById);
-router.patch('/workspaces/:id', workspaceController.updateWorkspace);
-router.delete('/workspaces/:id', workspaceController.deleteWorkspace);
+router.get('/getAllWorkspaces', workspaceController.getAllWorkspaces);
+router.get('/getWorkspaces/:id', workspaceController.getWorkspaceById);
+router.patch('/updateWorkspace/:id', workspaceController.updateWorkspace);
+router.delete('/deleteWorkspace/:id', workspaceController.deleteWorkspace);
 
 
 module.exports = router;
