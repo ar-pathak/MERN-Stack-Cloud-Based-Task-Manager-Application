@@ -50,7 +50,53 @@ const workspaceService = {
         if (!deletedWorkspace) {
             throw new Error('Workspace not found or delete failed');
         }
+    },
+    addMember: async ({ workspaceId, userId }) => {
+        const exists = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        });
+
+        if (exists) {
+            throw new Error("User already exists in workspace");
+        }
+
+        return await WorkspaceMember.create({
+            workspace: workspaceId,
+            user: userId,
+            role: "member"
+        });
+    },
+    getMembers: async (workspaceId) => {
+        const members = await WorkspaceMember.find({ workspace: workspaceId }).populate('user', 'name email');
+        if (!members) {
+            throw new Error("No members found for this workspace");
+        }
+        return members;
+    },
+    removeMember: async ({ workspaceId, memberId }) => {
+        const result = await WorkspaceMember.findOneAndDelete({
+            workspace: workspaceId,
+            user: memberId
+        })
+        if (!result) {
+            throw new Error("Member not found in workspace");
+        }
+    },
+    updateMemberRole: async ({ workspaceId, memberId, role }) => {
+        const result = await WorkspaceMember.findOneAndUpdate({
+            workspace: workspaceId,
+            user: memberId
+        },
+            { role: role },
+            { new: true }
+        )
+        if (!result) {
+            throw new Error("Member not found in workspace or update failed")
+        }
+        return result;
     }
+
 }
 
 module.exports = workspaceService

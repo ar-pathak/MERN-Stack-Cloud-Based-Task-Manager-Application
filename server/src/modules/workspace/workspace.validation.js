@@ -2,20 +2,16 @@ const { z } = require('zod');
 
 const createWorkspaceSchema = z.object({
     name: z.string().min(3).max(50),
-    description: z.string().max(200).optional(),
-    members: z.array(z.object({
-        userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user ID"),
-        role: z.enum(["admin", "member", "viewer"])
-    })).optional()
+    description: z.string().max(200).optional()
 })
 
 const updateWorkspaceSchema = z.object({
     name: z.string().min(3).max(50).optional(),
-    description: z.string().max(200).optional(),
-    members: z.array(z.object({
-        userId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid user ID"),
-        role: z.enum(["admin", "member", "viewer"])
-    })).optional()
+    description: z.string().max(200).optional()
 })
 
-module.exports = { createWorkspaceSchema, updateWorkspaceSchema };
+const updateMemberRoleSchema = z.object({
+    role: z.enum(["owner", "admin", "member", "viewer"])
+})
+
+module.exports = { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema };

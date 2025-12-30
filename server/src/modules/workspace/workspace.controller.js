@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const workspaceService = require('./workspace.service')
-const { createWorkspaceSchema, updateWorkspaceSchema } = require('./workspace.validation');
+const { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema } = require('./workspace.validation');
 
 const workspaceController = {
     createWorkspace: async (req, res) => {
@@ -65,7 +65,71 @@ const workspaceController = {
             }
             const result = await workspaceService.deleteWorkspace(id);
             res.status(200).json({ message: 'Workspace deleted successfully' })
-            
+
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    },
+    addMember: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const { userId } = req.body;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ error: "Invalid workspace ID" });
+            }
+
+            const member = await workspaceService.addMember({ workspaceId, userId });
+            res.status(201).json(member);
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    }
+    ,
+    removeMember: async (req, res) => {
+        try {
+            const { workspaceId, memberId } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ error: "Invalid workspace ID" });
+            }
+            if (!mongoose.Types.ObjectId.isValid(memberId)) {
+                return res.status(400).json({ error: "Invalid member ID" });
+            }
+
+            const result = await workspaceService.removeMember({ workspaceId, memberId })
+            res.status(200).json({ message: "Member removed successfully" })
+
+        } catch (error) {
+            res.status(400).json({ error: error.message })
+        }
+    },
+    updateMemberRole: async (req, res) => {
+        try {
+            const { workspaceId, memberId } = req.params;
+            const role = updateMemberRoleSchema.parse(req.body).role;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ error: "Invalid workspace ID" });
+            }
+            if (!mongoose.Types.ObjectId.isValid(memberId)) {
+                return res.status(400).json({ error: "Invalid member ID" });
+            }
+
+            const result = await workspaceService.updateMemberRole({ workspaceId, memberId, role })
+            res.status(200).json({ message: "Member role updated successfully" })
+        }
+        catch (error) {
+            res.status(400).json({ error: error.message })
+        }
+    },
+    getMembers: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                throw new Error("Invalid workspace ID");
+            }
+            const members = await workspaceService.getMembers(workspaceId);
+            res.status(200).json(members);
         } catch (error) {
             res.status(400).json({ error: error.message });
         }
