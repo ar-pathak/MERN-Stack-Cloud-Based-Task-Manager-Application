@@ -5,6 +5,7 @@ require("dotenv").config();
 const connectDB = require('./config/database')
 
 const authRoutes = require('./modules/auth/auth.routes')
+const tasksRoutes = require('./modules/tasks/tasks.routes')
 
 
 
@@ -16,6 +17,7 @@ app.use(express.json())
 app.use(cookieParser())
 
 app.use('/auth', authRoutes)
+app.use('/tasks',tasksRoutes)
 
 app.get("/user", (req, res) => {
     console.log(req.cookies)
