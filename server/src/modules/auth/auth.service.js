@@ -38,7 +38,7 @@ const AuthService = {
     if (!isMatch) {
       throw new Error("Invalid email or password");
     }
-    const accessToken = generateAccessToken(user);
+    const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
 
     //Invalidate old tokens on login
