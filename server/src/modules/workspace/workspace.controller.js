@@ -146,6 +146,15 @@ const workspaceController = {
         } catch (error) {
             res.status(400).json({ error: error.message });
         }
+    },
+    acceptInvite: async (req, res) => {
+        try {
+            const {token} = req.params
+            const result = await workspaceService.acceptInvite(token, req.user._id);
+            res.status(200).json({message: "Invite accepted successfully"});
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
     }
 }
 

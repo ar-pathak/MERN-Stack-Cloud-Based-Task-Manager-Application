@@ -128,6 +128,24 @@ const workspaceService = {
         })
 
         return invite;
+    },
+    acceptInvite: async (token, userId) => {
+        const invite = await WorkspaceInvite.findOne({ token: token, status: "pending" });
+        if (!invite) {
+            throw new Error('Invalid or expired invite token');
+        }
+        const member = await WorkspaceMember.findOne({ email: invite.email, workspace: invite.workspace });
+        if (member) {
+            throw new Error('User is already a member of the workspace');
+        }
+        await WorkspaceMember.create({
+            workspace: invite.workspace,
+            user: userId,
+            role: invite.role
+        })
+        invite.status = "accepted";
+        await invite.save();
+        return invite.status;
     }
 
 }
