@@ -6,6 +6,7 @@ const connectDB = require('./config/database')
 
 const authRoutes = require('./modules/auth/auth.routes')
 const workspaceRoutes = require('./modules/workspace/workspace.routes')
+const teamsRoutes = require('./modules/team/teams.routes')
 const tasksRoutes = require('./modules/tasks/tasks.routes')
 
 
@@ -19,6 +20,7 @@ app.use(cookieParser())
 
 app.use('/auth', authRoutes)
 app.use('/workspaces', workspaceRoutes)
+app.use('/teams', teamsRoutes)
 app.use('/tasks', tasksRoutes)
 
 app.get("/user", (req, res) => {
