@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const workspaceService = require('./workspace.service')
-const { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema } = require('./workspace.validation');
+const { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema, sendInviteSchema } = require('./workspace.validation');
 
 const workspaceController = {
     createWorkspace: async (req, res) => {
@@ -130,6 +130,19 @@ const workspaceController = {
             }
             const members = await workspaceService.getMembers(workspaceId);
             res.status(200).json(members);
+        } catch (error) {
+            res.status(400).json({ error: error.message });
+        }
+    },
+    sendInvite: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const { email, role } = sendInviteSchema.parse(req.body);
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                throw new Error("Invalid workspace ID");
+            }
+            const invite = await workspaceService.sendInvite({ workspaceId, email, role, invitedBy: req.user._id })
+            res.status(201).json(invite);
         } catch (error) {
             res.status(400).json({ error: error.message });
         }

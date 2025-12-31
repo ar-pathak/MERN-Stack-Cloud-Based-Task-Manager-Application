@@ -25,4 +25,4 @@ const workspaceMemberSchema = new mongoose.Schema({
 
 workspaceMemberSchema.index({ workspace: 1, user: 1 }, { unique: true });
 
-module.exports = mongoose.model("WorkspaceMember",workspaceMemberSchema);
+module.exports = mongoose.model("WorkspaceMember", workspaceMemberSchema);

@@ -14,4 +14,10 @@ const updateMemberRoleSchema = z.object({
     role: z.enum(["owner", "admin", "member", "viewer"])
 })
 
-module.exports = { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema };
+const sendInviteSchema = z.object({
+    email: z.string().email(),
+    role: z.enum(["admin", "member", "viewer"]).optional()
+
+})
+
+module.exports = { createWorkspaceSchema, updateWorkspaceSchema, updateMemberRoleSchema, sendInviteSchema };

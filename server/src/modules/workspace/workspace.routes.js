@@ -19,5 +19,9 @@ router.get('/:workspaceId/members', checkRole("owner", "admin", "member", "viewe
 router.delete('/:workspaceId/members/:memberId', checkRole("owner", "admin"), workspaceController.removeMember);
 router.patch('/:workspaceId/members/:memberId/role', checkRole("owner", "admin"), workspaceController.updateMemberRole);
 
+// Invite management routes
+router.post('/:workspaceId/invites', checkRole("owner", "admin"), workspaceController.sendInvite);
+// router.post('/invites/accept/:token', workspaceController.acceptInvite);
+
 
 module.exports = router;

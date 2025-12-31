@@ -1,5 +1,8 @@
-const Workspace = require('../../models/workspace')
-const WorkspaceMember = require('../../models/workspaceMember')
+
+const Workspace = require('../../models/workspace');
+const WorkspaceMember = require('../../models/workspaceMember');
+const WorkspaceInvite = require('../../models/workspaceInvite');
+const sendMail = require('../../helpers/sendEmail')
 
 const workspaceService = {
     createWorkspace: async ({ name, description, ownerId }) => {
@@ -95,6 +98,36 @@ const workspaceService = {
             throw new Error("Member not found in workspace or update failed")
         }
         return result;
+    },
+    sendInvite: async ({ workspaceId, email, role, invitedBy }) => {
+        // logic to send invite 
+        const token = require('crypto').randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
+        const isExistingInvite = await WorkspaceInvite.findOne({ workspace: workspaceId, email: email, status: "pending" });
+        if (isExistingInvite) {
+            throw new Error("An invite has already been sent to this email for the workspace");
+        }
+        const existingMember = await WorkspaceMember.findOne({ workspace: workspaceId, email: email });
+        if (existingMember) {
+            throw new Error("User is already a member of the workspace");
+        }
+
+        const invite = await WorkspaceInvite.create({
+            workspace: workspaceId,
+            email,
+            role,
+            invitedBy,
+            token,
+            expiresAt
+        })
+        // Here we would normally send an email with the invite link containing the token
+        sendMail({
+            to: email,
+            subject: "Workspace Invite",
+            token
+        })
+
+        return invite;
     }
 
 }
