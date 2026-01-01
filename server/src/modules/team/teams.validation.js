@@ -12,7 +12,7 @@ const updateTeamSchema = z.object({
 })
 
 const addTeamMemberSchema = z.object({
-    userId: z.string().uuid("Invalid user ID"),
+    memberId: z.string(),
     role: z.enum(["lead", "member"], "Invalid role"),
 })
 
