@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Bell, Menu, Search } from "lucide-react";
-import { useAuth } from "../../../../context/AuthContext";
-import UserMenu from "../../../dashboard/components/UserMenu";
+import { useAuth } from "../../../../../context/AuthContext";
+import UserMenu from "../../../components/UserMenu";
 
 const DashboardHeader = () => {
     const { user } = useAuth();

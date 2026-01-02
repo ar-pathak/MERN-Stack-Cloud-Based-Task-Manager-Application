@@ -1,5 +1,5 @@
 import { Outlet } from "react-router";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider } from "./context/AuthProvider";
 import { Toaster } from "sonner";
 
 function App() {
