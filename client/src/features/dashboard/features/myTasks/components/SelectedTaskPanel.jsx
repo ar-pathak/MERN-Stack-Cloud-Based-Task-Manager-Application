@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { AlertCircle, Calendar, CheckCircle2, ChevronRight, Clock, CloudIcon, MoreHorizontal } from "lucide-react";
+import { AlertCircle, Calendar, CheckCircle2, ChevronRight, Clock, MoreHorizontal } from "lucide-react";
+import CloudIcon from "./CloudIcon";
 import { priorityColors, statusColors } from "../utils/myTaskPageData";
 import ChecklistItem from "./ChecklistItem";
 

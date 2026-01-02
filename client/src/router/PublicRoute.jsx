@@ -1,18 +1,21 @@
 import { Navigate, Outlet } from "react-router";
 import LoadingPage from "../common/components/LoadingPage";
-import { useAuthCheck } from "../hooks/useAuthCheck";
+import { useAuth } from "../context/AuthContext";
 
 const PublicRoute = () => {
-    const { isAuth } = useAuthCheck();
+    const { isAuthenticated, loading } = useAuth();
 
-    if (isAuth === null) {
-        return <LoadingPage/>;
+    // While checking auth (loading state from AuthProvider)
+    if (loading) {
+        return <LoadingPage />;
     }
 
-    if (isAuth) {
+    // If authenticated, redirect to dashboard (prevent authenticated users from accessing public routes)
+    if (isAuthenticated) {
         return <Navigate to="/dashboard" replace />;
     }
 
+    // Not authenticated - render public content
     return <Outlet />;
 };
 

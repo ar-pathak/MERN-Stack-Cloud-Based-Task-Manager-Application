@@ -3,7 +3,7 @@ const userService = require('./user.service');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
 const userController = {
-    gerUserInfo: async (req, res) => {
+    getUserInfo: async (req, res) => {
         try {
             const userId = req.user._id;
             if (!mongoose.Types.ObjectId.isValid(userId)) {

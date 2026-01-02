@@ -1,21 +1,21 @@
 import { Navigate, Outlet } from "react-router";
 import LoadingPage from "../common/components/LoadingPage";
-import { useAuthCheck } from "../hooks/useAuthCheck";
+import { useAuth } from "../context/AuthContext";
 
 const ProtectedRoute = () => {
-  const { isAuth, error } = useAuthCheck();
+  const { isAuthenticated, loading } = useAuth();
 
-  // While checking auth
-  if (isAuth === null) {
-    return <LoadingPage />; // loader component here
+  // While checking auth (loading state from AuthProvider)
+  if (loading) {
+    return <LoadingPage />;
   }
 
-  // Not authenticated
-  if (!isAuth) {
+  // Not authenticated - redirect to login
+  if (!isAuthenticated) {
     return <Navigate to="/home/auth" replace />;
   }
 
-  // Authenticated
+  // Authenticated - render protected content
   return <Outlet />;
 };
 

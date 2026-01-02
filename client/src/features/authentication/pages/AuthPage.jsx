@@ -49,18 +49,18 @@ export default function AuthPage() {
             if (type === "login") {
                 result = await login(payload);
                 
-                if (result.success) {
+                if (result?.success) {
                     toast.success("Login successful! Redirecting...");
                     setTimeout(() => {
                         navigate("/dashboard");
                     }, 500);
                 } else {
-                    toast.error(result.error || "Login failed");
+                    toast.error(result?.message || result?.error || "Login failed");
                 }
             } else if (type === "signup") {
                 result = await register(payload);
                 
-                if (result.success) {
+                if (result?.success) {
                     toast.success("Account created successfully!");
                     // Optionally show verification notice or redirect to dashboard
                     setActiveView(views.VERIFY);
@@ -69,7 +69,7 @@ export default function AuthPage() {
                         navigate("/dashboard");
                     }, 2000);
                 } else {
-                    toast.error(result.error || "Registration failed");
+                    toast.error(result?.message || result?.error || "Registration failed");
                 }
             } else if (type === "forgot-password") {
                 const { forgotPassword } = await import("../../../service/auth.service");
@@ -82,7 +82,7 @@ export default function AuthPage() {
                         setActiveView(views.LOGIN);
                     }, 2000);
                 } else {
-                    toast.error(result.error || "Failed to send reset email");
+                    toast.error(result?.error || "Failed to send reset email");
                 }
             } else if (type === "reset-password") {
                 const { resetPassword } = await import("../../../service/auth.service");
@@ -94,12 +94,13 @@ export default function AuthPage() {
                         setActiveView(views.LOGIN);
                     }, 2000);
                 } else {
-                    toast.error(result.error || "Failed to reset password");
+                    toast.error(result?.error || "Failed to reset password");
                 }
             }
         } catch (err) {
             console.error("Auth error:", err);
-            toast.error("An unexpected error occurred. Please try again.");
+            const errorMessage = err?.message || err?.response?.data?.message || "An unexpected error occurred. Please try again.";
+            toast.error(errorMessage);
         }
     };
 

@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken')
 const crypto = require('crypto')
 const User = require("../../models/user");
 const RefreshToken = require('../../models/RefreshToken')
-const { generateAccessToken, generateRefreshToken } = require('../utils/Token')
+const { generateAccessToken, generateRefreshToken } = require('../../helpers/tokenHelper')
 const sendEmail = require('../../helpers/sendEmail')
 
 const AuthService = {
@@ -55,39 +55,83 @@ const AuthService = {
 
     return {
       accessToken,
-      refreshToken
+      refreshToken,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email
+      }
     };
   },
-  logOut: async (token) => {
-    if (token) {
-      await RefreshToken.deleteOne({ token });
+  logOut: async (token, userId) => {
+    try {
+      // Delete the specific refresh token if provided
+      if (token) {
+        await RefreshToken.deleteOne({ token });
+      }
+      
+      // If userId is provided, delete all refresh tokens for that user (logout from all devices)
+      // This is useful for security - if user wants to logout from all devices
+      if (userId) {
+        await RefreshToken.deleteMany({ user: userId });
+      }
+      
+      return { message: "Logged out successfully" };
+    } catch (error) {
+      // Even if token deletion fails, return success to ensure cookies are cleared
+      return { message: "Logged out successfully" };
     }
-    return ({ message: "Logged out successfully" });
   },
   refresh: async (token) => {
     try {
-
-      if (!token) throw new Error("No refresh token");
+      if (!token) {
+        throw new Error("No refresh token provided");
+      }
 
       // Verify JWT signature
-      const decoded = jwt.verify(token, process.env.REFRESH_SECRET);
-
-      // Check DB
-      const storedToken = await RefreshToken.findOne({ token });
-      if (!storedToken) {
+      let decoded;
+      try {
+        decoded = jwt.verify(token, process.env.REFRESH_SECRET);
+      } catch (jwtError) {
+        if (jwtError.name === 'TokenExpiredError') {
+          // Clean up expired token from DB
+          await RefreshToken.deleteOne({ token });
+          throw new Error("Refresh token expired. Please login again.");
+        }
         throw new Error("Invalid refresh token");
       }
 
-      // OPTIONAL: rotate refresh token
+      // Check if token exists in DB and is not expired
+      const storedToken = await RefreshToken.findOne({ token });
+      if (!storedToken) {
+        throw new Error("Refresh token not found or already used");
+      }
+
+      // Check if token is expired (additional check beyond JWT expiration)
+      if (storedToken.expiresAt < new Date()) {
+        await RefreshToken.deleteOne({ token });
+        throw new Error("Refresh token expired. Please login again.");
+      }
+
+      // Verify user still exists
+      const user = await User.findById(decoded.id);
+      if (!user) {
+        await RefreshToken.deleteOne({ token });
+        throw new Error("User not found");
+      }
+
+      // Rotate refresh token (delete old, create new)
       await RefreshToken.deleteOne({ token });
 
+      // Generate new tokens
       const newAccessToken = generateAccessToken(decoded.id);
       const newRefreshToken = generateRefreshToken(decoded.id);
 
+      // Store new refresh token
       await RefreshToken.create({
         user: decoded.id,
         token: newRefreshToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       });
 
       return {
@@ -95,7 +139,8 @@ const AuthService = {
         refreshToken: newRefreshToken
       };
     } catch (error) {
-      throw new Error(error)
+      // Re-throw with proper error message
+      throw error instanceof Error ? error : new Error(error.message || "Token refresh failed");
     }
   },
   forgotPassword: async ({ email }) => {

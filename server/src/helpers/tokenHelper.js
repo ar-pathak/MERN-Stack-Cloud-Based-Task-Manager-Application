@@ -1,6 +1,10 @@
-
 const jwt = require('jsonwebtoken')
 
+/**
+ * Generate access token (short-lived, 15 minutes)
+ * @param {string} userId - User ID
+ * @returns {string} JWT access token
+ */
 const generateAccessToken = (userId) => {
     return jwt.sign(
         { id: userId },
@@ -9,6 +13,11 @@ const generateAccessToken = (userId) => {
     );
 };
 
+/**
+ * Generate refresh token (long-lived, 7 days)
+ * @param {string} userId - User ID
+ * @returns {string} JWT refresh token
+ */
 const generateRefreshToken = (userId) => {
     return jwt.sign(
         { id: userId },
@@ -17,4 +26,4 @@ const generateRefreshToken = (userId) => {
     );
 };
 
-module.exports = { generateAccessToken, generateRefreshToken }
+module.exports = { generateAccessToken, generateRefreshToken };

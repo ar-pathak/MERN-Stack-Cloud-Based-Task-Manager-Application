@@ -49,8 +49,9 @@ export const login = async (credentials) => {
 
         // Tokens are stored in httpOnly cookies by the server
         // Store user info if returned
-        if (response.data.user) {
-            localStorage.setItem("user", JSON.stringify(response.data.user));
+        if (response.data?.data?.user || response.data?.user) {
+            const userData = response.data?.data?.user || response.data?.user;
+            localStorage.setItem("user", JSON.stringify(userData));
         }
 
         return response.data;
@@ -69,19 +70,29 @@ export const login = async (credentials) => {
  */
 export const logout = async () => {
     try {
-        const response = await api.post("/api/auth/logout");
-
-        // Clear user data (cookies are cleared by server)
+        // Always clear local storage first
         localStorage.removeItem("user");
-
-        return response.data;
+        
+        // Try to call logout endpoint (but don't fail if it errors)
+        try {
+            const response = await api.post("/api/auth/logout");
+            return response.data;
+        } catch (apiError) {
+            // Even if API call fails, we've cleared local storage
+            // This handles cases where token is already expired
+            return {
+                success: true,
+                message: "Logged out successfully"
+            };
+        }
     } catch (error) {
-        // Clear user data even if API call fails
+        // Ensure local storage is cleared
         localStorage.removeItem("user");
-
-        throw {
-            message: error.response?.data?.message || error.response?.data?.error || "Logout failed",
-            status: error.response?.status,
+        
+        // Return success even on error to allow logout to complete
+        return {
+            success: true,
+            message: "Logged out successfully"
         };
     }
 };
@@ -461,16 +472,6 @@ export const updateUserPreferences = async (preferences) => {
 // ==================== UTILITY FUNCTIONS ====================
 
 /**
- * Get stored auth token
- * @returns {string|null} Auth token
- * @deprecated Tokens are now stored in httpOnly cookies. Use checkAuth() to verify authentication.
- */
-export const getToken = () => {
-    // Tokens are in httpOnly cookies, not accessible via JavaScript
-    return null;
-};
-
-/**
  * Get stored user data
  * @returns {Object|null} User data
  */
@@ -479,66 +480,5 @@ export const getStoredUser = () => {
     return user ? JSON.parse(user) : null;
 };
 
-/**
- * Check if user is logged in (has valid token)
- * @returns {boolean} Login status
- * @deprecated Use checkAuth() for accurate authentication status
- */
-export const isLoggedIn = () => {
-    // Check if user data exists in localStorage as a basic check
-    // For accurate status, use checkAuth() API call
-    return !!getStoredUser();
-};
-
-/**
- * Clear all auth data from storage
- */
-export const clearAuthData = () => {
-    // Cookies are cleared by server on logout
-    localStorage.removeItem("user");
-};
-
-// Default export with all functions
-export default {
-    // Authentication
-    register,
-    login,
-    logout,
-
-    // User Info
-    getUserInfo,
-    updateProfile,
-
-    // Password Management
-    changePassword,
-    forgotPassword,
-    resetPassword,
-
-    // Email Verification
-    sendVerificationEmail,
-    verifyEmail,
-
-    // Session Management
-    refreshToken,
-    checkAuth,
-    getActiveSessions,
-    revokeSession,
-    logoutAllDevices,
-
-    // 2FA
-    enable2FA,
-    verify2FA,
-    disable2FA,
-    verify2FALogin,
-
-    // Account Management
-    deleteAccount,
-    getUserPreferences,
-    updateUserPreferences,
-
-    // Utilities
-    getToken,
-    getStoredUser,
-    isLoggedIn,
-    clearAuthData,
-};
+// All functions are exported individually above
+// No default export needed as all imports use named exports

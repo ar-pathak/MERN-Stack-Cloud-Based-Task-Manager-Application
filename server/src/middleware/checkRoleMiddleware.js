@@ -15,7 +15,7 @@ const checkRole = (...allowedRoles) => {
       next();
     };
   } catch (error) {
-    res.status(400).json({ error: error.message })
+    return res.status(400).json({ error: error.message });
   }
 };
 

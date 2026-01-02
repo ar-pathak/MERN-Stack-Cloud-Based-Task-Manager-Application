@@ -40,7 +40,14 @@ const AuthController = {
 
             return res.status(200).json({ 
                 success: true,
-                message: "Login successful" 
+                message: "Login successful",
+                data: {
+                    user: {
+                        id: result.user._id,
+                        name: result.user.name,
+                        email: result.user.email
+                    }
+                }
             });
 
         } catch (error) {
@@ -52,19 +59,30 @@ const AuthController = {
     },
     logOut: async (req, res) => {
         try {
-            const token = req.cookies.refreshToken;
-            await AuthService.logOut(token);
+            const token = req.cookies?.refreshToken;
+            const userId = req.user?._id; // Get user from auth middleware if available
+            
+            // Always clear cookies first
             clearAuthCookies(res);
+            
+            // Then try to delete refresh token (non-blocking)
+            try {
+                await AuthService.logOut(token, userId);
+            } catch (tokenError) {
+                // Log error but don't fail the logout
+                console.error("Error deleting refresh token:", tokenError.message);
+            }
             
             return res.status(200).json({ 
                 success: true,
                 message: "Logged out successfully" 
             });
         } catch (error) {
-            clearAuthCookies(res); // Clear cookies even on error
-            return res.status(400).json({ 
-                success: false,
-                message: error.message 
+            // Always clear cookies even on error
+            clearAuthCookies(res);
+            return res.status(200).json({ 
+                success: true,
+                message: "Logged out successfully" 
             });
         }
     },
