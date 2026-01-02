@@ -1,22 +1,13 @@
 import { Navigate, Outlet } from "react-router";
-import { useEffect, useState } from "react";
-import isUserAuthenticated from "../utils/checkAuthentication";
+import LoadingPage from "../common/components/LoadingPage";
+import { useAuthCheck } from "../hooks/useAuthCheck";
 
 const ProtectedRoute = () => {
-  const [isAuth, setIsAuth] = useState(null); // null = loading
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      const res = await isUserAuthenticated();
-      setIsAuth(res?.success === true);
-    };
-
-    checkAuth();
-  }, []);
+  const { isAuth, error } = useAuthCheck();
 
   // While checking auth
   if (isAuth === null) {
-    return <div>Checking authentication...</div>; // loader component here
+    return <LoadingPage />; // loader component here
   }
 
   // Not authenticated

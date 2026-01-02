@@ -1,20 +1,12 @@
 import { Navigate, Outlet } from "react-router";
-import { useEffect, useState } from "react";
-import isUserAuthenticated from "../utils/checkAuthentication";
+import LoadingPage from "../common/components/LoadingPage";
+import { useAuthCheck } from "../hooks/useAuthCheck";
 
 const PublicRoute = () => {
-    const [isAuth, setIsAuth] = useState(null);
-
-    useEffect(() => {
-        const checkAuth = async () => {
-            const res = await isUserAuthenticated();
-            setIsAuth(res?.success === true);
-        };
-        checkAuth();
-    }, []);
+    const { isAuth } = useAuthCheck();
 
     if (isAuth === null) {
-        return <div>Loading...</div>;
+        return <LoadingPage/>;
     }
 
     if (isAuth) {
