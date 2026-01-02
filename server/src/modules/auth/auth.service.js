@@ -1,8 +1,10 @@
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
+const crypto = require('crypto')
 const User = require("../../models/user");
 const RefreshToken = require('../../models/RefreshToken')
 const { generateAccessToken, generateRefreshToken } = require('../utils/Token')
+const sendEmail = require('../../helpers/sendEmail')
 
 const AuthService = {
   signUp: async ({ name, email, password }) => {
@@ -95,6 +97,73 @@ const AuthService = {
     } catch (error) {
       throw new Error(error)
     }
+  },
+  forgotPassword: async ({ email }) => {
+    // 1. Find user by email
+    const user = await User.findOne({ email });
+    
+    // Don't reveal if email exists or not (security best practice)
+    if (!user) {
+      // Still return success to prevent email enumeration
+      return { message: "If that email exists, we've sent a password reset link." };
+    }
+
+    // 2. Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // 3. Save token and expiration (1 hour from now)
+    user.resetPasswordToken = hashedToken;
+    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    await user.save({ validateBeforeSave: false });
+
+    // 4. Send email with reset link
+    try {
+      const resetURL = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/home/auth/reset-password/${resetToken}`;
+      await sendEmail({
+        to: user.email,
+        subject: 'Reset Your Password - Task Manager',
+        token: resetToken,
+        type: 'reset-password'
+      });
+
+      return { message: "If that email exists, we've sent a password reset link." };
+    } catch (error) {
+      // If email fails, remove the token
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+
+      throw new Error("Email could not be sent. Please try again later.");
+    }
+  },
+  resetPassword: async ({ token, password }) => {
+    // 1. Hash the token to compare with stored hash
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // 2. Find user with valid token and not expired
+    const user = await User.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpires: { $gt: Date.now() }
+    }).select('+resetPasswordToken +resetPasswordExpires');
+
+    if (!user) {
+      throw new Error("Invalid or expired reset token");
+    }
+
+    // 3. Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 4. Update password and clear reset token fields
+    user.passwordHash = hashedPassword;
+    user.resetPasswordToken = undefined;
+    user.resetPasswordExpires = undefined;
+    await user.save();
+
+    // 5. Invalidate all refresh tokens for security
+    await RefreshToken.deleteMany({ user: user._id });
+
+    return { message: "Password has been reset successfully" };
   }
 };
 

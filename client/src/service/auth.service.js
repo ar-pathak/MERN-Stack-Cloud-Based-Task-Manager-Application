@@ -19,17 +19,17 @@ import api from "../config/axios";
  */
 export const register = async (userData) => {
     try {
-        const response = await api.post("/api/auth/register", userData);
+        const response = await api.post("/api/auth/signup", userData);
 
-        // Store token if returned
-        if (response.data.token) {
-            localStorage.setItem("token", response.data.token);
+        // Store user info if returned (tokens are in httpOnly cookies)
+        if (response.data.data?.user) {
+            localStorage.setItem("user", JSON.stringify(response.data.data.user));
         }
 
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Registration failed",
+            message: error.response?.data?.message || error.response?.data?.error || "Registration failed",
             errors: error.response?.data?.errors || {},
             status: error.response?.status,
         };
@@ -47,12 +47,8 @@ export const login = async (credentials) => {
     try {
         const response = await api.post("/api/auth/login", credentials);
 
-        // Store token
-        if (response.data.token) {
-            localStorage.setItem("token", response.data.token);
-        }
-
-        // Store user info if needed
+        // Tokens are stored in httpOnly cookies by the server
+        // Store user info if returned
         if (response.data.user) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
@@ -60,7 +56,7 @@ export const login = async (credentials) => {
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Login failed",
+            message: error.response?.data?.message || error.response?.data?.error || "Login failed",
             errors: error.response?.data?.errors || {},
             status: error.response?.status,
         };
@@ -75,18 +71,16 @@ export const logout = async () => {
     try {
         const response = await api.post("/api/auth/logout");
 
-        // Clear local storage
-        localStorage.removeItem("token");
+        // Clear user data (cookies are cleared by server)
         localStorage.removeItem("user");
 
         return response.data;
     } catch (error) {
-        // Clear local storage even if API call fails
-        localStorage.removeItem("token");
+        // Clear user data even if API call fails
         localStorage.removeItem("user");
 
         throw {
-            message: error.response?.data?.message || "Logout failed",
+            message: error.response?.data?.message || error.response?.data?.error || "Logout failed",
             status: error.response?.status,
         };
     }
@@ -184,11 +178,12 @@ export const forgotPassword = async (email) => {
  */
 export const resetPassword = async (resetData) => {
     try {
-        const response = await api.post("/api/auth/reset-password", resetData);
+        const { token, password } = resetData;
+        const response = await api.post(`/api/auth/reset-password/${token}`, { password });
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to reset password",
+            message: error.response?.data?.message || error.response?.data?.error || "Failed to reset password",
             errors: error.response?.data?.errors || {},
             status: error.response?.status,
         };
@@ -238,20 +233,17 @@ export const verifyEmail = async (token) => {
  */
 export const refreshToken = async () => {
     try {
-        const response = await api.post("/api/auth/refresh-token");
+        // Server endpoint is /api/auth/refresh (not refresh-token)
+        const response = await api.post("/api/auth/refresh");
 
-        if (response.data.token) {
-            localStorage.setItem("token", response.data.token);
-        }
-
+        // Tokens are automatically updated in httpOnly cookies by the server
         return response.data;
     } catch (error) {
-        // Clear token on refresh failure
-        localStorage.removeItem("token");
+        // Clear user data on refresh failure
         localStorage.removeItem("user");
 
         throw {
-            message: error.response?.data?.message || "Token refresh failed",
+            message: error.response?.data?.message || error.response?.data?.error || "Token refresh failed",
             status: error.response?.status,
         };
     }
@@ -314,18 +306,16 @@ export const logoutAllDevices = async () => {
     try {
         const response = await api.post("/api/auth/logout-all");
 
-        // Clear local storage
-        localStorage.removeItem("token");
+        // Clear user data (cookies are cleared by server)
         localStorage.removeItem("user");
 
         return response.data;
     } catch (error) {
-        // Clear local storage even if API call fails
-        localStorage.removeItem("token");
+        // Clear user data even if API call fails
         localStorage.removeItem("user");
 
         throw {
-            message: error.response?.data?.message || "Failed to logout from all devices",
+            message: error.response?.data?.message || error.response?.data?.error || "Failed to logout from all devices",
             status: error.response?.status,
         };
     }
@@ -396,10 +386,7 @@ export const verify2FALogin = async (code, loginToken) => {
             loginToken,
         });
 
-        if (response.data.token) {
-            localStorage.setItem("token", response.data.token);
-        }
-
+        // Tokens are stored in httpOnly cookies by the server
         if (response.data.user) {
             localStorage.setItem("user", JSON.stringify(response.data.user));
         }
@@ -407,7 +394,7 @@ export const verify2FALogin = async (code, loginToken) => {
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "2FA login verification failed",
+            message: error.response?.data?.message || error.response?.data?.error || "2FA login verification failed",
             status: error.response?.status,
         };
     }
@@ -426,14 +413,13 @@ export const deleteAccount = async (password) => {
             data: { password },
         });
 
-        // Clear all local data
-        localStorage.removeItem("token");
+        // Clear user data (cookies are cleared by server)
         localStorage.removeItem("user");
 
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to delete account",
+            message: error.response?.data?.message || error.response?.data?.error || "Failed to delete account",
             status: error.response?.status,
         };
     }
@@ -477,9 +463,11 @@ export const updateUserPreferences = async (preferences) => {
 /**
  * Get stored auth token
  * @returns {string|null} Auth token
+ * @deprecated Tokens are now stored in httpOnly cookies. Use checkAuth() to verify authentication.
  */
 export const getToken = () => {
-    return localStorage.getItem("token");
+    // Tokens are in httpOnly cookies, not accessible via JavaScript
+    return null;
 };
 
 /**
@@ -494,16 +482,19 @@ export const getStoredUser = () => {
 /**
  * Check if user is logged in (has valid token)
  * @returns {boolean} Login status
+ * @deprecated Use checkAuth() for accurate authentication status
  */
 export const isLoggedIn = () => {
-    return !!getToken();
+    // Check if user data exists in localStorage as a basic check
+    // For accurate status, use checkAuth() API call
+    return !!getStoredUser();
 };
 
 /**
  * Clear all auth data from storage
  */
 export const clearAuthData = () => {
-    localStorage.removeItem("token");
+    // Cookies are cleared by server on logout
     localStorage.removeItem("user");
 };
 

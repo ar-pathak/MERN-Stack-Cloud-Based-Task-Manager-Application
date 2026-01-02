@@ -44,6 +44,10 @@ const router = createBrowserRouter([
             path: "home/auth",
             element: withSuspense(AuthPage),
           },
+          {
+            path: "home/auth/reset-password/:token",
+            element: withSuspense(AuthPage),
+          },
         ],
       },
 

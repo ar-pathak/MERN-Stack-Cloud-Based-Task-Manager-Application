@@ -1,9 +1,11 @@
 import { useState } from "react";
+import { useParams } from "react-router";
 import { GhostButton, PrimaryButton } from "../components/Buttons";
 import TextInput from "../components/TextInput";
 import { views } from "../utils/view";
 
 function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
+  const { token } = useParams();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
@@ -11,6 +13,11 @@ function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
   const handleFormSubmit = (e) => {
     e.preventDefault();
     setError("");
+
+    if (!token) {
+      setError("Invalid reset link. Please request a new one.");
+      return;
+    }
 
     if (!password || !confirm) {
       setError("Both fields are required.");
@@ -25,8 +32,6 @@ function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
       return;
     }
 
-    // Token tum URL se nikaloge, for now dummy:
-    const token = "dummy-reset-token";
     onSubmit({ password, token });
   };
 

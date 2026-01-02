@@ -1,10 +1,13 @@
-import React, { lazy, Suspense, useState } from "react";
+import React, { lazy, Suspense, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import Badge from "../components/Badge";
 import Avatar from "../components/Avatar";
 import AuthTabs from "../components/AuthTabs";
 import { views } from "../utils/view";
 import LazyLoader from "../../../common/components/LazyLoader";
+import { useAuth } from "../../../context/AuthContext";
 
 const LoginForm = lazy(() => import("./LoginForm"))
 const SignupForm = lazy(() => import("./SignupForm"))
@@ -27,26 +30,76 @@ const containerVariants = {
 };
 
 export default function AuthPage() {
+    const { token } = useParams();
     const [activeView, setActiveView] = useState(views.LOGIN);
-    const [loading, setLoading] = useState(false);
+    const { login, register, loading } = useAuth();
+    const navigate = useNavigate();
 
-    // Fake submit handler (yaha tum API call integrate karoge)
+    // Check if we're on reset password route
+    useEffect(() => {
+        if (token) {
+            setActiveView(views.RESET);
+        }
+    }, [token]);
+
     const handleSubmit = async (payload, type) => {
         try {
-            setLoading(true);
-            console.log("Submitting =>", type, payload);
-            // Example:
-            // const res = await api.post(`/auth/${type}`, payload);
-            // handle tokens, redirect, etc.
-            await new Promise((r) => setTimeout(r, 800));
-            alert(`Fake ${type} success (console check karo)`);
+            let result;
 
-            if (type === "signup") setActiveView(views.VERIFY);
+            if (type === "login") {
+                result = await login(payload);
+                
+                if (result.success) {
+                    toast.success("Login successful! Redirecting...");
+                    setTimeout(() => {
+                        navigate("/dashboard");
+                    }, 500);
+                } else {
+                    toast.error(result.error || "Login failed");
+                }
+            } else if (type === "signup") {
+                result = await register(payload);
+                
+                if (result.success) {
+                    toast.success("Account created successfully!");
+                    // Optionally show verification notice or redirect to dashboard
+                    setActiveView(views.VERIFY);
+                    // Or redirect to dashboard after a delay
+                    setTimeout(() => {
+                        navigate("/dashboard");
+                    }, 2000);
+                } else {
+                    toast.error(result.error || "Registration failed");
+                }
+            } else if (type === "forgot-password") {
+                const { forgotPassword } = await import("../../../service/auth.service");
+                result = await forgotPassword(payload);
+                
+                if (result?.success || result?.message) {
+                    toast.success(result.message || "Password reset link sent to your email!");
+                    // Optionally switch back to login after a delay
+                    setTimeout(() => {
+                        setActiveView(views.LOGIN);
+                    }, 2000);
+                } else {
+                    toast.error(result.error || "Failed to send reset email");
+                }
+            } else if (type === "reset-password") {
+                const { resetPassword } = await import("../../../service/auth.service");
+                result = await resetPassword(payload);
+
+                if (result?.success || result?.message) {
+                    toast.success(result.message || "Password reset successfully!");
+                    setTimeout(() => {
+                        setActiveView(views.LOGIN);
+                    }, 2000);
+                } else {
+                    toast.error(result.error || "Failed to reset password");
+                }
+            }
         } catch (err) {
-            console.error(err);
-            alert("Error: check console");
-        } finally {
-            setLoading(false);
+            console.error("Auth error:", err);
+            toast.error("An unexpected error occurred. Please try again.");
         }
     };
 
@@ -157,7 +210,7 @@ export default function AuthPage() {
                                         <LoginForm
                                             onSwitch={(view) => setActiveView(view)}
                                             onSubmit={(payload) => handleSubmit(payload, "login")}
-                                            loading={loading}
+                                            loading={loading || false}
                                         />
                                     </Suspense>
                                 </motion.div>
@@ -176,7 +229,7 @@ export default function AuthPage() {
                                         <SignupForm
                                             onSwitch={(view) => setActiveView(view)}
                                             onSubmit={(payload) => handleSubmit(payload, "signup")}
-                                            loading={loading}
+                                            loading={loading || false}
                                         />
                                     </Suspense>
                                 </motion.div>
