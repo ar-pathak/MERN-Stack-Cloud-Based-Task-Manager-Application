@@ -4,6 +4,7 @@ import App from "../App";
 import LoadingPage from "../common/components/LoadingPage";
 import ErrorPage from "../common/components/ErrorPage";
 import ProtectedRoute from "./ProtectedRoute";
+import PublicRoute from "./PublicRoute";
 
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
@@ -30,14 +31,23 @@ const router = createBrowserRouter([
         index: true,
         element: <Navigate to="/home" replace />,
       },
+
+      // 🌐 Public Routes (only for non-auth users)
       {
-        path: "home",
-        element: withSuspense(HomePage),
+        element: <PublicRoute />,
+        children: [
+          {
+            path: "home",
+            element: withSuspense(HomePage),
+          },
+          {
+            path: "home/auth",
+            element: withSuspense(AuthPage),
+          },
+        ],
       },
-      {
-        path: "home/auth",
-        element: withSuspense(AuthPage),
-      },
+
+      // 🔒 Protected Routes (only for logged-in users)
       {
         element: <ProtectedRoute />,
         children: [

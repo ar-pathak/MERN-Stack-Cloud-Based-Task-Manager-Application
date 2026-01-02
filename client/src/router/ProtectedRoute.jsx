@@ -1,12 +1,30 @@
 import { Navigate, Outlet } from "react-router";
+import { useEffect, useState } from "react";
+import isUserAuthenticated from "../utils/checkAuthentication";
 
 const ProtectedRoute = () => {
-  const isAuthenticated = true; // replace with real auth logic
+  const [isAuth, setIsAuth] = useState(null); // null = loading
 
-  if (!isAuthenticated) {
-    return <Navigate to="/auth" replace />;
+  useEffect(() => {
+    const checkAuth = async () => {
+      const res = await isUserAuthenticated();
+      setIsAuth(res?.success === true);
+    };
+
+    checkAuth();
+  }, []);
+
+  // While checking auth
+  if (isAuth === null) {
+    return <div>Checking authentication...</div>; // loader component here
   }
 
+  // Not authenticated
+  if (!isAuth) {
+    return <Navigate to="/home/auth" replace />;
+  }
+
+  // Authenticated
   return <Outlet />;
 };
 

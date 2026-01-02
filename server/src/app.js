@@ -9,6 +9,7 @@ const workspaceRoutes = require('./modules/workspace/workspace.routes')
 const teamsRoutes = require('./modules/team/teams.routes')
 const projectsRoutes = require('./modules/projects/project.routes')
 const tasksRoutes = require('./modules/tasks/tasks.routes')
+const usersRoutes = require('./modules/user/user.routes')
 
 
 
@@ -19,11 +20,12 @@ const port = 3000;
 app.use(express.json())
 app.use(cookieParser())
 
-app.use('/auth', authRoutes)
-app.use('/workspaces', workspaceRoutes)
-app.use('/teams', teamsRoutes)
-app.use('/projects', projectsRoutes)
-app.use('/tasks', tasksRoutes)
+app.use('/api/auth', authRoutes)
+app.use('/api/workspaces', workspaceRoutes)
+app.use('/api/teams', teamsRoutes)
+app.use('/api/projects', projectsRoutes)
+app.use('/api/tasks', tasksRoutes)
+app.use('/api/user', usersRoutes)
 
 app.get("/user", (req, res) => {
     console.log(req.cookies)
