@@ -35,7 +35,7 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes)
-app.use('/api/workspaces', workspaceRoutes)
+app.use('/api/workspace', workspaceRoutes)
 app.use('/api/teams', teamsRoutes)
 app.use('/api/projects', projectsRoutes)
 app.use('/api/tasks', tasksRoutes)

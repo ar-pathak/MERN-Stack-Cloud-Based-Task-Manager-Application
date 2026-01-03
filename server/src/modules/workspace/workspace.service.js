@@ -23,13 +23,18 @@ const workspaceService = {
     }
     ,
     getAllWorkspaces: async (userId) => {
-        //logic to get all workspaces
-        const workspaces = await WorkspaceMember.find({ user: userId }).populate('workspace');
-        if (!workspaces) {
-            throw new Error('No workspaces found for this user');
-        }
-        return workspaces.map(wm => wm.workspace);
+        const members = await WorkspaceMember
+            .find({ user: userId })
+            .populate({
+                path: 'workspace',
+                select: '_id name createdAt'
+            });
 
+        const workspaces = members
+            .map(m => m.workspace)
+            .filter(Boolean);
+
+        return workspaces;
     },
     getWorkspaceById: async (id) => {
         //logic to get a workspace by id
