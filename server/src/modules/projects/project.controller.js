@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const projectService = require('./project.service')
-const { createProjectSchema, updateProjectSchema } = require('./project.validation');
+const { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema } = require('./project.validation');
+const { sendSuccess, handleError } = require('../../helpers/responseHelper');
+
 const projectController = {
     createProject: async (req, res) => {
         try {
@@ -16,7 +18,7 @@ const projectController = {
 
             res.status(201).json(project);
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res)
         }
     },
     getProjectsByWorkspace: async (req, res) => {
@@ -28,7 +30,7 @@ const projectController = {
             const project = await projectService.getProjectsByWorkspace(workspaceId);
             res.status(200).json(project);
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res)
         }
     },
     getProjectById: async (req, res) => {
@@ -41,7 +43,7 @@ const projectController = {
             res.status(200).json(project);
 
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res)
         }
     },
     updateProject: async (req, res) => {
@@ -55,7 +57,7 @@ const projectController = {
             await projectService.updateProject(projectId, updateData);
             res.status(201).json({ message: 'project updated successfully' })
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res)
         }
     },
     deleteProject: async (req, res) => {
@@ -68,9 +70,58 @@ const projectController = {
             res.status(200).json({ message: "Project deleted successfully" })
 
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res)
         }
     },
+    getProjectTeams: async (req, res) => {
+        try {
+            const { projectId } = req.params
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error('Invalid Project ID')
+            }
+            const teams = await projectService.getProjectTeams(projectId);
+            sendSuccess(res, teams)
+        } catch (error) {
+            return handleError(error, res)
+        }
+    },
+    addProjectTeams: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const data = addProjectTeamsSchema.parse(req.body);
+
+            const result = await projectService.addProjectTeams(projectId, data);
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+    removeProjectTeams: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const data = removeProjectTeamsSchema.parse(req.body);
+
+            const result = await projectService.removeProjectTeams(
+                projectId,
+                data
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    }
 }
 
 module.exports = projectController;

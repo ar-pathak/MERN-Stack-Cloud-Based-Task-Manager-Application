@@ -51,6 +51,47 @@ const projectService = {
             throw new Error('Project not found')
         }
         return project;
+    },
+    getProjectTeams: async (projectId) => {
+        const project = await Project.findById(projectId);
+        if (!project) {
+            throw new Error('Project not found')
+        }
+        return project.teams;
+    },
+    addProjectTeams: async (projectId, { teams }) => {
+        const project = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $addToSet: {
+                    teams: { $each: teams }
+                }
+            },
+            { new: true }
+        );
+
+        if (!project) {
+            throw new Error("Project not found");
+        }
+
+        return { message: "Teams added to project" };
+    },
+    removeProjectTeams: async (projectId, { teams }) => {
+        const project = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $pull: {
+                    teams: { $in: teams }
+                }
+            },
+            { new: true }
+        );
+
+        if (!project) {
+            throw new Error("Project not found");
+        }
+
+        return { message: "Teams removed from project" };
     }
 }
 

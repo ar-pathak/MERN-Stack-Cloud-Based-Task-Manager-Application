@@ -54,4 +54,20 @@ const updateProjectSchema = z.object({
     status: z.enum(['active', 'archived', 'completed']).optional()
 })
 
-module.exports = { createProjectSchema, updateProjectSchema };
+const addProjectTeamsSchema = z.object({
+    teams: z
+        .array(objectId)
+        .min(1, "At least one team is required")
+        .optional()
+        .refine(
+            (arr) => !arr || new Set(arr).size === arr.length,
+            { message: "Duplicate team IDs not allowed" }
+        )
+})
+const removeProjectTeamsSchema = z.object({
+    teams: z
+        .array(objectId)
+        .min(1, "At least one team is required")
+});
+
+module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema };
