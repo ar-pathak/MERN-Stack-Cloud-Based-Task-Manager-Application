@@ -43,6 +43,7 @@ export const register = async (userData) => {
  * @param {string} credentials.password - User's password
  * @returns {Promise<Object>} Login response with user data and token
  */
+
 export const login = async (credentials) => {
     try {
         const response = await api.post("/api/auth/login", credentials);
