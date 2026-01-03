@@ -92,6 +92,47 @@ const projectService = {
         }
 
         return { message: "Teams removed from project" };
+    },
+    getProjectMembers: async (projectId) => {
+        const project = await Project.findById(projectId)
+        if (!project) {
+            throw new Error('Project not found')
+        }
+        return project.members
+    },
+    addProjectMembers: async (projectId, { members }) => {
+        const project = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $addToSet: {
+                    members: { $each: members }
+                }
+            },
+            { new: true }
+        );
+
+        if (!project) {
+            throw new Error("Project not found");
+        }
+
+        return { message: "Members added to project" };
+    },
+    removeProjectMembers: async (projectId, { users }) => {
+        const project = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $pull: {
+                    members: { user: { $in: users } }
+                }
+            },
+            { new: true }
+        );
+
+        if (!project) {
+            throw new Error("Project not found");
+        }
+
+        return { message: "Members removed from project" };
     }
 }
 

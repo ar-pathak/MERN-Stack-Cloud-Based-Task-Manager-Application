@@ -18,9 +18,9 @@ router.get('/workspaces/:workspaceId/projects/:projectId/teams', checkRoleMiddle
 router.patch('/workspaces/:workspaceId/projects/:projectId/teams', checkRoleMiddleware('owner', 'admin'), projectController.addProjectTeams)
 router.delete('/workspaces/:workspaceId/projects/:projectId/teams', checkRoleMiddleware('owner', 'admin'), projectController.removeProjectTeams)
 
-// router.get('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin', 'member', 'viewer'), projectController.getProjectMembers)
-// router.patch('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin'), projectController.addProjectMembers)
-// router.delete('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin'), projectController.removeProjectMembers)
+router.get('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin', 'member', 'viewer'), projectController.getProjectMembers)
+router.patch('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin'), projectController.addProjectMembers)
+router.delete('/workspaces/:workspaceId/projects/:projectId/members', checkRoleMiddleware('owner', 'admin'), projectController.removeProjectMembers)
 
 
 

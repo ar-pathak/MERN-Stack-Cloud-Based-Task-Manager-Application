@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const projectService = require('./project.service')
-const { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema } = require('./project.validation');
+const { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema } = require('./project.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
 const projectController = {
@@ -117,6 +117,54 @@ const projectController = {
                 data
             );
 
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+    getProjectMembers: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const members = await projectService.getProjectMembers(projectId);
+            sendSuccess(res, members);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    addProjectMembers: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const data = addProjectMembersSchema.parse(req.body);
+
+            const result = await projectService.addProjectMembers(projectId, data);
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    removeProjectMembers: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const data = removeProjectMembersSchema.parse(req.body);
+
+            const result = await projectService.removeProjectMembers(projectId, data);
             sendSuccess(res, null, result.message);
         } catch (error) {
             return handleError(error, res);

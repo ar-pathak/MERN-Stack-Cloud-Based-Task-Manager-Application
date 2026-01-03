@@ -70,4 +70,20 @@ const removeProjectTeamsSchema = z.object({
         .min(1, "At least one team is required")
 });
 
-module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema };
+const addProjectMembersSchema = z.object({
+    members: z
+        .array(
+            z.object({
+                user: objectId,
+                role: z.enum(["admin", "editor", "viewer"]).default("viewer")
+            })
+        ).min(1, "At least one member is required")
+})
+
+const removeProjectMembersSchema = z.object({
+    users: z
+        .array(objectId)
+        .min(1, "At least one user is required")
+});
+
+module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema };
