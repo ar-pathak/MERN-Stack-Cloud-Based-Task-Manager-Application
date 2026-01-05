@@ -51,7 +51,6 @@ app.use((req, res) => {
 
 // Global error handler middleware (must be last)
 app.use((err, req, res, next) => {
-    console.error('Error:', err)
     
     // Handle validation errors
     if (err.name === 'ZodError') {

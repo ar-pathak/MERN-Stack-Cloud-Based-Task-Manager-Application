@@ -17,7 +17,7 @@ const taskController = {
     createTaskAtWorkspaceLevel: async (req, res) => {
         try {
             const userId = req.user._id;
-            const { workspaceId } = req.params
+            const { workspaceId } = req.params;
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 throw new Error('Invalid workspace Id')
             }
@@ -31,7 +31,7 @@ const taskController = {
     createTaskAtProjectLevel: async (req, res) => {
         try {
             const userId = req.user._id;
-            const { workspaceId, projectId } = req.params
+            const { workspaceId, projectId } = req.params;
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 throw new Error('Invalid workspace Id')
             }
@@ -48,18 +48,15 @@ const taskController = {
     createTaskAtTeamLevel: async (req, res) => {
         try {
             const userId = req.user._id;
-            const { workspaceId, projectId, teamId } = req.params
+            const { workspaceId, teamId } = req.params;
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 throw new Error('Invalid workspace Id')
             }
-            if (!mongoose.Types.ObjectId.isValid(projectId)) {
-                throw new Error('Invalid project Id')
-            }
             if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error('Invalid project Id')
+                throw new Error('Invalid team Id')
             }
             const data = createTaskSchema.parse(req.body);
-            const task = await taskService.createTask(userId, data, { workspaceId, projectId, teamId })
+            const task = await taskService.createTask(userId, data, { workspaceId, teamId })
             sendSuccess(res, task)
         } catch (error) {
             handleError(error, res);
