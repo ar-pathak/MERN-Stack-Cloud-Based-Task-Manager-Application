@@ -1,6 +1,9 @@
+const mongoose = require('mongoose');
 const WorkspaceMember = require('../models/workspaceMember');
 
-const checkRole = (...allowedRoles) => {
+const { canCreateTask } = require('./resolveTaskCreatePermission');
+
+const checkWorkspaceMemberRole = (...allowedRoles) => {
   try {
     return async (req, res, next) => {
       const member = await WorkspaceMember.findOne({
@@ -19,4 +22,46 @@ const checkRole = (...allowedRoles) => {
   }
 };
 
-module.exports = checkRole;
+
+const checkCanCreateTask = () => {
+  return async (req, res, next) => {
+    try {
+      const userId = req.user._id;
+      const { workspaceId, projectId, teamId } = req.params;
+
+      // 🔒 Mandatory
+      if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+        return res.status(400).json({ message: "Invalid workspaceId" });
+      }
+
+      // 🔒 Optional params (validate only if present)
+      if (projectId && !mongoose.Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({ message: "Invalid projectId" });
+      }
+
+      if (teamId && !mongoose.Types.ObjectId.isValid(teamId)) {
+        return res.status(400).json({ message: "Invalid teamId" });
+      }
+
+      const allowed = await canCreateTask({
+        userId,
+        workspaceId,
+        projectId,
+        teamId
+      });
+
+      if (!allowed) {
+        return res.status(403).json({ message: "Permission denied" });
+      }
+
+      next();
+    } catch (error) {
+      next(error); // centralized error handler
+    }
+  };
+};
+
+
+
+
+module.exports = { checkWorkspaceMemberRole, checkCanCreateTask };

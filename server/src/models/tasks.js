@@ -11,9 +11,19 @@ const taskSchema = new mongoose.Schema({
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
-    status: { type: mongoose.Schema.Types.ObjectId, ref: "Status" },
-    priority: { type: mongoose.Schema.Types.ObjectId, ref: "Priority" },
-
+    status: {
+        type: String,
+        enum: ["active", "archived", "completed"],
+        default: "active"
+    },
+    isHighPriority: {
+        type: Boolean,
+        default: false,
+    },
+    assigneesTeams: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Team"
+    }],
     assignees: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
     dueDate: Date
