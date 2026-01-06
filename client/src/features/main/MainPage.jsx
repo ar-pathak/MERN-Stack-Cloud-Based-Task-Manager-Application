@@ -1,9 +1,11 @@
 import MainSidebar from "./components/sidebar/MainSidebar";
 import MainHeader from "./components/header/MainHeader";
+import AnimatedBackground from "./components/background/AnimatedBackground";
 
 const MainPage = () => {
     return (
         <div className="flex h-screen overflow-hidden">
+            <AnimatedBackground />
             <MainSidebar />
 
             <div className="flex flex-col flex-1">
@@ -14,7 +16,7 @@ const MainPage = () => {
                 </main>
             </div>
         </div>
-        
+
     );
 };
 
