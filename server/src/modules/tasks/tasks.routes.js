@@ -18,12 +18,21 @@ router.post('/workspace/:workspaceId/project/:projectId/createTasksAtProjectLeve
 router.post('/workspace/:workspaceId/team/:teamId/createTasksAtTeamLevel', checkCanCreateTask(), taskController.createTaskAtTeamLevel)
 
 //add assignees to task
+router.patch('/:taskId/assignees/add', taskController.addTaskAssignees)
 
 //remove assignees to task
+router.delete('/:taskId/assignees/remove', taskController.removeTaskAssignees)
 
 //change status of task
+router.patch('/:taskId/status', taskController.changeTaskStatus)
 
-//delete tasks
+//soft delete tasks
+router.delete('/:taskId/softDelete', taskController.deleteTask)
 
+//restore tasks
+router.patch('/:taskId/restore', taskController.restoreTask)
+
+//permanently delete tasks
+router.delete('/:taskId/permanentDelete', taskController.permanentDeleteTask)
 
 module.exports = router;

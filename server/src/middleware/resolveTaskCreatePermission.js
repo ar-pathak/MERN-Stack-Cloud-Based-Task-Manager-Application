@@ -4,18 +4,20 @@ const Team = require("../models/team");
 
 const canCreateTask = async ({
     userId,
-    workspaceId,
+    workspaceId = null,
     projectId = null,
     teamId = null
 }) => {
     // 1️⃣ Workspace-level authority
-    const workspaceMember = await WorkspaceMember.findOne({
-        workspace: workspaceId,
-        user: userId
-    });
+    if (workspaceId) {
+        const workspaceMember = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        });
 
-    if (workspaceMember && ["owner", "admin"].includes(workspaceMember.role)) {
-        return true;
+        if (workspaceMember && ["owner", "admin"].includes(workspaceMember.role)) {
+            return true;
+        }
     }
 
     // 2️⃣ Project-level authority

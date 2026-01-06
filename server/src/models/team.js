@@ -37,4 +37,7 @@ const teamSchema = new mongoose.Schema({
     ]
 }, { timestamps: true });
 
+teamSchema.index({ "members.user": 1 });
+
 module.exports = mongoose.model("Team", teamSchema);
+

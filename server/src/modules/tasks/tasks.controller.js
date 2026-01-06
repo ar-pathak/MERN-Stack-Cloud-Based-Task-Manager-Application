@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 const taskService = require("./tasks.service");
-const { createTaskSchema } = require('./tasks.validation')
+const { createTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema } = require('./tasks.validation')
 
 const taskController = {
     createTaskAtGlobalLevel: async (req, res) => {
@@ -62,6 +62,145 @@ const taskController = {
             handleError(error, res);
         }
     },
+    addTaskAssignees: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const assigneesData = addTaskAssigneesSchema.parse(req.body);
+
+            const result = await taskService.addTaskAssignees(
+                userId,
+                taskId,
+                assigneesData
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    removeTaskAssignees: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const data = removeTaskAssigneesSchema.parse(req.body);
+
+            const result = await taskService.removeTaskAssignees(
+                userId,
+                taskId,
+                data
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    changeTaskStatus: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const { status } = changeTaskStatusSchema.parse(req.body);
+
+            const result = await taskService.changeTaskStatus(
+                userId,
+                taskId,
+                status
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    changeTaskStatus: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const { status } = changeTaskStatusSchema.parse(req.body);
+
+            const result = await taskService.changeTaskStatus(
+                userId,
+                taskId,
+                status
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    }, deleteTask: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const result = await taskService.deleteTask(userId, taskId);
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    }
+    ,
+    restoreTask: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const result = await taskService.restoreTask(userId, taskId);
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    permanentDeleteTask: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const result = await taskService.permanentDeleteTask(
+                userId,
+                taskId
+            );
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
+    }
 }
 
 

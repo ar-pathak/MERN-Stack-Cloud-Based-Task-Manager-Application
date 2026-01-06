@@ -13,7 +13,7 @@ const taskSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: ["active", "archived", "completed"],
+        enum: ["active", "archived", "completed", "deleted"],
         default: "active"
     },
     isHighPriority: {
