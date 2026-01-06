@@ -8,6 +8,7 @@ router.use(authMiddleware);
 
 //creating task at global level
 router.post('/createTasksAtGlobalLevel', taskController.createTaskAtGlobalLevel)
+
 //creating task at workspace level
 router.post('/workspace/:workspaceId/createTasksAtWorkspaceLevel', checkCanCreateTask(), taskController.createTaskAtWorkspaceLevel)
 

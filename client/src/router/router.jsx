@@ -8,12 +8,12 @@ import PublicRoute from "./PublicRoute";
 
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
-const DashboardPage = lazy(() => import("../features/dashboard/pages/DashboardPage"));
-const Overview = lazy(() => import("../features/dashboard/features/overview/pages/Overview"));
-const MyTasksPage = lazy(() => import("../features/dashboard/features/myTasks/pages/MyTasksPage"));
-const ProjectsPage = lazy(() => import("../features/dashboard/features/projects/pages/ProjectsPage"));
-const ActivityPage = lazy(() => import("../features/dashboard/features/activity/pages/ActivityPage"));
-const SchedulePage = lazy(() => import("../features/dashboard/features/schedule/pages/SchedulePage"));
+const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
+// const Overview = lazy(() => import("../features/dashboard/features/overview/pages/Overview"));
+// const MyTasksPage = lazy(() => import("../features/dashboard/features/myTasks/pages/MyTasksPage"));
+// const ProjectsPage = lazy(() => import("../features/dashboard/features/projects/pages/ProjectsPage"));
+// const ActivityPage = lazy(() => import("../features/dashboard/features/activity/pages/ActivityPage"));
+// const SchedulePage = lazy(() => import("../features/dashboard/features/schedule/pages/SchedulePage"));
 
 const withSuspense = (Component) => (
   <Suspense fallback={<LoadingPage />}>
@@ -56,14 +56,14 @@ const router = createBrowserRouter([
         element: <ProtectedRoute />,
         children: [
           {
-            path: "dashboard",
-            element: withSuspense(DashboardPage),
+            path: "main",
+            element: withSuspense(MainPage),
             children: [
-              { index: true, element: withSuspense(Overview) },
-              { path: "my-tasks", element: withSuspense(MyTasksPage) },
-              { path: "projects", element: withSuspense(ProjectsPage) },
-              { path: "activity", element: withSuspense(ActivityPage) },
-              { path: "schedule", element: withSuspense(SchedulePage) },
+              // { index: true, element: withSuspense(Overview) },
+              // { path: "my-tasks", element: withSuspense(MyTasksPage) },
+              // { path: "projects", element: withSuspense(ProjectsPage) },
+              // { path: "activity", element: withSuspense(ActivityPage) },
+              // { path: "schedule", element: withSuspense(SchedulePage) },
             ],
           },
         ],
