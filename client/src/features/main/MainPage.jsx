@@ -1,6 +1,7 @@
 import MainSidebar from "./components/sidebar/MainSidebar";
 import MainHeader from "./components/header/MainHeader";
 import AnimatedBackground from "./components/background/AnimatedBackground";
+import { Outlet } from "react-router";
 
 const MainPage = () => {
     return (
@@ -12,7 +13,7 @@ const MainPage = () => {
                 <MainHeader />
 
                 <main className="flex-1 overflow-y-auto p-6">
-                    {/* routes / content */}
+                    {/* <Outlet /> */}
                 </main>
             </div>
         </div>

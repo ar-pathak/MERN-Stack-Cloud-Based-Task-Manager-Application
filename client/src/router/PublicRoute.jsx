@@ -12,7 +12,7 @@ const PublicRoute = () => {
 
     // If authenticated, redirect to dashboard (prevent authenticated users from accessing public routes)
     if (isAuthenticated) {
-        return <Navigate to="/dashboard" replace />;
+        return <Navigate to="/main" replace />;
     }
 
     // Not authenticated - render public content

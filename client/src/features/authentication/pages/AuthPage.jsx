@@ -48,25 +48,25 @@ export default function AuthPage() {
 
             if (type === "login") {
                 result = await login(payload);
-                
+
                 if (result?.success) {
                     toast.success("Login successful! Redirecting...");
                     setTimeout(() => {
-                        navigate("/dashboard");
+                        navigate("/main");
                     }, 500);
                 } else {
                     toast.error(result?.message || result?.error || "Login failed");
                 }
             } else if (type === "signup") {
                 result = await register(payload);
-                
+
                 if (result?.success) {
                     toast.success("Account created successfully!");
                     // Optionally show verification notice or redirect to dashboard
                     setActiveView(views.VERIFY);
                     // Or redirect to dashboard after a delay
                     setTimeout(() => {
-                        navigate("/dashboard");
+                        navigate("/main");
                     }, 2000);
                 } else {
                     toast.error(result?.message || result?.error || "Registration failed");
@@ -74,7 +74,7 @@ export default function AuthPage() {
             } else if (type === "forgot-password") {
                 const { forgotPassword } = await import("../../../service/auth.service");
                 result = await forgotPassword(payload);
-                
+
                 if (result?.success || result?.message) {
                     toast.success(result.message || "Password reset link sent to your email!");
                     // Optionally switch back to login after a delay
