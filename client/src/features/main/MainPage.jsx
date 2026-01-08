@@ -1,23 +1,45 @@
+import { useRef, useState, useEffect } from "react";
 import MainSidebar from "./components/sidebar/MainSidebar";
 import MainHeader from "./components/header/MainHeader";
 import AnimatedBackground from "./components/background/AnimatedBackground";
 import { Outlet } from "react-router";
+import { useScrollDirection } from "./hook/useScrollDirection";
+import ScrollBar from "../../common/components/ScrollBar";
 
 const MainPage = () => {
+    const scrollRef = useRef(null);
+    const scrollDirection = useScrollDirection(scrollRef);
+    const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+
+    useEffect(() => {
+        if (scrollDirection === "down" && isHeaderVisible) {
+            setIsHeaderVisible(false);
+        }
+    }, [scrollDirection, isHeaderVisible]);
+
     return (
+
         <div className="flex h-screen overflow-hidden">
+            <ScrollBar />
             <AnimatedBackground />
             <MainSidebar />
 
-            <div className="flex flex-col flex-1">
-                <MainHeader />
-
-                <main className="flex-1 overflow-y-auto p-6">
+            {/* Right Column */}
+            <div className="flex flex-col h-full overflow-hidden flex-1 w-full relative">
+                <div
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
+                        }`}
+                >
+                    <MainHeader />
+                </div>
+                <div
+                    ref={scrollRef}
+                    className="flex-1 overflow-y-auto overflow-x-hidden px-5 custom-scrollbar scroll-smooth"
+                >
                     <Outlet />
-                </main>
+                </div>
             </div>
         </div>
-
     );
 };
 
