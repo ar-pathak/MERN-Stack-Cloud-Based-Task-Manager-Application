@@ -9,7 +9,7 @@ import PublicRoute from "./PublicRoute";
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
 const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
-// const Overview = lazy(() => import("../features/dashboard/features/overview/pages/Overview"));
+const OverviewLayout = lazy(() => import("../features/main/features/overview/pages/OverviewLayout.jsx"));
 // const MyTasksPage = lazy(() => import("../features/dashboard/features/myTasks/pages/MyTasksPage"));
 // const ProjectsPage = lazy(() => import("../features/dashboard/features/projects/pages/ProjectsPage"));
 // const ActivityPage = lazy(() => import("../features/dashboard/features/activity/pages/ActivityPage"));
@@ -59,7 +59,7 @@ const router = createBrowserRouter([
             path: "main",
             element: withSuspense(MainPage),
             children: [
-              // { index: true, element: withSuspense(Overview) },
+              { index: true, element: withSuspense(OverviewLayout) },
               // { path: "my-tasks", element: withSuspense(MyTasksPage) },
               // { path: "projects", element: withSuspense(ProjectsPage) },
               // { path: "activity", element: withSuspense(ActivityPage) },

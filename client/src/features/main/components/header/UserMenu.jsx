@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 const UserMenu = ({ user }) => {
     const [isOpen, setIsOpen] = useState(false);
-    const [theme, setTheme] = useState("dark");
     const menuRef = useRef(null);
     const buttonRef = useRef(null);
     const { logout } = useAuth();
