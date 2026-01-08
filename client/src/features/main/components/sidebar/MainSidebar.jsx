@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { NAV_ITEMS } from "../../constants/sidebarConfig";
 import { SidebarContent } from "./SidebarContent";
@@ -9,6 +9,11 @@ import { MobileMenuButton } from "./MobileMenuButton";
 const MainSidebar = () => {
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const [isExpanded, setIsExpanded] = useState(true);
+    useEffect(() => {
+        setTimeout(() => {
+            setIsExpanded(false)
+        }, 5000);
+    }, [])
 
     return (
         <>
