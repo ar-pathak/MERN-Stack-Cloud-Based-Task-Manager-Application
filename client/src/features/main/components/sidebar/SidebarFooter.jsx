@@ -1,9 +1,11 @@
 import { motion } from "framer-motion";
 import { Zap } from "lucide-react";
+import { useToggle } from "../../../../context/ToggleContext";
 
 export const SidebarFooter = ({ isExpanded, isMobile }) => {
+    const setIsToggle = useToggle();
     return (
-        <div className={`mt-auto border-t border-slate-800/70 py-3.5 transition-all duration-300 ${isExpanded || isMobile ? "px-4" : "px-2"
+        <div onToggle={() => setIsToggle ? false : true} className={`mt-auto border-t border-slate-800/70 py-3.5 transition-all duration-300 ${isExpanded || isMobile ? "px-4" : "px-2"
             }`}>
             {(isExpanded || isMobile) ? (
                 <div className="space-y-2">

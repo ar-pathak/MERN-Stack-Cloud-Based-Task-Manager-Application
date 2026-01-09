@@ -1,10 +1,19 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
+import { useToggle } from "../../../../context/ToggleContext";
 
 export const SidebarLogo = ({ isExpanded, isMobile }) => {
+    const { isToggle, setIsToggle } = useToggle();
+
+    const handleClick = () => {
+        setIsToggle(!isToggle);
+    };
+
     return (
-        <div className={`flex items-center gap-2 border-b border-slate-800/60 transition-all duration-300 ${isExpanded || isMobile ? "px-5 py-4" : "px-3 py-4 justify-center"
-            }`}>
+        <div
+            onClick={handleClick}
+            className={`flex items-center gap-2 border-b border-slate-800/60 transition-all duration-300 cursor-pointer hover:bg-slate-800/30 ${isExpanded || isMobile ? "px-5 py-4" : "px-3 py-4 justify-center"
+                }`}>
             <div className="relative flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500/30 to-cyan-500/20 flex-shrink-0 border border-sky-400/20">
                 <motion.div
                     className="absolute inset-0 rounded-2xl bg-sky-400/40 blur-md"

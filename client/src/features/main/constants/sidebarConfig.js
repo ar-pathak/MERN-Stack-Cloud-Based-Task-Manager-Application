@@ -9,28 +9,28 @@ export const NAV_ITEMS = [
     {
         label: "My Tasks",
         icon: "ListChecks",
-        path: "/dashboard/my-tasks",
+        path: "/main/my-tasks",
         description: "Your assigned tasks",
         color: "violet"
     },
     {
         label: "Projects",
         icon: "FolderKanban",
-        path: "/dashboard/projects",
+        path: "/main/projects",
         description: "All projects",
         color: "emerald"
     },
     {
         label: "Activity",
         icon: "Activity",
-        path: "/dashboard/activity",
+        path: "/main/activity",
         description: "Recent activity",
         color: "amber"
     },
     {
         label: "Schedule",
         icon: "CalendarDays",
-        path: "/dashboard/schedule",
+        path: "/main/schedule",
         description: "Calendar & schedule",
         color: "rose"
     },

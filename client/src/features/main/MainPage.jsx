@@ -5,17 +5,24 @@ import AnimatedBackground from "./components/background/AnimatedBackground";
 import { Outlet } from "react-router";
 import { useScrollDirection } from "./hook/useScrollDirection";
 import ScrollBar from "../../common/components/ScrollBar";
+import { useToggle } from "../../context/ToggleContext";
 
 const MainPage = () => {
     const scrollRef = useRef(null);
     const scrollDirection = useScrollDirection(scrollRef);
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+    const { isToggle } = useToggle();
 
     useEffect(() => {
         if (scrollDirection === "down" && isHeaderVisible) {
             setIsHeaderVisible(false);
         }
-    }, [scrollDirection, isHeaderVisible]);
+        if (isToggle) {
+            setIsHeaderVisible(true)
+        }
+
+    }, [scrollDirection, isHeaderVisible, isToggle]);
+    
 
     return (
 
