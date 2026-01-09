@@ -66,3 +66,24 @@ export const getTaskById = async (taskId) => {
     }
 };
 
+/**
+ * Create a new task
+ * @param {Object} taskData - Task data
+ * @param {string} taskData.title - Task title
+ * @param {string} taskData.description - Task description (optional)
+ * @param {string} taskData.priority - Task priority (optional)
+ * @param {string} taskData.projectId - Project ID (optional)
+ * @param {string} taskData.workspaceId - Workspace ID (optional)
+ * @returns {Promise<Object>} Created task data
+ */
+export const createTask = async (taskData) => {
+    try {
+        const response = await api.post(`/api/tasks/createTasksAtGlobalLevel`, taskData);
+        return response.data?.data || response.data || null;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to create task",
+            status: error.response?.status,
+        };
+    }
+};

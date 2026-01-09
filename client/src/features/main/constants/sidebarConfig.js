@@ -2,7 +2,7 @@ export const NAV_ITEMS = [
     {
         label: "Overview",
         icon: "Cloud",
-        path: "/dashboard",
+        path: "/main",
         description: "Workspace overview",
         color: "sky"
     },

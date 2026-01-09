@@ -39,6 +39,7 @@ const MainSidebar = () => {
                 <SidebarContent
                     isExpanded={isExpanded}
                     navItems={NAV_ITEMS}
+                    onToggleSidebar={() => setIsExpanded((v) => !v)}
                 />
 
                 <ToggleButton

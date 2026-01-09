@@ -25,9 +25,9 @@ const MainPage = () => {
             <MainSidebar />
 
             {/* Right Column */}
-            <div className="flex flex-col h-full overflow-hidden flex-1 w-full relative">
+            <div className="flex flex-col h-full flex-1 w-full relative">
                 <div
-                    className={`transition-all duration-300 ease-in-out overflow-hidden ${isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
+                    className={`transition-all duration-300 ease-in-out ${isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
                         }`}
                 >
                     <MainHeader />
