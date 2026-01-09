@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import ProjectItem from "./ProjectItem";
-import { BellOff, ChevronRight, Pin, Star } from "lucide-react";
+import { BellOff, ChevronRight, Pin, Star, Briefcase } from "lucide-react";
 
 const WorkspaceItem = ({ workspace, expandedItems, selectedItem, onItemClick }) => {
     const hasProjects = workspace.projects && workspace.projects.length > 0;
@@ -20,7 +20,11 @@ const WorkspaceItem = ({ workspace, expandedItems, selectedItem, onItemClick }) 
             >
                 <div className="relative">
                     <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-sky-500/20 to-blue-600/20 border border-sky-500/30 flex items-center justify-center">
-                        <workspace.icon className="h-5 w-5 text-sky-400" />
+                        {typeof workspace.icon === 'function' ? (
+                            <workspace.icon className="h-5 w-5 text-sky-400" />
+                        ) : (
+                            <Briefcase className="h-5 w-5 text-sky-400" />
+                        )}
                     </div>
                     {workspace.unreadCount > 0 && (
                         <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-sky-500 border-2 border-slate-950 flex items-center justify-center">

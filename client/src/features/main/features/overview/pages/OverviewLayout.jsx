@@ -6,7 +6,7 @@ import {
   Image as ImageIcon,
   Filter,
 } from "lucide-react";
-import { mockData, mockMessages } from "../utils/data";
+import { getAllWorkspaces, getOverview } from "../../../../../service/workspace.service";
 import WorkspaceItem from "../components/WorkspaceItem";
 import ChatPanel from "../components/ChatPanel";
 import EmptyState from "../components/EmptyState";
@@ -20,10 +20,13 @@ const OverviewLayout = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [chatMessage, setChatMessage] = useState("");
   const [showChatInfo, setShowChatInfo] = useState(false);
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState({});
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [loadingOverview, setLoadingOverview] = useState(false);
   const [filterType, setFilterType] = useState("all"); // all, unread, starred
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -46,6 +49,14 @@ const OverviewLayout = () => {
     } else {
       setSelectedItem(item);
       setShowChatInfo(false);
+    }
+    // load overview data for this workspace (non-blocking)
+    if (item?.id) {
+      setLoadingOverview(true);
+      getOverview(item.id)
+        .then((data) => setOverview(data))
+        .catch(() => setOverview(null))
+        .finally(() => setLoadingOverview(false));
     }
   };
 
@@ -151,7 +162,7 @@ const OverviewLayout = () => {
   }, [selectedItem]);
 
   // Filter conversations
-  const filteredWorkspaces = mockData.workspaces.filter(ws => {
+  const filteredWorkspaces = (workspaces || []).filter(ws => {
     if (searchQuery) {
       return ws.name.toLowerCase().includes(searchQuery.toLowerCase());
     }
@@ -159,6 +170,21 @@ const OverviewLayout = () => {
     if (filterType === "starred") return ws.starred;
     return true;
   });
+
+  // Load real workspaces on mount
+  useEffect(() => {
+    let mounted = true;
+    getAllWorkspaces()
+      .then((data) => {
+        if (!mounted) return;
+        // backend may return array or wrapped data
+        setWorkspaces(Array.isArray(data) ? data : (data?.data || data || []));
+      })
+      .catch(() => {
+        // keep mock data on error
+      });
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
@@ -233,7 +259,36 @@ const OverviewLayout = () => {
       <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
         <AnimatePresence mode="wait">
           {selectedItem ? (
-            <ChatPanel
+            <>
+              <div className="px-6 pt-4 pb-2 border-b border-slate-800/50 bg-slate-950/60">
+                {overview && overview.stats ? (
+                  <div className="flex items-center gap-4 text-sm text-slate-300">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-400">Projects</div>
+                      <div className="font-semibold text-slate-100">{overview.stats.projectsCount}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-400">Tasks</div>
+                      <div className="font-semibold text-slate-100">{overview.stats.totalTasks}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-400">Completed</div>
+                      <div className="font-semibold text-slate-100">{overview.stats.completedTasks}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs text-slate-400">High Priority</div>
+                      <div className="font-semibold text-amber-400">{overview.stats.highPriorityTasks}</div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <div className="text-xs text-slate-400">Members</div>
+                      <div className="font-semibold text-slate-100">{overview.stats.membersCount}</div>
+                    </div>
+                  </div>
+                ) : loadingOverview ? (
+                  <div className="text-sm text-slate-400">Loading overview...</div>
+                ) : null}
+              </div>
+              <ChatPanel
               key={selectedItem.id}
               item={selectedItem}
               messages={messages[selectedItem.id] || []}
@@ -253,7 +308,9 @@ const OverviewLayout = () => {
               messageInputRef={messageInputRef}
               showEmojiPicker={showEmojiPicker}
               setShowEmojiPicker={setShowEmojiPicker}
+              overview={overview}
             />
+            </>
           ) : (
             <EmptyState key="empty" />
           )}

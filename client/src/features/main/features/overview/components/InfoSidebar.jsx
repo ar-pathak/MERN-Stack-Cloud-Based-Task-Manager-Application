@@ -1,7 +1,9 @@
-import {motion} from "framer-motion"
-import { Archive, AtSign, Bell, BellOff, Download, Settings, Star } from "lucide-react";
+import { motion } from "framer-motion"
+import { Archive, AtSign, Bell, BellOff, Download, Settings, Star, Image as ImageIcon, File as FileIcon } from "lucide-react";
 
-const InfoSidebar = ({ item }) => {
+// InfoSidebar now accepts an optional `overview` payload { workspace, projects, tasks, stats }
+
+const InfoSidebar = ({ item, overview }) => {
     return (
         <div className="h-full flex flex-col overflow-hidden">
             {/* Sidebar Header - Fixed */}
@@ -16,6 +18,31 @@ const InfoSidebar = ({ item }) => {
 
             {/* Sidebar Content - Scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
+
+                {/* Overview Stats (from API) */}
+                {overview?.stats && (
+                    <div className="mb-6">
+                        <h4 className="text-xs font-semibold text-slate-400 mb-3">Overview</h4>
+                        <div className="grid grid-cols-2 gap-3 text-sm text-slate-300">
+                            <div className="p-2 rounded-lg bg-slate-900/40">
+                                <div className="text-xs text-slate-400">Projects</div>
+                                <div className="font-semibold text-slate-100">{overview.stats.projectsCount}</div>
+                            </div>
+                            <div className="p-2 rounded-lg bg-slate-900/40">
+                                <div className="text-xs text-slate-400">Tasks</div>
+                                <div className="font-semibold text-slate-100">{overview.stats.totalTasks}</div>
+                            </div>
+                            <div className="p-2 rounded-lg bg-slate-900/40">
+                                <div className="text-xs text-slate-400">Completed</div>
+                                <div className="font-semibold text-slate-100">{overview.stats.completedTasks}</div>
+                            </div>
+                            <div className="p-2 rounded-lg bg-slate-900/40">
+                                <div className="text-xs text-amber-400">High Priority</div>
+                                <div className="font-semibold text-amber-400">{overview.stats.highPriorityTasks}</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Status & Progress */}
                 {item.status && (
@@ -102,13 +129,56 @@ const InfoSidebar = ({ item }) => {
                     </div>
                 )}
 
+                {/* Projects & Tasks (from overview) */}
+                {overview?.projects && overview.projects.length > 0 && (
+                    <div className="mb-6">
+                        <h4 className="text-xs font-semibold text-slate-400 mb-3">Projects</h4>
+                        <div className="space-y-2">
+                            {overview.projects.map((proj) => {
+                                const projTasks = Array.isArray(proj.tasks) ? proj.tasks : (overview.tasks || []).filter(t => t.projectId === proj.id || t.project === proj.id);
+                                return (
+                                    <div key={proj.id} className="p-2 rounded-lg bg-slate-900/30 border border-slate-800/50">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-8 w-8 rounded-md bg-slate-800/60 flex items-center justify-center text-sm text-slate-200">
+                                                    {typeof proj.icon === 'function' ? (
+                                                        <proj.icon className="h-4 w-4 text-slate-300" />
+                                                    ) : (
+                                                        (proj.name && proj.name[0]) || 'P'
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-medium text-slate-200 truncate">{proj.name}</p>
+                                                    <p className="text-xs text-slate-500">{projTasks.length} tasks • {proj.progress ?? 0}%</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-xs text-slate-400">{proj.status}</div>
+                                        </div>
+
+                                        {projTasks.length > 0 && (
+                                            <div className="mt-2 space-y-1">
+                                                {projTasks.slice(0, 3).map((t) => (
+                                                    <div key={t.id} className="flex items-center justify-between text-xs text-slate-300">
+                                                        <div className="truncate">{t.name}</div>
+                                                        <div className={`px-2 py-0.5 rounded-full text-[11px] ${t.status === 'completed' || t.status === 'Done' ? 'bg-emerald-500/10 text-emerald-300' : t.status === 'in-progress' ? 'bg-blue-500/10 text-blue-300' : 'bg-slate-700/10 text-slate-400'}`}>{t.priority ? t.priority : t.status}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    </div>
+                )}
+
                 {/* Shared Files */}
                 <div className="mb-6">
                     <h4 className="text-xs font-semibold text-slate-400 mb-3">Shared Files</h4>
                     <div className="space-y-2">
                         {[
                             { name: 'Design_System.fig', size: '2.4 MB', icon: ImageIcon, date: '2 days ago' },
-                            { name: 'Requirements.pdf', size: '1.8 MB', icon: File, date: '5 days ago' }
+                            { name: 'Requirements.pdf', size: '1.8 MB', icon: FileIcon, date: '5 days ago' }
                         ].map((file, i) => (
                             <div key={i} className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800/40 transition-colors group cursor-pointer">
                                 <div className="h-10 w-10 rounded-lg bg-slate-800/60 border border-slate-700/50 flex items-center justify-center">

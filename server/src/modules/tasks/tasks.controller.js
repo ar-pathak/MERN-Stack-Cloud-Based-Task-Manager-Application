@@ -200,6 +200,23 @@ const taskController = {
         } catch (error) {
             handleError(error, res);
         }
+    },
+    getTask: async (req, res) => {
+        try {
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid task ID"
+                });
+            }
+
+            const task = await taskService.getTaskById(taskId);
+            sendSuccess(res, task, "Task retrieved successfully");
+        } catch (error) {
+            handleError(error, res);
+        }
     }
 }
 

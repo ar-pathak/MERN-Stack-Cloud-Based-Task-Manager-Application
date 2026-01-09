@@ -22,6 +22,7 @@ const ChatPanel = ({
     messageInputRef,
     showEmojiPicker,
     setShowEmojiPicker
+    , overview
 }) => {
     const hasMessages = messages.length > 0;
     const pinnedMessages = messages.filter(msg => msg.pinned);
@@ -276,7 +277,7 @@ const ChatPanel = ({
                             transition={{ duration: 0.2 }}
                             className="border-l border-slate-800/50 bg-slate-950/40 flex-shrink-0 overflow-hidden"
                         >
-                            <InfoSidebar item={item} />
+                            <InfoSidebar item={item} overview={overview} />
                         </motion.div>
                     )}
                 </AnimatePresence>

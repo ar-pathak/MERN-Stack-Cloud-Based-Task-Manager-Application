@@ -36,4 +36,7 @@ router.patch('/:taskId/restore', taskController.restoreTask)
 //permanently delete tasks
 router.delete('/:taskId/permanentDelete', taskController.permanentDeleteTask)
 
+//get task by ID
+router.get('/:taskId', taskController.getTask)
+
 module.exports = router;

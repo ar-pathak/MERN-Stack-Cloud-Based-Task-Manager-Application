@@ -229,6 +229,13 @@ const taskService = {
         await Task.deleteOne({ _id: taskId });
 
         return { message: "Task permanently deleted" };
+    },
+    getTaskById: async (taskId) => {
+        const task = Task.findById(taskId);
+        if (!task) {
+            throw new Error('Task not found')
+        }
+        return task;
     }
 
 };
