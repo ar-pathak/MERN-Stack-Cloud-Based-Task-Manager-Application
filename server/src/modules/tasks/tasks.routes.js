@@ -39,4 +39,10 @@ router.delete('/:taskId/permanentDelete', taskController.permanentDeleteTask)
 //get task by ID
 router.get('/:taskId', taskController.getTask)
 
+//get all tasks by workspace
+router.get('/workspaces/:workspaceId/tasks', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), taskController.getTasksByWorkspace)
+
+//get all tasks by project
+router.get('/workspaces/:workspaceId/projects/:projectId/tasks', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), taskController.getTasksByProject)
+
 module.exports = router;

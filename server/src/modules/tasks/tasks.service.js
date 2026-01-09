@@ -231,11 +231,34 @@ const taskService = {
         return { message: "Task permanently deleted" };
     },
     getTaskById: async (taskId) => {
-        const task = Task.findById(taskId);
+        const task = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email')
+            .populate('project')
+            .populate('workspace')
+            .exec();
         if (!task) {
             throw new Error('Task not found')
         }
         return task;
+    },
+    getTasksByWorkspace: async (workspaceId) => {
+        const tasks = await Task.find({ workspace: workspaceId, deleted: false })
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email')
+            .populate('project', 'name')
+            .sort({ createdAt: -1 })
+            .exec();
+        return tasks;
+    },
+    getTasksByProject: async (projectId) => {
+        const tasks = await Task.find({ project: projectId, deleted: false })
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email')
+            .populate('workspace', 'name')
+            .sort({ createdAt: -1 })
+            .exec();
+        return tasks;
     }
 
 };

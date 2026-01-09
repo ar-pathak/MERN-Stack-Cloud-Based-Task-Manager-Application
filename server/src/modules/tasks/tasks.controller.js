@@ -217,6 +217,47 @@ const taskController = {
         } catch (error) {
             handleError(error, res);
         }
+    },
+    getTasksByWorkspace: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            const tasks = await taskService.getTasksByWorkspace(workspaceId);
+            sendSuccess(res, tasks, "Tasks retrieved successfully");
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    getTasksByProject: async (req, res) => {
+        try {
+            const { workspaceId, projectId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid project ID"
+                });
+            }
+
+            const tasks = await taskService.getTasksByProject(projectId);
+            sendSuccess(res, tasks, "Tasks retrieved successfully");
+        } catch (error) {
+            handleError(error, res);
+        }
     }
 }
 
