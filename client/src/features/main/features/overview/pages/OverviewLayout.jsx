@@ -259,7 +259,7 @@ const OverviewLayout = () => {
       <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
         <AnimatePresence mode="wait">
           {selectedItem ? (
-            <>
+            <div key={selectedItem.id} className="flex-1 flex flex-col">
               <div className="px-6 pt-4 pb-2 border-b border-slate-800/50 bg-slate-950/60">
                 {overview && overview.stats ? (
                   <div className="flex items-center gap-4 text-sm text-slate-300">
@@ -289,7 +289,6 @@ const OverviewLayout = () => {
                 ) : null}
               </div>
               <ChatPanel
-              key={selectedItem.id}
               item={selectedItem}
               messages={messages[selectedItem.id] || []}
               chatMessage={chatMessage}
@@ -310,7 +309,7 @@ const OverviewLayout = () => {
               setShowEmojiPicker={setShowEmojiPicker}
               overview={overview}
             />
-            </>
+            </div>
           ) : (
             <EmptyState key="empty" />
           )}

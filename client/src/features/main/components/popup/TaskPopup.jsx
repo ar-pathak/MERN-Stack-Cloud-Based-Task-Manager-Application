@@ -11,10 +11,11 @@ import {
     FolderOpen,
 } from "lucide-react";
 import ScrollBar from "../../../../common/components/ScrollBar";
+import { createTask } from "../../../../service/task.service";
 
 
 
-const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], teams = [] }) => {
+const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces = [], projects = [], teams = [] }) => {
     const [formData, setFormData] = useState({
         title: "",
         description: "",
@@ -55,7 +56,8 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
         if (!formData.title.trim()) {
             newErrors.title = "Task title is required";
         }
-        if (!formData.workspace) {
+        // Only require workspace when creating at workspace/project level
+        if (!isGlobalLevel && !formData.workspace) {
             newErrors.workspace = "Please select a workspace";
         }
         setErrors(newErrors);
@@ -63,11 +65,12 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
     };
 
     const handleSubmit = async () => {
+        console.log('handling task popup click')
         if (!validateForm()) return;
 
         setIsSubmitting(true);
         try {
-            await onSubmit(formData);
+            const created = await createTask(formData);
             setFormData({
                 title: "",
                 description: "",
@@ -81,6 +84,8 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
                 status: "active"
             });
             setErrors({});
+            // notify parent if provided
+            if (onSubmit) onSubmit(created);
             onClose();
         } catch (error) {
             setErrors({ submit: error.message || "Failed to create task" });
@@ -194,78 +199,98 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
                         </div>
 
                         {/* Two Column Layout */}
-                        <div className="grid grid-cols-2 gap-4">
-                            {/* Workspace */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    Workspace <span className="text-rose-400">*</span>
-                                </label>
-                                <div className="relative">
-                                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                                    <select
-                                        name="workspace"
-                                        value={formData.workspace}
-                                        onChange={handleChange}
-                                        className={`w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none ${errors.workspace ? 'border-rose-500/50' : 'border-slate-800/60'
-                                            }`}
-                                        disabled={isSubmitting}
-                                    >
-                                        <option value="">Select workspace</option>
-                                        {workspaces.map(ws => (
-                                            <option key={ws.id} value={ws.id}>{ws.name}</option>
-                                        ))}
-                                    </select>
+                        {!isGlobalLevel &&
+                            <div className="grid grid-cols-2 gap-4">
+                                {/* Workspace */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Workspace <span className="text-rose-400">*</span>
+                                    </label>
+                                    <div className="relative">
+                                        <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                        <select
+                                            name="workspace"
+                                            value={formData.workspace}
+                                            onChange={handleChange}
+                                            className={`w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none ${errors.workspace ? 'border-rose-500/50' : 'border-slate-800/60'
+                                                }`}
+                                            disabled={isSubmitting}
+                                        >
+                                            <option value="">Select workspace</option>
+                                            {workspaces.map(ws => (
+                                                <option key={ws.id} value={ws.id}>{ws.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    {errors.workspace && (
+                                        <p className="mt-1.5 text-xs text-rose-400">{errors.workspace}</p>
+                                    )}
                                 </div>
-                                {errors.workspace && (
-                                    <p className="mt-1.5 text-xs text-rose-400">{errors.workspace}</p>
-                                )}
-                            </div>
 
-                            {/* Project */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    Project
-                                </label>
-                                <div className="relative">
-                                    <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                                    <select
-                                        name="project"
-                                        value={formData.project}
-                                        onChange={handleChange}
-                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none"
-                                        disabled={isSubmitting}
-                                    >
-                                        <option value="">Select project</option>
-                                        {projects.map(proj => (
-                                            <option key={proj.id} value={proj.id}>{proj.name}</option>
-                                        ))}
-                                    </select>
+                                {/* Project */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Project
+                                    </label>
+                                    <div className="relative">
+                                        <FolderOpen className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                        <select
+                                            name="project"
+                                            value={formData.project}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none"
+                                            disabled={isSubmitting}
+                                        >
+                                            <option value="">Select project</option>
+                                            {projects.map(proj => (
+                                                <option key={proj.id} value={proj.id}>{proj.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Team */}
-                            <div>
-                                <label className="block text-sm font-medium text-slate-300 mb-2">
-                                    Team
-                                </label>
-                                <div className="relative">
-                                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                                    <select
-                                        name="team"
-                                        value={formData.team}
-                                        onChange={handleChange}
-                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none"
-                                        disabled={isSubmitting}
-                                    >
-                                        <option value="">Select team</option>
-                                        {teams.map(team => (
-                                            <option key={team.id} value={team.id}>{team.name}</option>
-                                        ))}
-                                    </select>
+                                {/* Team */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Team
+                                    </label>
+                                    <div className="relative">
+                                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                        <select
+                                            name="team"
+                                            value={formData.team}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors appearance-none"
+                                            disabled={isSubmitting}
+                                        >
+                                            <option value="">Select team</option>
+                                            {teams.map(team => (
+                                                <option key={team.id} value={team.id}>{team.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Due Date */}
+                                {/* Due Date */}
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-300 mb-2">
+                                        Due Date
+                                    </label>
+                                    <div className="relative">
+                                        <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                                        <input
+                                            type="date"
+                                            name="dueDate"
+                                            value={formData.dueDate}
+                                            onChange={handleChange}
+                                            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-green-500/50 transition-colors"
+                                            disabled={isSubmitting}
+                                        />
+                                    </div>
+                                </div>
+                            </div>}
+                        {/* Due Date */}
+                        {isGlobalLevel &&
                             <div>
                                 <label className="block text-sm font-medium text-slate-300 mb-2">
                                     Due Date
@@ -282,8 +307,7 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
                                     />
                                 </div>
                             </div>
-                        </div>
-
+                        }
                         {/* Priority */}
                         <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/50">
                             <div className="flex items-center gap-3 flex-1">
@@ -371,8 +395,8 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, workspaces = [], projects = [], 
                         </button>
                     </div>
                 </motion.div>
-            </div>
-        </AnimatePresence>
+            </div >
+        </AnimatePresence >
     );
 };
 
