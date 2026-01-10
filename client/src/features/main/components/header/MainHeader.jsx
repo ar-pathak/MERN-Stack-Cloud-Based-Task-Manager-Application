@@ -1,12 +1,17 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Menu, Search, Plus, FileText, FolderPlus, Users, Calendar, CheckSquare, Zap } from "lucide-react";
+import { Bell, Menu, Search, Plus, CheckSquare, Zap, Video, Send } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import UserMenu from "./UserMenu";
 import { useAuth } from "../../../../context/AuthContext";
+import TaskPopup from "../popup/TaskPopup";
+import WorkspacePopup from "../popup/WorkspacePopup";
 
 const MainHeader = () => {
   const { user } = useAuth();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+
   const dropdownRef = useRef(null);
 
   // Get greeting based on time of day
@@ -33,20 +38,12 @@ const MainHeader = () => {
 
   const createOptions = [
     {
-      icon: FileText,
-      label: "New Document",
-      description: "Create a blank document",
-      color: "text-blue-400",
-      bgColor: "bg-blue-500/10",
-      action: () => console.log("Create document")
-    },
-    {
-      icon: FolderPlus,
-      label: "New Project",
-      description: "Start a new project",
-      color: "text-purple-400",
-      bgColor: "bg-purple-500/10",
-      action: () => console.log("Create project")
+      icon: Zap,
+      label: "New Workflow",
+      description: "Design an automated flow",
+      color: "text-yellow-400",
+      bgColor: "bg-yellow-500/10",
+      action: () => setIsWorkspaceOpen(true),
     },
     {
       icon: CheckSquare,
@@ -54,32 +51,24 @@ const MainHeader = () => {
       description: "Add a quick task",
       color: "text-green-400",
       bgColor: "bg-green-500/10",
-      action: () => console.log("Create task")
+      action: () => setIsTaskOpen(true),
     },
     {
-      icon: Users,
-      label: "New Team",
-      description: "Create a team workspace",
-      color: "text-orange-400",
-      bgColor: "bg-orange-500/10",
-      action: () => console.log("Create team")
+      icon: Video,
+      label: "QuickCast",
+      description: "Upload a video",
+      color: "text-red-400",
+      bgColor: "bg-red-500/10",
+      action: () => console.log("Upload short"),
     },
     {
-      icon: Calendar,
-      label: "New Event",
-      description: "Schedule an event",
-      color: "text-pink-400",
-      bgColor: "bg-pink-500/10",
-      action: () => console.log("Create event")
+      icon: Send,
+      label: "New Post",
+      description: "Share an update or idea",
+      color: "text-blue-400",
+      bgColor: "bg-blue-500/10",
+      action: () => console.log("Create post"),
     },
-    {
-      icon: Zap,
-      label: "New Workflow",
-      description: "Automate your process",
-      color: "text-yellow-400",
-      bgColor: "bg-yellow-500/10",
-      action: () => console.log("Create workflow")
-    }
   ];
 
   const handleCreateOption = (option) => {
@@ -191,6 +180,22 @@ const MainHeader = () => {
           <UserMenu user={user} />
         </div>
       </div>
+      <TaskPopup
+        isOpen={isTaskOpen}
+        onClose={() => setIsTaskOpen(false)}
+        onSubmit={async (data) => {
+          console.log("Task created:", data);
+        }}
+      />
+
+      <WorkspacePopup
+        isOpen={isWorkspaceOpen}
+        onClose={() => setIsWorkspaceOpen(false)}
+        onSubmit={async (data) => {
+          console.log("Workspace created:", data);
+        }}
+      />
+
     </header>
   );
 };
