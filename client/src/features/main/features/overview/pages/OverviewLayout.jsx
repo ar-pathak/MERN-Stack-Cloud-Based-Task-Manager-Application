@@ -6,10 +6,11 @@ import {
   Image as ImageIcon,
   Filter,
 } from "lucide-react";
-import { getAllWorkspaces, getOverview } from "../../../../../service/workspace.service";
+import { getAllWorkspaces } from "../../../../../service/workspace.service";
 import WorkspaceItem from "../components/WorkspaceItem";
 import ChatPanel from "../components/ChatPanel";
 import EmptyState from "../components/EmptyState";
+import { getOverview } from "../../../../../service/overview.service";
 
 // Mock data structure with enhanced features
 
