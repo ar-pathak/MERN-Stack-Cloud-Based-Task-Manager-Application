@@ -201,6 +201,23 @@ const taskController = {
             handleError(error, res);
         }
     },
+    getAllGlobalLevelTasks: async (req, res) => {
+        try {
+            const userId = req.user._id
+
+            if (!mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid user ID"
+                });
+            }
+
+            const task = await taskService.getAllGlobalLevelTasks(userId);
+            sendSuccess(res, task, "Task retrieved successfully");
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
     getTask: async (req, res) => {
         try {
             const { taskId } = req.params;

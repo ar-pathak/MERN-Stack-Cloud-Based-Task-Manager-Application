@@ -11,9 +11,9 @@ import WorkspaceItem from "../components/WorkspaceItem";
 import ChatPanel from "../components/ChatPanel";
 import EmptyState from "../components/EmptyState";
 import { getOverview } from "../../../../../service/overview.service";
-
-// Mock data structure with enhanced features
-
+import { getGlobalLevelTasks } from "../../../../../service/task.service";
+import { useDispatch, useSelector } from 'react-redux';
+import { setOverviewData } from '../../../../../store/slice/overviewSlice';
 
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState({});
@@ -25,13 +25,16 @@ const OverviewLayout = () => {
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
   const [overview, setOverview] = useState(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
-  const [filterType, setFilterType] = useState("all"); // all, unread, starred
+  const [filterType, setFilterType] = useState("all");
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const messageInputRef = useRef(null);
+  const dispatch = useDispatch();
+
+  // Get workspaces from Redux store
+  const workspaces = useSelector((state) => state.overview.overviewData?.workspaces || []);
 
   // Toggle expand/collapse
   const toggleExpand = (id) => {
@@ -175,17 +178,32 @@ const OverviewLayout = () => {
   // Load real workspaces on mount
   useEffect(() => {
     let mounted = true;
-    getAllWorkspaces()
-      .then((data) => {
+
+    const fetchData = async () => {
+      try {
+        const [workspacesData, globalTasks] = await Promise.all([
+          getAllWorkspaces(),
+          // getGlobalLevelTasks()
+        ]);
+
         if (!mounted) return;
-        // backend may return array or wrapped data
-        setWorkspaces(Array.isArray(data) ? data : (data?.data || data || []));
-      })
-      .catch(() => {
-        // keep mock data on error
-      });
-    return () => { mounted = false; };
-  }, []);
+
+        // Dispatch to Redux store
+        dispatch(setOverviewData({
+          workspaces: workspacesData,
+          globalTasks,
+        }));
+      } catch (err) {
+        console.error("Failed to load overview data:", err);
+      }
+    };
+
+    fetchData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [dispatch]);
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
@@ -290,26 +308,26 @@ const OverviewLayout = () => {
                 ) : null}
               </div>
               <ChatPanel
-              item={selectedItem}
-              messages={messages[selectedItem.id] || []}
-              chatMessage={chatMessage}
-              setChatMessage={setChatMessage}
-              handleSendMessage={handleSendMessage}
-              showChatInfo={showChatInfo}
-              setShowChatInfo={setShowChatInfo}
-              chatEndRef={chatEndRef}
-              selectedMessage={selectedMessage}
-              setSelectedMessage={setSelectedMessage}
-              handleDeleteMessage={handleDeleteMessage}
-              handlePinMessage={handlePinMessage}
-              fileInputRef={fileInputRef}
-              handleFileUpload={handleFileUpload}
-              uploadingFile={uploadingFile}
-              messageInputRef={messageInputRef}
-              showEmojiPicker={showEmojiPicker}
-              setShowEmojiPicker={setShowEmojiPicker}
-              overview={overview}
-            />
+                item={selectedItem}
+                messages={messages[selectedItem.id] || []}
+                chatMessage={chatMessage}
+                setChatMessage={setChatMessage}
+                handleSendMessage={handleSendMessage}
+                showChatInfo={showChatInfo}
+                setShowChatInfo={setShowChatInfo}
+                chatEndRef={chatEndRef}
+                selectedMessage={selectedMessage}
+                setSelectedMessage={setSelectedMessage}
+                handleDeleteMessage={handleDeleteMessage}
+                handlePinMessage={handlePinMessage}
+                fileInputRef={fileInputRef}
+                handleFileUpload={handleFileUpload}
+                uploadingFile={uploadingFile}
+                messageInputRef={messageInputRef}
+                showEmojiPicker={showEmojiPicker}
+                setShowEmojiPicker={setShowEmojiPicker}
+                overview={overview}
+              />
             </div>
           ) : (
             <EmptyState key="empty" />

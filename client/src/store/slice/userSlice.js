@@ -8,16 +8,17 @@ const userSlice = createSlice({
             state.user = action.payload;
         },
         addWorkspaceData: (state, action) => {
-            state.user = action.payload;
+            state.workspace = action.payload;
         },
         addProjectData: (state, action) => {
             state.project = action.payload;
         },
         addTaskData: (state, action) => {
-            state.task = action.payload
-        }
+            state.task = action.payload;
+        },
     },
 });
+
 
 export const { addUserData, addWorkspaceData, addProjectData, addTaskData } = userSlice.actions;
 export default userSlice.reducer;

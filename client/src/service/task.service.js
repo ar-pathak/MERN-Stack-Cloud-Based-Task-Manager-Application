@@ -6,6 +6,23 @@ import api from "../config/axios";
  * Handles all task-related API calls
  */
 
+export const getGlobalLevelTasks = async () => {
+    try {
+        const response = await api.get(`/api/tasks/getAllGlobalLevelTasks`);
+        return response.data?.data || response.data || [];
+    } catch (error) {
+        // If endpoint doesn't exist (404), return empty array
+        if (error.response?.status === 404) {
+            return [];
+        }
+        throw {
+            message: error.response?.data?.message || "Failed to fetch tasks",
+            status: error.response?.status,
+        };
+    }
+};
+
+
 /**
  * Get tasks by workspace
  * @param {string} workspaceId - Workspace ID

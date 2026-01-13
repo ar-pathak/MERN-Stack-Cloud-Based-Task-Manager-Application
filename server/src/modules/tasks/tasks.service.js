@@ -230,6 +230,20 @@ const taskService = {
 
         return { message: "Task permanently deleted" };
     },
+    getAllGlobalLevelTasks: async (userId) => {
+        const globalLevelTasks = await Task.find({
+            createdBy: userId,
+            workspace: [],
+            team: [],
+            project: [],
+        });
+
+        if (!globalLevelTasks.length) {
+            throw new Error("Task not found");
+        }
+
+        return globalLevelTasks;
+    },
     getTaskById: async (taskId) => {
         const task = await Task.findById(taskId)
             .populate('createdBy', 'name email')
