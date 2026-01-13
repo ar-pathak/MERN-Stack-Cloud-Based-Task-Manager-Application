@@ -1,264 +1,105 @@
-import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Search,
-  Plus,
-  Image as ImageIcon,
-  Filter,
-} from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { AnimatePresence } from "framer-motion";
+import { Search } from "lucide-react";
+import { useDispatch, useSelector } from 'react-redux';
+
+// Services & Store
 import { getAllWorkspaces } from "../../../../../service/workspace.service";
+import { getOverview } from "../../../../../service/overview.service";
+import { setOverviewData } from '../../../../../store/slice/overviewSlice';
+
+// Components
 import WorkspaceItem from "../components/WorkspaceItem";
 import ChatPanel from "../components/ChatPanel";
 import EmptyState from "../components/EmptyState";
-import { getOverview } from "../../../../../service/overview.service";
-import { getGlobalLevelTasks } from "../../../../../service/task.service";
-import { useDispatch, useSelector } from 'react-redux';
-import { setOverviewData } from '../../../../../store/slice/overviewSlice';
+import SidebarHeader from "../components/SidebarHeader"; // New Component
+import OverviewStats from "../components/OverviewStats"; // New Component
+
+// Hooks
+import { useChatLogic } from "../hook/useChatLogic"; // New Hook
 
 const OverviewLayout = () => {
+  // --- Navigation & Data State ---
   const [expandedItems, setExpandedItems] = useState({});
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [chatMessage, setChatMessage] = useState("");
-  const [showChatInfo, setShowChatInfo] = useState(false);
-  const [messages, setMessages] = useState({});
-  const [selectedMessage, setSelectedMessage] = useState(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
+  const [filterType, setFilterType] = useState("all");
+
+  // --- Overview Data State ---
   const [overview, setOverview] = useState(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
-  const [filterType, setFilterType] = useState("all");
-  const chatEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const messageInputRef = useRef(null);
+
+  // --- Redux ---
   const dispatch = useDispatch();
+  const workspacesRaw = useSelector((state) => state.overview.overviewData?.workspaces);
+  const workspaces = useMemo(() => workspacesRaw || [], [workspacesRaw]);
 
-  // Get workspaces from Redux store
-  const workspaces = useSelector((state) => state.overview.overviewData?.workspaces || []);
+  // --- Custom Hooks ---
+  const chat = useChatLogic(selectedItem);
 
-  // Toggle expand/collapse
-  const toggleExpand = (id) => {
-    setExpandedItems(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
+  // --- Effects: Initial Data Load ---
+  useEffect(() => {
+    let mounted = true;
+    const fetchData = async () => {
+      try {
+        const workspacesData = await getAllWorkspaces();
+        if (mounted) {
+          dispatch(setOverviewData({ workspaces: workspacesData }));
+        }
+      } catch (err) {
+        console.error("Failed to load overview data:", err);
+      }
+    };
+    fetchData();
+    return () => { mounted = false; };
+  }, [dispatch]);
 
-  // Handle item click
+  // --- Handlers ---
   const handleItemClick = (item, hasChildren) => {
     if (hasChildren) {
-      toggleExpand(item.id);
-      setSelectedItem(item);
-      setShowChatInfo(false);
-    } else {
-      setSelectedItem(item);
-      setShowChatInfo(false);
+      setExpandedItems(prev => ({ ...prev, [item.id]: !prev[item.id] }));
     }
-    // load overview data for this workspace (non-blocking)
+
+    setSelectedItem(item);
+    chat.setShowChatInfo(false);
+
+    // Fetch Overview Data
     if (item?.id) {
       setLoadingOverview(true);
       getOverview(item.id)
-        .then((data) => setOverview(data))
+        .then(setOverview)
         .catch(() => setOverview(null))
         .finally(() => setLoadingOverview(false));
     }
   };
 
-  // Send message
-  const handleSendMessage = () => {
-    if (chatMessage.trim() && selectedItem) {
-      const newMessage = {
-        id: Date.now(),
-        sender: "You",
-        avatar: "ME",
-        message: chatMessage.trim(),
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isOwn: true,
-        read: false,
-        pinned: false,
-        type: "text"
-      };
-
-      setMessages(prev => ({
-        ...prev,
-        [selectedItem.id]: [...(prev[selectedItem.id] || []), newMessage]
-      }));
-
-      setChatMessage("");
-      setTimeout(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
-    }
-  };
-
-  // Handle file upload
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file && selectedItem) {
-      setUploadingFile(true);
-
-      // Simulate upload
-      setTimeout(() => {
-        const newMessage = {
-          id: Date.now(),
-          sender: "You",
-          avatar: "ME",
-          message: `Shared a file: ${file.name}`,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isOwn: true,
-          read: false,
-          pinned: false,
-          type: "file",
-          attachment: {
-            name: file.name,
-            size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-            type: file.type.includes('image') ? 'image' : 'file'
-          }
-        };
-
-        setMessages(prev => ({
-          ...prev,
-          [selectedItem.id]: [...(prev[selectedItem.id] || []), newMessage]
-        }));
-
-        setUploadingFile(false);
-        setTimeout(() => {
-          chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
-      }, 1500);
-    }
-  };
-
-  // Delete message
-  const handleDeleteMessage = (messageId) => {
-    if (selectedItem) {
-      setMessages(prev => ({
-        ...prev,
-        [selectedItem.id]: prev[selectedItem.id].filter(msg => msg.id !== messageId)
-      }));
-      setSelectedMessage(null);
-    }
-  };
-
-  // Toggle pin message
-  const handlePinMessage = (messageId) => {
-    if (selectedItem) {
-      setMessages(prev => ({
-        ...prev,
-        [selectedItem.id]: prev[selectedItem.id].map(msg =>
-          msg.id === messageId ? { ...msg, pinned: !msg.pinned } : msg
-        )
-      }));
-      setSelectedMessage(null);
-    }
-  };
-
-  // Scroll to bottom
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [selectedItem]);
-
-  // Focus input when item selected
-  useEffect(() => {
-    if (selectedItem) {
-      messageInputRef.current?.focus();
-    }
-  }, [selectedItem]);
-
-  // Filter conversations
-  const filteredWorkspaces = (workspaces || []).filter(ws => {
-    if (searchQuery) {
-      return ws.name.toLowerCase().includes(searchQuery.toLowerCase());
-    }
-    if (filterType === "unread") return ws.unreadCount > 0;
-    if (filterType === "starred") return ws.starred;
-    return true;
-  });
-
-  // Load real workspaces on mount
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchData = async () => {
-      try {
-        const [workspacesData, globalTasks] = await Promise.all([
-          getAllWorkspaces(),
-          // getGlobalLevelTasks()
-        ]);
-
-        if (!mounted) return;
-
-        // Dispatch to Redux store
-        dispatch(setOverviewData({
-          workspaces: workspacesData,
-          globalTasks,
-        }));
-      } catch (err) {
-        console.error("Failed to load overview data:", err);
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      mounted = false;
-    };
-  }, [dispatch]);
+  const filteredWorkspaces = useMemo(() => {
+    return (workspaces || []).filter(ws => {
+      if (searchQuery) return ws.name.toLowerCase().includes(searchQuery.toLowerCase());
+      if (filterType === "unread") return ws.unreadCount > 0;
+      if (filterType === "starred") return ws.starred;
+      return true;
+    });
+  }, [workspaces, searchQuery, filterType]);
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
       {/* LEFT PANEL - Navigator */}
       <div className="w-96 border-r border-slate-800/50 bg-slate-950/40 backdrop-blur-xl flex flex-col overflow-hidden">
-        {/* Search Header - Fixed */}
-        <div className="flex-shrink-0 p-4 border-b border-slate-800/50">
-          <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-lg font-bold text-slate-100">Conversations</h2>
-            <button className="ml-auto p-2 rounded-lg hover:bg-slate-800/60 transition-colors group">
-              <Plus className="h-4 w-4 text-slate-400 group-hover:text-slate-300" />
-            </button>
-            <button className="p-2 rounded-lg hover:bg-slate-800/60 transition-colors group">
-              <Filter className="h-4 w-4 text-slate-400 group-hover:text-slate-300" />
-            </button>
-          </div>
 
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Search conversations..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-slate-900/60 border border-slate-800/60 rounded-lg text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-slate-700/80 transition-colors"
-            />
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="flex gap-2">
-            {[
-              { id: "all", label: "All" },
-              { id: "unread", label: "Unread" },
-              { id: "starred", label: "Starred" }
-            ].map(filter => (
-              <button
-                key={filter.id}
-                onClick={() => setFilterType(filter.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterType === filter.id
-                  ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
-                  : "bg-slate-800/40 text-slate-400 hover:bg-slate-800/60"
-                  }`}
-              >
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <SidebarHeader
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          filterType={filterType}
+          setFilterType={setFilterType}
+        />
 
         {/* Navigation Tree */}
         <div className="flex-1 overflow-y-auto p-2">
           {filteredWorkspaces.length > 0 ? (
-            filteredWorkspaces.map((workspace) => (
+            filteredWorkspaces.map((workspace, idx) => (
               <WorkspaceItem
-                key={workspace.id}
+                key={workspace.id ?? workspace._id ?? `ws-${idx}`}
                 workspace={workspace}
                 expandedItems={expandedItems}
                 selectedItem={selectedItem}
@@ -279,54 +120,36 @@ const OverviewLayout = () => {
         <AnimatePresence mode="wait">
           {selectedItem ? (
             <div key={selectedItem.id} className="flex-1 flex flex-col">
-              <div className="px-6 pt-4 pb-2 border-b border-slate-800/50 bg-slate-950/60">
-                {overview && overview.stats ? (
-                  <div className="flex items-center gap-4 text-sm text-slate-300">
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-400">Projects</div>
-                      <div className="font-semibold text-slate-100">{overview.stats.projectsCount}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-400">Tasks</div>
-                      <div className="font-semibold text-slate-100">{overview.stats.totalTasks}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-400">Completed</div>
-                      <div className="font-semibold text-slate-100">{overview.stats.completedTasks}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="text-xs text-slate-400">High Priority</div>
-                      <div className="font-semibold text-amber-400">{overview.stats.highPriorityTasks}</div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-auto">
-                      <div className="text-xs text-slate-400">Members</div>
-                      <div className="font-semibold text-slate-100">{overview.stats.membersCount}</div>
-                    </div>
-                  </div>
-                ) : loadingOverview ? (
-                  <div className="text-sm text-slate-400">Loading overview...</div>
-                ) : null}
-              </div>
+
+              <OverviewStats overview={overview} loading={loadingOverview} />
+
               <ChatPanel
                 item={selectedItem}
-                messages={messages[selectedItem.id] || []}
-                chatMessage={chatMessage}
-                setChatMessage={setChatMessage}
-                handleSendMessage={handleSendMessage}
-                showChatInfo={showChatInfo}
-                setShowChatInfo={setShowChatInfo}
-                chatEndRef={chatEndRef}
-                selectedMessage={selectedMessage}
-                setSelectedMessage={setSelectedMessage}
-                handleDeleteMessage={handleDeleteMessage}
-                handlePinMessage={handlePinMessage}
-                fileInputRef={fileInputRef}
-                handleFileUpload={handleFileUpload}
-                uploadingFile={uploadingFile}
-                messageInputRef={messageInputRef}
-                showEmojiPicker={showEmojiPicker}
-                setShowEmojiPicker={setShowEmojiPicker}
                 overview={overview}
+
+                // Spread hook values directly to ChatPanel props
+                messages={chat.messages}
+                chatMessage={chat.chatMessage}
+                setChatMessage={chat.setChatMessage}
+                handleSendMessage={chat.handleSendMessage}
+
+                showChatInfo={chat.showChatInfo}
+                setShowChatInfo={chat.setShowChatInfo}
+
+                selectedMessage={chat.selectedMessage}
+                setSelectedMessage={chat.setSelectedMessage}
+
+                handleDeleteMessage={chat.handleDeleteMessage}
+                handlePinMessage={chat.handlePinMessage}
+                handleFileUpload={chat.handleFileUpload}
+                uploadingFile={chat.uploadingFile}
+
+                showEmojiPicker={chat.showEmojiPicker}
+                setShowEmojiPicker={chat.setShowEmojiPicker}
+
+                chatEndRef={chat.refs.chatEndRef}
+                fileInputRef={chat.refs.fileInputRef}
+                messageInputRef={chat.refs.messageInputRef}
               />
             </div>
           ) : (
