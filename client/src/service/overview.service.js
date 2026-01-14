@@ -1,11 +1,10 @@
 import api from "../config/axios";
 
-/**
- * Get overview data for a workspace
- * Aggregates workspace details, projects and tasks into a single payload
- * @param {string} workspaceId - Workspace ID
- * @returns {Promise<Object>} Overview data { workspace, projects, tasks, stats }
- */
+const unwrap = (res, fallback) =>
+    res?.data?.data ?? res?.data ?? fallback;
+
+const normalize = (v) => (v || "").toString().toLowerCase();
+
 export const getOverview = async (workspaceId) => {
     try {
         const [workspaceRes, projectsRes, tasksRes] = await Promise.all([
@@ -14,24 +13,58 @@ export const getOverview = async (workspaceId) => {
             api.get(`/api/tasks/workspaces/${workspaceId}/tasks`),
         ]);
 
-        const workspace = workspaceRes.data?.data || workspaceRes.data || null;
-        const projects = projectsRes.data?.data || projectsRes.data || [];
-        const tasks = tasksRes.data?.data || tasksRes.data || [];
+        const workspace = unwrap(workspaceRes, null);
+        const projects = unwrap(projectsRes, []);
+        const tasks = unwrap(tasksRes, []);
+
+        const completedTasks = Array.isArray(tasks)
+            ? tasks.filter(t =>
+                ["done", "completed"].includes(normalize(t.status))
+            ).length
+            : 0;
+
+        const highPriorityTasks = Array.isArray(tasks)
+            ? tasks.filter(t =>
+                normalize(t.priority) === "high" || t.isHighPriority === true
+            ).length
+            : 0;
 
         const stats = {
             projectsCount: Array.isArray(projects) ? projects.length : 0,
             totalTasks: Array.isArray(tasks) ? tasks.length : 0,
-            completedTasks: Array.isArray(tasks) ? tasks.filter(t => t.status === 'Done' || t.status === 'completed').length : 0,
-            highPriorityTasks: Array.isArray(tasks) ? tasks.filter(t => (t.priority || '').toLowerCase() === 'high').length : 0,
-            membersCount: Array.isArray(workspace?.members) ? workspace.members.length : 0,
+            completedTasks,
+            highPriorityTasks,
+            membersCount: Array.isArray(workspace?.members)
+                ? workspace.members.length
+                : 0,
         };
 
-        return { workspace, projects, tasks, stats };
+        return {
+            workspace,
+            projects: Array.isArray(projects) ? projects : [],
+            tasks: Array.isArray(tasks) ? tasks : [],
+            stats,
+        };
     } catch (error) {
         throw {
-            message: error.response?.data?.message || 'Failed to fetch overview data',
-            status: error.response?.status,
+            message:
+                error.response?.data?.message ||
+                "Failed to fetch overview data",
+            status: error.response?.status || 500,
         };
     }
 };
 
+export const getOverviewActivity = async () => {
+    const response = await api.get("/api/overview/activity");
+
+    const items = response.data?.data || response.data || [];
+
+    return items.map(item => ({
+        ...item,
+        id: item.id || item._id,
+        name: item.title || item.name,
+        type: item.type,
+        updatedAt: item.updatedAt
+    }));
+};
