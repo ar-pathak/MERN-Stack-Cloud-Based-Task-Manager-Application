@@ -11,6 +11,7 @@ const teamsRoutes = require('./modules/team/teams.routes')
 const projectsRoutes = require('./modules/projects/project.routes')
 const tasksRoutes = require('./modules/tasks/tasks.routes')
 const usersRoutes = require('./modules/user/user.routes')
+const overviewRoutes = require('./modules/overview/overview.routes')
 
 const app = express();
 const port = process.env.PORT;
@@ -40,18 +41,19 @@ app.use('/api/teams', teamsRoutes)
 app.use('/api/projects', projectsRoutes)
 app.use('/api/tasks', tasksRoutes)
 app.use('/api/user', usersRoutes)
+app.use('/api/overview', overviewRoutes)
 
 // 404 handler for undefined routes
 app.use((req, res) => {
-    res.status(404).json({ 
+    res.status(404).json({
         success: false,
-        message: `Route ${req.originalUrl} not found` 
+        message: `Route ${req.originalUrl} not found`
     })
 })
 
 // Global error handler middleware (must be last)
 app.use((err, req, res, next) => {
-    
+
     // Handle validation errors
     if (err.name === 'ZodError') {
         return res.status(400).json({
