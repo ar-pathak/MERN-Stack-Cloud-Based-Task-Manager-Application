@@ -233,9 +233,9 @@ const taskService = {
     getAllGlobalLevelTasks: async (userId) => {
         const globalLevelTasks = await Task.find({
             createdBy: userId,
-            workspace: [],
-            team: [],
-            project: [],
+            workspace: null,
+            team: null,
+            project: null,
         });
 
         if (!globalLevelTasks.length) {
