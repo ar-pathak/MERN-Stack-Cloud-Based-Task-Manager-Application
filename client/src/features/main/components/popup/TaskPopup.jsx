@@ -88,7 +88,13 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
             if (onSubmit) onSubmit(created);
             onClose();
         } catch (error) {
-            setErrors({ submit: error.message || "Failed to create task" });
+            setErrors({
+                submit:
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    "Failed to create task"
+
+            });
         } finally {
             setIsSubmitting(false);
         }

@@ -41,7 +41,12 @@ const WorkspacePopup = ({ isOpen, onClose, onSubmit }) => {
             setErrors({});
             onClose();
         } catch (error) {
-            setErrors({ submit: error.message || "Failed to create workspace" });
+            setErrors({
+                submit:
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    "Failed to create workspace"
+            })
         } finally {
             setIsSubmitting(false);
         }

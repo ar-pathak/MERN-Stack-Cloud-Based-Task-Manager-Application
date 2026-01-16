@@ -7,6 +7,7 @@ import UserMenu from "./UserMenu";
 import { useAuth } from "../../../../context/AuthContext";
 import TaskPopup from "../popup/TaskPopup";
 import WorkspacePopup from "../popup/WorkspacePopup";
+import { createWorkspace } from "../../../../service/workspace.service";
 
 // store & services
 import { setOverviewData } from "../../../../store/slice/overviewSlice";
@@ -49,17 +50,23 @@ const MainHeader = () => {
   };
 
   const refreshTimeline = async () => {
-    const timelineData = await getOverviewActivity();
+    try {
+      const timelineData = await getOverviewActivity();
 
-    const normalized = (timelineData || []).map(item => ({
-      ...item,
-      id: item.id || item._id,
-      name: item.name || item.title,
-      hasChildren: item.type !== "task"
-    }));
+      const normalized = (timelineData || []).map(item => ({
+        ...item,
+        id: item.id || item._id,
+        name: item.name || item.title,
+        hasChildren: item.type !== "task"
+      }));
 
-    dispatch(setOverviewData({ timeline: normalized }));
+      dispatch(setOverviewData({ timeline: normalized }));
+    } catch (err) {
+      console.error("Failed to refresh timeline", err);
+      showToast("Something went wrong while refreshing");
+    }
   };
+
 
   const createOptions = [
     {
@@ -212,11 +219,13 @@ const MainHeader = () => {
         <WorkspacePopup
           isOpen={isWorkspaceOpen}
           onClose={() => setIsWorkspaceOpen(false)}
-          onSubmit={async () => {
+          onSubmit={async (data) => {
+            await createWorkspace(data);
             await refreshTimeline();
             showToast("Workspace created successfully");
           }}
         />
+
       </header>
 
       {/* Toast */}
