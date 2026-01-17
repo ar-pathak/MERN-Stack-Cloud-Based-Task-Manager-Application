@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
-import { Search } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 
 // Services & Store
-import { getOverview, getOverviewActivity } from "../../../../../service/overview.service";
+import { getOverviewActivity } from "../../../../../service/overview.service";
 import { setOverviewData } from "../../../../../store/slice/overviewSlice";
 
 // Components
@@ -19,7 +18,7 @@ import OverviewStats from "../components/OverviewStats";
 import { useChatLogic } from "../hook/useChatLogic";
 
 const OverviewLayout = () => {
-  const [expandedItems, setExpandedItems] = useState({});
+  const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
@@ -33,62 +32,90 @@ const OverviewLayout = () => {
   );
 
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
-
   const chat = useChatLogic(selectedItem);
 
   useEffect(() => {
-    let mounted = true;
+    const normalizeNode = (item) => {
+      if (item.type === "workspace") {
+        const projects = (item.projects || []).map(normalizeNode);
+        const tasks = (item.tasks || []).map(normalizeNode);
+
+        return {
+          ...item,
+          id: item.id || item._id,
+          name: item.name,
+          projects,
+          tasks,
+          hasChildren: projects.length > 0 || tasks.length > 0,
+        };
+      }
+
+      if (item.type === "project") {
+        const tasks = (item.tasks || []).map(normalizeNode);
+
+        return {
+          ...item,
+          id: item.id || item._id,
+          name: item.name,
+          tasks,
+          hasChildren: tasks.length > 0,
+        };
+      }
+
+      // task
+      const subtasks = item.subtasks || [];
+
+      return {
+        ...item,
+        id: item.id || item._id,
+        title: item.title,
+        subtasks,
+        hasChildren: subtasks.length > 0,
+      };
+    };
 
     const fetchData = async () => {
       try {
-        const timelineData = await getOverviewActivity();
+        const res = await getOverviewActivity();
 
-        const normalized = timelineData.map(item => ({
-          ...item,
-          id: item.id || item._id,
-          name: item.name || item.title,
-          hasChildren: item.type !== "task" // workspace & project can expand
-        }));
+        // Works with: axios response OR direct data
+        const payload = res?.data?.data || res?.data || res;
 
-        if (mounted) {
-          dispatch(setOverviewData({ timeline: normalized }));
+        if (!Array.isArray(payload)) {
+          console.error("Overview API did not return array:", payload);
+          return;
         }
+
+        const normalized = payload.map(normalizeNode);
+        dispatch(setOverviewData({ timeline: normalized }));
       } catch (err) {
         console.error("Failed to load overview data:", err);
       }
     };
 
     fetchData();
-    return () => { mounted = false; };
   }, [dispatch]);
 
-  const handleItemClick = (item) => {
-    if (item.hasChildren) {
-      setExpandedItems(prev => ({
-        ...prev,
-        [item.id]: !prev[item.id]
-      }));
-    }
+  const toggleExpand = (id) => {
+    const next = new Set(expandedItems);
 
-    setSelectedItem(item);
-    chat.setShowChatInfo(false);
-
-    if (item?.id) {
-      setLoadingOverview(true);
-      getOverview(item.id)
-        .then(setOverview)
-        .catch(() => setOverview(null))
-        .finally(() => setLoadingOverview(false));
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
     }
+    setExpandedItems(next);
   };
 
+
   const filteredItems = useMemo(() => {
-    return (timeline || []).filter(item => {
+    return (timeline || []).filter((item) => {
+      const label = item.name || item.title || "";
+
       if (searchQuery) {
-        return (item.name || "")
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase());
+        return label.toLowerCase().includes(searchQuery.toLowerCase());
       }
+
       if (filterType === "unread") return item.unreadCount > 0;
       if (filterType === "starred") return item.starred;
       return true;
@@ -107,14 +134,17 @@ const OverviewLayout = () => {
         />
 
         <div className="flex-1 overflow-y-auto p-2">
-          {filteredItems.map((item, idx) => {
+          {filteredItems.map((item) => {
             if (item.type === "task") {
               return (
                 <TaskItem
-                  key={item.id ?? `task-${idx}`}
+                  key={item.id}
                   task={item}
                   selectedItem={selectedItem}
-                  onItemClick={handleItemClick}
+                  setSelectedItem={setSelectedItem}
+                  expandedItems={expandedItems}
+                  toggleExpand={toggleExpand}
+                  onCreateSubtask={(task) => console.log("create subtask", task)}
                   variant="global"
                 />
               );
@@ -122,11 +152,14 @@ const OverviewLayout = () => {
 
             return (
               <WorkspaceItem
-                key={item.id ?? `item-${idx}`}
+                key={item.id}
+                workspaceId={item.id}
                 workspace={item}
-                expandedItems={expandedItems}
+                handleCreate={(x) => console.log("create", x)}
                 selectedItem={selectedItem}
-                onItemClick={handleItemClick}
+                setSelectedItem={setSelectedItem}
+                expandedItems={expandedItems}
+                toggleExpand={toggleExpand}
               />
             );
           })}
@@ -143,26 +176,20 @@ const OverviewLayout = () => {
               <ChatPanel
                 item={selectedItem}
                 overview={overview}
-
                 messages={chat.messages}
                 chatMessage={chat.chatMessage}
                 setChatMessage={chat.setChatMessage}
                 handleSendMessage={chat.handleSendMessage}
-
                 showChatInfo={chat.showChatInfo}
                 setShowChatInfo={chat.setShowChatInfo}
-
                 selectedMessage={chat.selectedMessage}
                 setSelectedMessage={chat.setSelectedMessage}
-
                 handleDeleteMessage={chat.handleDeleteMessage}
                 handlePinMessage={chat.handlePinMessage}
                 handleFileUpload={chat.handleFileUpload}
                 uploadingFile={chat.uploadingFile}
-
                 showEmojiPicker={chat.showEmojiPicker}
                 setShowEmojiPicker={chat.setShowEmojiPicker}
-
                 chatEndRef={chat.refs.chatEndRef}
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}

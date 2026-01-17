@@ -1,78 +1,148 @@
 import { motion } from "framer-motion";
-import { CheckSquare } from "lucide-react";
+import { Plus, ChevronRight, ChevronDown, CheckSquare } from 'lucide-react';
 
-const TaskItem = ({ task, selectedItem, onItemClick, variant = "child" }) => {
+const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleExpand, onCreateSubtask, variant = 'child' }) => {
+    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
     const isSelected = selectedItem?.id === task.id;
+    const isExpanded = expandedItems.has(task.id);
 
-    // 🔹 GLOBAL STYLE (Workspace-like)
-    if (variant === "global") {
+    if (variant === 'global') {
         return (
-            <motion.button
-                whileHover={{ x: 2 }}
-                onClick={() => onItemClick(task, false)}
-                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all ${isSelected
-                    ? "bg-slate-800/80 border-l-2 border-sky-500"
-                    : "hover:bg-slate-800/40"
-                    }`}
-            >
-                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-green-600/20 border border-emerald-500/30 flex items-center justify-center">
-                    <CheckSquare className="h-5 w-5 text-emerald-400" />
+            <div>
+                <div
+                    className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-sky-500' : ''
+                        }`}
+                    onClick={() => setSelectedItem(task)}
+                >
+                    {hasSubtasks ? (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                toggleExpand(task.id);
+                            }}
+                            className="p-0.5 hover:bg-slate-700/50 rounded"
+                        >
+                            {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                            ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                            )}
+                        </button>
+                    ) : <div className="w-4" />}
+
+                    <div className="ml-2 h-9 w-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                        <CheckSquare className="h-4 w-4 text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-slate-200 truncate block">{task.title}</span>
+                        {task.assignees && task.assignees.length > 0 && (
+                            <p className="text-xs text-slate-500">{task.assignees.join(', ')}</p>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                        {task.isHighPriority && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 text-red-400">High</span>
+                        )}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onCreateSubtask(task);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                            title="Add Subtask"
+                        >
+                            <Plus className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                    </div>
                 </div>
 
-                <div className="flex-1 min-w-0">
-                    <span
-                        className={`text-sm font-semibold truncate ${isSelected ? "text-slate-100" : "text-slate-300"
-                            }`}
-                    >
-                        {task.name}
-                    </span>
-                    <p className="text-xs text-slate-500 truncate">
-                        Task • {task.projectName || "Global"}
-                    </p>
-                </div>
-
-                <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] text-slate-500">
-                        {task.lastMessageTime}
-                    </span>
-                </div>
-            </motion.button>
+                {isExpanded && hasSubtasks && (
+                    <div className="ml-8 mt-1 space-y-1">
+                        {task.subtasks.map(subtask => (
+                            <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/30 transition-colors">
+                                <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'
+                                    }`}>
+                                    {subtask.completed && <span className="text-white text-xs">✓</span>}
+                                </div>
+                                <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+                                    {subtask.title}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
         );
     }
 
-    // 🔹 CHILD STYLE (old TaskItem)
     return (
-        <motion.button
-            whileHover={{ x: 2 }}
-            onClick={() => onItemClick(task, false)}
-            className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-all ${isSelected
-                ? "bg-slate-800/80 border-l-2 border-green-500"
-                : "hover:bg-slate-800/40"
-                }`}
-        >
-            <div className="h-8 w-8 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center justify-center flex-shrink-0">
-                <CheckSquare className="h-3.5 w-3.5 text-green-400" />
-            </div>
-
-            <div className="flex-1 min-w-0">
-                <span
-                    className={`text-sm truncate block ${isSelected ? "text-slate-100" : "text-slate-300"
-                        }`}
-                >
-                    {task.name}
-                </span>
-                <p className="text-xs text-slate-500">{task.assignee}</p>
-            </div>
-
+        <div>
             <div
-                className={`h-2 w-2 rounded-full flex-shrink-0 ${task.status === "completed"
-                    ? "bg-emerald-400"
-                    : task.status === "in-progress"
-                        ? "bg-blue-400"
-                        : "bg-slate-500"
+                className={`group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-emerald-500' : ''
                     }`}
-            />
-        </motion.button>
+                onClick={() => setSelectedItem(task)}
+            >
+                {hasSubtasks ? (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpand(task.id);
+                        }}
+                        className="p-0.5 hover:bg-slate-700/50 rounded"
+                    >
+                        {isExpanded ? (
+                            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                        ) : (
+                            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
+                        )}
+                    </button>
+                ) : <div className="w-4" />}
+
+                <div className="ml-2 h-7 w-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                    <CheckSquare className="h-3.5 w-3.5 text-emerald-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                    <span className="text-sm text-slate-200 truncate block">{task.title}</span>
+                    {task.assignees && task.assignees.length > 0 && (
+                        <p className="text-xs text-slate-500">{task.assignees.join(', ')}</p>
+                    )}
+                </div>
+                <div className="flex items-center gap-1">
+                    {task.isHighPriority && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 text-red-400">High</span>
+                    )}
+                    <div className={`h-2 w-2 rounded-full ${task.status === 'completed' ? 'bg-emerald-400' :
+                        task.status === 'active' ? 'bg-blue-400' : 'bg-slate-500'
+                        }`} />
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onCreateSubtask(task);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                        title="Add Subtask"
+                    >
+                        <Plus className="h-3.5 w-3.5 text-slate-400" />
+                    </button>
+                </div>
+            </div>
+
+            {isExpanded && hasSubtasks && (
+                <div className="ml-6 mt-1 space-y-1">
+                    {task.subtasks.map(subtask => (
+                        <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/30 transition-colors">
+                            <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'
+                                }`}>
+                                {subtask.completed && <span className="text-white text-xs">✓</span>}
+                            </div>
+                            <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+                                {subtask.title}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 };
 
