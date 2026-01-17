@@ -25,6 +25,8 @@ const OverviewLayout = () => {
 
   const [overview, setOverview] = useState(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+
 
   const dispatch = useDispatch();
   const timelineRaw = useSelector(
@@ -76,9 +78,9 @@ const OverviewLayout = () => {
 
     const fetchData = async () => {
       try {
-        const res = await getOverviewActivity();
+        setLoadingTimeline(true);
 
-        // Works with: axios response OR direct data
+        const res = await getOverviewActivity();
         const payload = res?.data?.data || res?.data || res;
 
         if (!Array.isArray(payload)) {
@@ -90,8 +92,11 @@ const OverviewLayout = () => {
         dispatch(setOverviewData({ timeline: normalized }));
       } catch (err) {
         console.error("Failed to load overview data:", err);
+      } finally {
+        setLoadingTimeline(false);
       }
     };
+
 
     fetchData();
   }, [dispatch]);
@@ -132,6 +137,12 @@ const OverviewLayout = () => {
           filterType={filterType}
           setFilterType={setFilterType}
         />
+
+        {loadingTimeline && (
+          <div className="h-0.5 w-full overflow-hidden bg-slate-800">
+            <div className="h-full w-1/3 bg-sky-500 animate-[loading_1.2s_ease-in-out_infinite]" />
+          </div>
+        )}
 
         <div className="flex-1 overflow-y-auto p-2">
           {filteredItems.map((item) => {
