@@ -47,7 +47,7 @@ export const getSubtaskById = async (subtaskId) => {
  */
 export const createSubtask = async (subtaskData) => {
     try {
-        const response = await api.post('/api/subtasks', subtaskData);
+        const response = await api.post('/api/subtasks/createSubtask', subtaskData);
         return response.data;
     } catch (error) {
         throw {

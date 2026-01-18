@@ -60,7 +60,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                 </div>
 
                 {isExpanded && hasSubtasks && (
-                    <div className="ml-8 mt-1 space-y-1">
+                    <div className="ml-14 mt-1 space-y-1">
                         {task.subtasks.map(subtask => (
                             <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/30 transition-colors">
                                 <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'
@@ -132,9 +132,9 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
             </div>
 
             {isExpanded && hasSubtasks && (
-                <div className="ml-6 mt-1 space-y-1">
+                <div className="ml-12 mt-1 space-y-1">
                     {task.subtasks.map(subtask => (
-                        <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/30 transition-colors">
+                        <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 ml-2 rounded-lg hover:bg-slate-800/30 transition-colors">
                             <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'
                                 }`}>
                                 {subtask.completed && <span className="text-white text-xs">✓</span>}

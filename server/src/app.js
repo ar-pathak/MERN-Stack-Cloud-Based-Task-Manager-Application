@@ -12,6 +12,7 @@ const projectsRoutes = require('./modules/projects/project.routes')
 const tasksRoutes = require('./modules/tasks/tasks.routes')
 const usersRoutes = require('./modules/user/user.routes')
 const overviewRoutes = require('./modules/overview/overview.routes')
+const subtaskRoutes = require('./modules/subtask/subtask.routes')
 
 const app = express();
 const port = process.env.PORT;
@@ -42,6 +43,7 @@ app.use('/api/projects', projectsRoutes)
 app.use('/api/tasks', tasksRoutes)
 app.use('/api/user', usersRoutes)
 app.use('/api/overview', overviewRoutes)
+app.use('/api/subtasks', subtaskRoutes)
 
 // 404 handler for undefined routes
 app.use((req, res) => {
