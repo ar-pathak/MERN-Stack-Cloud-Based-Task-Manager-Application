@@ -64,14 +64,15 @@ const WorkspacePopup = ({ isOpen, onClose, onSubmit }) => {
 
     return (
         <AnimatePresence>
-            <div className="relative z-50 flex items-center justify-center p-4">
+            {/* FIXED: Added fixed positioning and proper z-index */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 {/* Backdrop */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={handleClose}
-                    className="absolute inset-0 backdrop-blur-sm"
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 />
 
                 {/* Modal */}
@@ -80,6 +81,7 @@ const WorkspacePopup = ({ isOpen, onClose, onSubmit }) => {
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                    onClick={(e) => e.stopPropagation()}
                     className="relative w-full max-w-lg rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl"
                 >
                     {/* Header */}

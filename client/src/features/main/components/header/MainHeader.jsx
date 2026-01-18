@@ -51,22 +51,58 @@ const MainHeader = () => {
 
   const refreshTimeline = async () => {
     try {
-      const timelineData = await getOverviewActivity();
+      const res = await getOverviewActivity();
+      const payload = res?.data?.data || res?.data || res;
 
-      const normalized = (timelineData || []).map(item => ({
-        ...item,
-        id: item.id || item._id,
-        name: item.name || item.title,
-        hasChildren: item.type !== "task"
-      }));
+      if (!Array.isArray(payload)) {
+        console.error("Timeline refresh: expected array, got:", payload);
+        return;
+      }
 
+      // ✅ Proper recursive normalization
+      const normalizeNode = (item) => {
+        if (item.type === "workspace") {
+          const projects = (item.projects || []).map(normalizeNode);
+          const tasks = (item.tasks || []).map(normalizeNode);
+          return {
+            ...item,
+            id: item.id || item._id,
+            name: item.name,
+            projects,
+            tasks,
+            hasChildren: projects.length > 0 || tasks.length > 0,
+          };
+        }
+
+        if (item.type === "project") {
+          const tasks = (item.tasks || []).map(normalizeNode);
+          return {
+            ...item,
+            id: item.id || item._id,
+            name: item.name,
+            tasks,
+            hasChildren: tasks.length > 0,
+          };
+        }
+
+        // task
+        const subtasks = item.subtasks || [];
+        return {
+          ...item,
+          id: item.id || item._id,
+          title: item.title,
+          subtasks,
+          hasChildren: subtasks.length > 0,
+        };
+      };
+
+      const normalized = payload.map(normalizeNode);
       dispatch(setOverviewData({ timeline: normalized }));
     } catch (err) {
       console.error("Failed to refresh timeline", err);
       showToast("Something went wrong while refreshing");
     }
   };
-
 
   const createOptions = [
     {
@@ -137,7 +173,7 @@ const MainHeader = () => {
               />
             </div>
 
-            {/* Create */}
+            {/* Create Dropdown */}
             <div className="relative" ref={dropdownRef}>
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -192,6 +228,7 @@ const MainHeader = () => {
               </AnimatePresence>
             </div>
 
+            {/* Notifications */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 hover:bg-slate-800/70 transition-colors"
@@ -206,36 +243,36 @@ const MainHeader = () => {
             <UserMenu user={user} />
           </div>
         </div>
-
-        <TaskPopup
-          isOpen={isTaskOpen}
-          onClose={() => setIsTaskOpen(false)}
-          onSubmit={async () => {
-            await refreshTimeline();
-            showToast("Task created successfully");
-          }}
-        />
-
-        <WorkspacePopup
-          isOpen={isWorkspaceOpen}
-          onClose={() => setIsWorkspaceOpen(false)}
-          onSubmit={async (data) => {
-            await createWorkspace(data);
-            await refreshTimeline();
-            showToast("Workspace created successfully");
-          }}
-        />
-
       </header>
 
-      {/* Toast */}
+      {/* Popups */}
+      <TaskPopup
+        isOpen={isTaskOpen}
+        onClose={() => setIsTaskOpen(false)}
+        onSubmit={async () => {
+          await refreshTimeline();
+          showToast("Task created successfully");
+        }}
+      />
+
+      <WorkspacePopup
+        isOpen={isWorkspaceOpen}
+        onClose={() => setIsWorkspaceOpen(false)}
+        onSubmit={async (data) => {
+          await createWorkspace(data);
+          await refreshTimeline();
+          showToast("Workspace created successfully");
+        }}
+      />
+
+      {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg"
+            className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm"
           >
             {toast}
           </motion.div>

@@ -13,8 +13,6 @@ import {
 import ScrollBar from "../../../../common/components/ScrollBar";
 import { createTask } from "../../../../service/task.service";
 
-
-
 const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces = [], projects = [], teams = [] }) => {
     const [formData, setFormData] = useState({
         title: "",
@@ -56,7 +54,6 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
         if (!formData.title.trim()) {
             newErrors.title = "Task title is required";
         }
-        // Only require workspace when creating at workspace/project level
         if (!isGlobalLevel && !formData.workspace) {
             newErrors.workspace = "Please select a workspace";
         }
@@ -84,7 +81,6 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                 status: "active"
             });
             setErrors({});
-            // notify parent if provided
             if (onSubmit) onSubmit(created);
             onClose();
         } catch (error) {
@@ -93,7 +89,6 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                     error?.response?.data?.message ||
                     error?.message ||
                     "Failed to create task"
-
             });
         } finally {
             setIsSubmitting(false);
@@ -129,22 +124,26 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
 
     return (
         <AnimatePresence>
-            <div className="relative z-50 flex items-center justify-center p-4">
+            {/* FIXED: Added fixed positioning and proper z-index */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <ScrollBar />
+                {/* Backdrop */}
                 <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     onClick={handleClose}
-                    className="absolute inset-0  backdrop-blur-sm"
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
                 />
 
+                {/* Modal */}
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
                     transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                    className="relative w-full max-w-2xl rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl max-h-[80vh] flex flex-col custom-scrollbar scroll-smooth"
+                    onClick={(e) => e.stopPropagation()}
+                    className="relative w-full max-w-2xl rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl max-h-[90vh] flex flex-col"
                 >
                     {/* Header */}
                     <div className="flex-shrink-0 flex items-center justify-between border-b border-slate-800/50 px-6 py-4">
@@ -166,7 +165,7 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                         </button>
                     </div>
 
-                    {/* Content */}
+                    {/* Content - Added overflow handling */}
                     <div className="flex-1 overflow-y-auto p-6 space-y-5">
                         {/* Task Title */}
                         <div>
@@ -295,7 +294,8 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                                     </div>
                                 </div>
                             </div>}
-                        {/* Due Date */}
+
+                        {/* Due Date for Global Level */}
                         {isGlobalLevel &&
                             <div>
                                 <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -314,6 +314,7 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                                 </div>
                             </div>
                         }
+
                         {/* Priority */}
                         <div className="flex items-center gap-3 p-4 rounded-xl bg-slate-900/40 border border-slate-800/50">
                             <div className="flex items-center gap-3 flex-1">
@@ -401,8 +402,8 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
                         </button>
                     </div>
                 </motion.div>
-            </div >
-        </AnimatePresence >
+            </div>
+        </AnimatePresence>
     );
 };
 

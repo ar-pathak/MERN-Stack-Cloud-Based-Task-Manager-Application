@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { AnimatePresence } from "framer-motion";
-import { useDispatch, useSelector } from "react-redux";
+import { AnimatePresence, motion } from "framer-motion"; // ✅ Added motion import
 
 // Services & Store
+import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
-import { setOverviewData } from "../../../../../store/slice/overviewSlice";
+import { createWorkspace } from "../../../../../service/workspace.service";
+import { setOverviewData, setTaskPopupOpen, setWorkspacePopupOpen } from "../../../../../store/slice/overviewSlice";
 
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
@@ -17,6 +18,10 @@ import OverviewStats from "../components/OverviewStats";
 // Hooks
 import { useChatLogic } from "../hook/useChatLogic";
 
+import WorkspacePopup from "../../../components/popup/WorkspacePopup";
+import TaskPopup from "../../../components/popup/TaskPopup";
+
+
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
@@ -27,11 +32,14 @@ const OverviewLayout = () => {
   const [loadingOverview, setLoadingOverview] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
+  const [toast, setToast] = useState(null);
+
 
   const dispatch = useDispatch();
   const timelineRaw = useSelector(
     (state) => state.overview.overviewData?.timeline
   );
+  const { workspacePopupOpen, taskPopupOpen } = useSelector((state) => state.overview)
 
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
@@ -127,6 +135,64 @@ const OverviewLayout = () => {
     });
   }, [timeline, searchQuery, filterType]);
 
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2500);
+  };
+
+  const refreshTimeline = async () => {
+    try {
+      const res = await getOverviewActivity();
+      const payload = res?.data?.data || res?.data || res;
+
+      if (!Array.isArray(payload)) {
+        console.error("Timeline refresh: expected array, got:", payload);
+        return;
+      }
+
+      const normalizeNode = (item) => {
+        if (item.type === "workspace") {
+          const projects = (item.projects || []).map(normalizeNode);
+          const tasks = (item.tasks || []).map(normalizeNode);
+          return {
+            ...item,
+            id: item.id || item._id,
+            name: item.name,
+            projects,
+            tasks,
+            hasChildren: projects.length > 0 || tasks.length > 0,
+          };
+        }
+
+        if (item.type === "project") {
+          const tasks = (item.tasks || []).map(normalizeNode);
+          return {
+            ...item,
+            id: item.id || item._id,
+            name: item.name,
+            tasks,
+            hasChildren: tasks.length > 0,
+          };
+        }
+
+        const subtasks = item.subtasks || [];
+        return {
+          ...item,
+          id: item.id || item._id,
+          title: item.title,
+          subtasks,
+          hasChildren: subtasks.length > 0,
+        };
+      };
+
+      const normalized = payload.map(normalizeNode);
+      dispatch(setOverviewData({ timeline: normalized }));
+    } catch (err) {
+      console.error("Failed to refresh timeline", err);
+      showToast("Something went wrong while refreshing");
+    }
+  };
+
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
       {/* LEFT PANEL */}
@@ -211,6 +277,40 @@ const OverviewLayout = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Popups */}
+      <TaskPopup
+        isOpen={taskPopupOpen}
+        onClose={() => dispatch(setTaskPopupOpen(false))}
+        onSubmit={async () => {
+          await refreshTimeline();
+          showToast("Task created successfully");
+        }}
+      />
+
+      <WorkspacePopup
+        isOpen={workspacePopupOpen}
+        onClose={() => dispatch(setWorkspacePopupOpen(false))}
+        onSubmit={async (data) => {
+          await createWorkspace(data);
+          await refreshTimeline();
+          showToast("Workspace created successfully");
+        }}
+      />
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm"
+          >
+            {toast}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
