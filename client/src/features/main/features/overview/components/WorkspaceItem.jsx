@@ -10,9 +10,11 @@ import {
     Plus
 } from "lucide-react";
 import TaskItem from "./TaskItem";
-
+import { useDispatch } from "react-redux";
+import { setIsProjectPopupOpen, setTaskPopupOpen } from "../../../../../store/slice/overviewSlice";
 
 const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, setSelectedItem, expandedItems, toggleExpand }) => {
+    const dispatch = useDispatch();
 
     return (
         <div key={workspaceId} className="mb-2">
@@ -25,7 +27,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                     toggleExpand(workspaceId);
                 }}
             >
-                {(workspace.tasks.length > 0 || workspace.projects.length > 0) ? (
+                {(workspace.tasks?.length > 0 || workspace.projects?.length > 0) ? (
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -43,7 +45,6 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                     <div className="w-5 h-5" />
                 )}
 
-
                 <div className="relative">
                     <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500/20 to-blue-600/20 border border-sky-500/30 flex items-center justify-center">
                         <Briefcase className="h-4 w-4 text-sky-400" />
@@ -54,6 +55,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                         </div>
                     )}
                 </div>
+
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                         <span className="text-sm font-semibold text-slate-200 truncate">{workspace.name}</span>
@@ -62,6 +64,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                         {workspace.muted && <BellOff className="h-3 w-3 text-slate-500" />}
                     </div>
                 </div>
+
                 <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
                     <button
                         onClick={(e) => {
@@ -76,7 +79,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            handleCreate(workspace, 'task', 'workspace');
+                            dispatch(setTaskPopupOpen(true)); // ✅ Fixed: was missing (true)
                         }}
                         className="p-1 hover:bg-slate-700/50 rounded"
                         title="Add Task"
@@ -90,18 +93,18 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
             {expandedItems.has(workspaceId) && (
                 <div className="ml-6 mt-1 space-y-1">
                     {/* Projects */}
-                    {workspace.projects.map(project => (
+                    {workspace.projects?.map(project => (
                         <div key={project.id}>
                             <div
                                 className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === project.id ? 'bg-slate-800/80 border-l-2 border-purple-500' : ''
                                     }`}
                                 onClick={() => setSelectedItem(project)}
                             >
-                                {(project.tasks.length > 0) ? (
+                                {(project.tasks?.length > 0) ? (
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            toggleExpand(workspaceId);
+                                            toggleExpand(project.id); // ✅ Fixed: was using workspaceId instead of project.id
                                         }}
                                         className="p-0.5 hover:bg-slate-700/50 rounded"
                                     >
@@ -122,7 +125,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handleCreate(project, 'task', 'project');
+                                        dispatch(setTaskPopupOpen(true));
                                     }}
                                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
                                     title="Add Task"
@@ -132,7 +135,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                             </div>
 
                             {/* Tasks under Project */}
-                            {expandedItems.has(project.id) && project.tasks.map(task => (
+                            {expandedItems.has(project.id) && project.tasks?.map(task => (
                                 <div key={task.id} className="ml-6">
                                     <TaskItem
                                         task={task}
@@ -148,7 +151,7 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                     ))}
 
                     {/* Direct Workspace Tasks */}
-                    {workspace.tasks.length > 0 && (
+                    {workspace.tasks?.length > 0 && (
                         <div>
                             {workspace.tasks.map(task => (
                                 <TaskItem
@@ -169,4 +172,4 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
     );
 };
 
-export default WorkspaceItem
+export default WorkspaceItem;

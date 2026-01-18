@@ -1,10 +1,13 @@
 import { motion } from "framer-motion";
 import { Plus, ChevronRight, ChevronDown, CheckSquare } from 'lucide-react';
+import { useDispatch } from "react-redux";
+import { setIsSubtaskPopupOpen } from "../../../../../store/slice/overviewSlice";
 
 const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleExpand, onCreateSubtask, variant = 'child' }) => {
     const hasSubtasks = task.subtasks && task.subtasks.length > 0;
     const isSelected = selectedItem?.id === task.id;
     const isExpanded = expandedItems.has(task.id);
+    const dispatch = useDispatch();
 
     if (variant === 'global') {
         return (
@@ -118,6 +121,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                         onClick={(e) => {
                             e.stopPropagation();
                             onCreateSubtask(task);
+                            dispatch(setIsSubtaskPopupOpen(true))
                         }}
                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
                         title="Add Subtask"

@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit'
 
 const overviewSlice = createSlice({
     name: "overview",
-    initialState: { overviewData: null, workspacePopupOpen: false, taskPopupOpen: false },
+    initialState: { overviewData: null, workspacePopupOpen: false, taskPopupOpen: false, isProjectPopupOpen: false, isSubtaskPopupOpen: false },
     reducers: {
         setOverviewData: (state, action) => {
             state.overviewData = action.payload;
@@ -13,10 +13,16 @@ const overviewSlice = createSlice({
         setTaskPopupOpen: (state, action) => {
             state.taskPopupOpen = action.payload;
         },
+        setIsProjectPopupOpen: (state, action) => {
+            state.isProjectPopupOpen = action.payload;
+        },
+        setIsSubtaskPopupOpen: (state, action) => {
+            state.isSubtaskPopupOpen = action.payload;
+        },
     },
 });
 
 
 
-export const { setOverviewData, setWorkspacePopupOpen, setTaskPopupOpen } = overviewSlice.actions;
+export const { setOverviewData, setWorkspacePopupOpen, setTaskPopupOpen, setIsProjectPopupOpen, setIsSubtaskPopupOpen } = overviewSlice.actions;
 export default overviewSlice.reducer

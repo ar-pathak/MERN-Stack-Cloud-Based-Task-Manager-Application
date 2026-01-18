@@ -1,11 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
-import { AnimatePresence, motion } from "framer-motion"; // ✅ Added motion import
+import { AnimatePresence, motion } from "framer-motion";
 
 // Services & Store
 import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
 import { createWorkspace } from "../../../../../service/workspace.service";
-import { setOverviewData, setTaskPopupOpen, setWorkspacePopupOpen } from "../../../../../store/slice/overviewSlice";
+import { createProject } from "../../../../../service/project.service";
+import { createSubtask } from "../../../../../service/subtask.service";
+import {
+  setOverviewData,
+  setTaskPopupOpen,
+  setWorkspacePopupOpen,
+  setIsProjectPopupOpen,
+  setIsSubtaskPopupOpen
+} from "../../../../../store/slice/overviewSlice";
 
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
@@ -15,12 +23,14 @@ import EmptyState from "../components/EmptyState";
 import SidebarHeader from "../components/SidebarHeader";
 import OverviewStats from "../components/OverviewStats";
 
-// Hooks
-import { useChatLogic } from "../hook/useChatLogic";
-
+// Popups
 import WorkspacePopup from "../../../components/popup/WorkspacePopup";
 import TaskPopup from "../../../components/popup/TaskPopup";
+import SubtaskPopup from "../../../components/popup/SubtaskPopup";
+import ProjectPopup from "../../../components/popup/ProjectPopup";
 
+// Hooks
+import { useChatLogic } from "../hook/useChatLogic";
 
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState(new Set());
@@ -33,13 +43,17 @@ const OverviewLayout = () => {
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   const [toast, setToast] = useState(null);
-
+  const [selectedTask, setSelectedTask] = useState(null); // For subtask creation
+  const [selectedWorkspace, setSelectedWorkspace] = useState(null); // For project creation
 
   const dispatch = useDispatch();
-  const timelineRaw = useSelector(
-    (state) => state.overview.overviewData?.timeline
-  );
-  const { workspacePopupOpen, taskPopupOpen } = useSelector((state) => state.overview)
+  const timelineRaw = useSelector((state) => state.overview.overviewData?.timeline);
+  const {
+    workspacePopupOpen,
+    taskPopupOpen,
+    isSubtaskPopupOpen,
+    isProjectPopupOpen
+  } = useSelector((state) => state.overview);
 
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
@@ -49,7 +63,6 @@ const OverviewLayout = () => {
       if (item.type === "workspace") {
         const projects = (item.projects || []).map(normalizeNode);
         const tasks = (item.tasks || []).map(normalizeNode);
-
         return {
           ...item,
           id: item.id || item._id,
@@ -62,7 +75,6 @@ const OverviewLayout = () => {
 
       if (item.type === "project") {
         const tasks = (item.tasks || []).map(normalizeNode);
-
         return {
           ...item,
           id: item.id || item._id,
@@ -72,9 +84,7 @@ const OverviewLayout = () => {
         };
       }
 
-      // task
       const subtasks = item.subtasks || [];
-
       return {
         ...item,
         id: item.id || item._id,
@@ -87,7 +97,6 @@ const OverviewLayout = () => {
     const fetchData = async () => {
       try {
         setLoadingTimeline(true);
-
         const res = await getOverviewActivity();
         const payload = res?.data?.data || res?.data || res;
 
@@ -105,13 +114,11 @@ const OverviewLayout = () => {
       }
     };
 
-
     fetchData();
   }, [dispatch]);
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
-
     if (next.has(id)) {
       next.delete(id);
     } else {
@@ -120,15 +127,12 @@ const OverviewLayout = () => {
     setExpandedItems(next);
   };
 
-
   const filteredItems = useMemo(() => {
     return (timeline || []).filter((item) => {
       const label = item.name || item.title || "";
-
       if (searchQuery) {
         return label.toLowerCase().includes(searchQuery.toLowerCase());
       }
-
       if (filterType === "unread") return item.unreadCount > 0;
       if (filterType === "starred") return item.starred;
       return true;
@@ -193,6 +197,25 @@ const OverviewLayout = () => {
     }
   };
 
+  const handleCreateSubtask = (task) => {
+    setSelectedTask(task);
+    dispatch(setIsSubtaskPopupOpen(true));
+  };
+
+  const handleCreateProject = (workspace) => {
+    setSelectedWorkspace(workspace);
+    dispatch(setIsProjectPopupOpen(true));
+  };
+
+  // Get workspaces and teams for dropdowns
+  const workspaces = useMemo(() => {
+    return timeline
+      .filter(item => item.type === "workspace")
+      .map(ws => ({ id: ws.id, name: ws.name }));
+  }, [timeline]);
+
+  const teams = []; // Add your teams logic here if available
+
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
       {/* LEFT PANEL */}
@@ -221,7 +244,7 @@ const OverviewLayout = () => {
                   setSelectedItem={setSelectedItem}
                   expandedItems={expandedItems}
                   toggleExpand={toggleExpand}
-                  onCreateSubtask={(task) => console.log("create subtask", task)}
+                  onCreateSubtask={handleCreateSubtask}
                   variant="global"
                 />
               );
@@ -232,7 +255,11 @@ const OverviewLayout = () => {
                 key={item.id}
                 workspaceId={item.id}
                 workspace={item}
-                handleCreate={(x) => console.log("create", x)}
+                handleCreate={(workspace, type) => {
+                  if (type === 'project') {
+                    handleCreateProject(workspace);
+                  }
+                }}
                 selectedItem={selectedItem}
                 setSelectedItem={setSelectedItem}
                 expandedItems={expandedItems}
@@ -249,7 +276,6 @@ const OverviewLayout = () => {
           {selectedItem ? (
             <div key={selectedItem.id} className="flex-1 flex flex-col">
               <OverviewStats overview={overview} loading={loadingOverview} />
-
               <ChatPanel
                 item={selectedItem}
                 overview={overview}
@@ -284,8 +310,10 @@ const OverviewLayout = () => {
         onClose={() => dispatch(setTaskPopupOpen(false))}
         onSubmit={async () => {
           await refreshTimeline();
-          showToast("Task created successfully");
+          showToast("Task created successfully ✅");
         }}
+        workspaces={workspaces}
+        teams={teams}
       />
 
       <WorkspacePopup
@@ -294,8 +322,36 @@ const OverviewLayout = () => {
         onSubmit={async (data) => {
           await createWorkspace(data);
           await refreshTimeline();
-          showToast("Workspace created successfully");
+          showToast("Workspace created successfully 🎉");
         }}
+      />
+
+      <ProjectPopup
+        isOpen={isProjectPopupOpen}
+        onClose={() => dispatch(setIsProjectPopupOpen(false))}
+        onSubmit={async (data) => {
+          if (!selectedWorkspace?.id) {
+            showToast("Please select a workspace first");
+            return;
+          }
+          await createProject(selectedWorkspace.id, data);
+          await refreshTimeline();
+          showToast("Project created successfully 📁");
+        }}
+        workspaces={workspaces}
+        teams={teams}
+      />
+
+      <SubtaskPopup
+        isOpen={isSubtaskPopupOpen}
+        onClose={() => dispatch(setIsSubtaskPopupOpen(false))}
+        onSubmit={async (data) => {
+          await createSubtask(data);
+          await refreshTimeline();
+          showToast("Subtask created successfully ✅");
+        }}
+        taskId={selectedTask?.id}
+        taskTitle={selectedTask?.title}
       />
 
       {/* Toast Notification */}
