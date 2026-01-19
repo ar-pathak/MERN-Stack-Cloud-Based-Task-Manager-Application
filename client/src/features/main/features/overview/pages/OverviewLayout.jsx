@@ -43,8 +43,15 @@ const OverviewLayout = () => {
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   const [toast, setToast] = useState(null);
-  const [selectedTask, setSelectedTask] = useState(null); // For subtask creation
-  const [selectedWorkspace, setSelectedWorkspace] = useState(null); // For project creation
+  const [selectedTask, setSelectedTask] = useState(null);
+  const [selectedWorkspace, setSelectedWorkspace] = useState(null);
+
+  // NEW: Task creation context
+  const [taskCreationContext, setTaskCreationContext] = useState({
+    level: 'global',
+    workspaceId: null,
+    projectId: null
+  });
 
   const dispatch = useDispatch();
   const timelineRaw = useSelector((state) => state.overview.overviewData?.timeline);
@@ -197,6 +204,34 @@ const OverviewLayout = () => {
     }
   };
 
+  // NEW: Enhanced task creation handlers
+  const handleCreateGlobalTask = () => {
+    setTaskCreationContext({
+      level: 'global',
+      workspaceId: null,
+      projectId: null
+    });
+    dispatch(setTaskPopupOpen(true));
+  };
+
+  const handleCreateWorkspaceTask = (workspace) => {
+    setTaskCreationContext({
+      level: 'workspace',
+      workspaceId: workspace.id,
+      projectId: null
+    });
+    dispatch(setTaskPopupOpen(true));
+  };
+
+  const handleCreateProjectTask = (workspace, project) => {
+    setTaskCreationContext({
+      level: 'project',
+      workspaceId: workspace.id,
+      projectId: project.id
+    });
+    dispatch(setTaskPopupOpen(true));
+  };
+
   const handleCreateSubtask = (task) => {
     setSelectedTask(task);
     dispatch(setIsSubtaskPopupOpen(true));
@@ -207,14 +242,30 @@ const OverviewLayout = () => {
     dispatch(setIsProjectPopupOpen(true));
   };
 
-  // Get workspaces and teams for dropdowns
+  // Get workspaces and projects for dropdowns
   const workspaces = useMemo(() => {
     return timeline
       .filter(item => item.type === "workspace")
-      .map(ws => ({ id: ws.id, name: ws.name }));
+      .map(ws => ({ id: ws.id, name: ws.name, workspace: ws.id }));
   }, [timeline]);
 
-  const teams = []; // Add your teams logic here if available
+  const projects = useMemo(() => {
+    const allProjects = [];
+    timeline
+      .filter(item => item.type === "workspace")
+      .forEach(ws => {
+        (ws.projects || []).forEach(proj => {
+          allProjects.push({
+            id: proj.id,
+            name: proj.name,
+            workspace: ws.id
+          });
+        });
+      });
+    return allProjects;
+  }, [timeline]);
+
+  const teams = []; // Add teams logic when available
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
@@ -225,6 +276,7 @@ const OverviewLayout = () => {
           setSearchQuery={setSearchQuery}
           filterType={filterType}
           setFilterType={setFilterType}
+          onCreateGlobalTask={handleCreateGlobalTask}
         />
 
         {loadingTimeline && (
@@ -255,9 +307,15 @@ const OverviewLayout = () => {
                 key={item.id}
                 workspaceId={item.id}
                 workspace={item}
-                handleCreate={(workspace, type) => {
+                handleCreate={(workspace, type, context, project) => {
                   if (type === 'project') {
                     handleCreateProject(workspace);
+                  } else if (type === 'task') {
+                    if (context === 'project' && project) {
+                      handleCreateProjectTask(workspace, project);
+                    } else {
+                      handleCreateWorkspaceTask(workspace);
+                    }
                   }
                 }}
                 selectedItem={selectedItem}
@@ -312,7 +370,11 @@ const OverviewLayout = () => {
           await refreshTimeline();
           showToast("Task created successfully ✅");
         }}
+        level={taskCreationContext.level}
+        workspaceId={taskCreationContext.workspaceId}
+        projectId={taskCreationContext.projectId}
         workspaces={workspaces}
+        projects={projects}
         teams={teams}
       />
 
