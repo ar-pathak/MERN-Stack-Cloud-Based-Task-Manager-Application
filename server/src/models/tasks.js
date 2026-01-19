@@ -7,7 +7,6 @@ const taskSchema = new mongoose.Schema({
 
     workspace: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace" },
     project: { type: mongoose.Schema.Types.ObjectId, ref: "Project" },
-    team: { type: mongoose.Schema.Types.ObjectId, ref: "Team" },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 

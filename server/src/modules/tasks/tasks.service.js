@@ -10,7 +10,6 @@ const taskService = {
             title: taskData.title,
             workspace: scope.workspaceId || null,
             project: scope.projectId || null,
-            team: scope.teamId || null
         });
 
         if (existingTask) {
@@ -22,7 +21,6 @@ const taskService = {
             createdBy: userId,
             workspace: scope.workspaceId || null,
             project: scope.projectId || null,
-            team: scope.teamId || null
         });
     },
     addTaskAssignees: async (userId, taskId, assigneesData) => {

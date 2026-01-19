@@ -45,23 +45,6 @@ const taskController = {
             handleError(error, res);
         }
     },
-    createTaskAtTeamLevel: async (req, res) => {
-        try {
-            const userId = req.user._id;
-            const { workspaceId, teamId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-                throw new Error('Invalid workspace Id')
-            }
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error('Invalid team Id')
-            }
-            const data = createTaskSchema.parse(req.body);
-            const task = await taskService.createTask(userId, data, { workspaceId, teamId })
-            sendSuccess(res, task)
-        } catch (error) {
-            handleError(error, res);
-        }
-    },
     addTaskAssignees: async (req, res) => {
         try {
             const userId = req.user._id;

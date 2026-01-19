@@ -92,3 +92,16 @@ export const deleteWorkspace = async (workspaceId) => {
         };
     }
 };
+
+
+export const getWorkspaceMembers = async (workspaceId) => {
+    try {
+        const response = await api.get(`/api/workspace/${workspaceId}/members`);
+        return response.data?.data || response.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch members",
+            status: error.response?.status,
+        };
+    }
+};

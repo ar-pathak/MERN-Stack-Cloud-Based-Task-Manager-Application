@@ -15,9 +15,6 @@ router.post('/workspace/:workspaceId/createTasksAtWorkspaceLevel', checkCanCreat
 //creating task at project level
 router.post('/workspace/:workspaceId/project/:projectId/createTasksAtProjectLevel', checkCanCreateTask(), taskController.createTaskAtProjectLevel)
 
-//creating task at team level
-router.post('/workspace/:workspaceId/team/:teamId/createTasksAtTeamLevel', checkCanCreateTask(), taskController.createTaskAtTeamLevel)
-
 //add assignees to task
 router.patch('/:taskId/assignees/add', taskController.addTaskAssignees)
 

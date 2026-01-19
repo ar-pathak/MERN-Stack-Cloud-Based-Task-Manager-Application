@@ -11,7 +11,7 @@ import {
     FolderOpen,
 } from "lucide-react";
 import ScrollBar from "../../../../common/components/ScrollBar";
-import { createTask } from "../../../../service/task.service";
+import { createGlobalTask } from "../../../../service/task.service";
 
 const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces = [], projects = [], teams = [] }) => {
     const [formData, setFormData] = useState({
@@ -67,7 +67,7 @@ const TaskPopup = ({ isOpen, onClose, onSubmit, isGlobalLevel = true, workspaces
 
         setIsSubmitting(true);
         try {
-            const created = await createTask(formData);
+            const created = await createGlobalTask(formData);
             setFormData({
                 title: "",
                 description: "",
