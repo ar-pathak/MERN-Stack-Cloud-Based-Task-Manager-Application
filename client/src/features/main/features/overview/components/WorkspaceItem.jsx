@@ -16,12 +16,15 @@ import { setIsProjectPopupOpen, setTaskPopupOpen } from "../../../../../store/sl
 const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, setSelectedItem, expandedItems, toggleExpand }) => {
     const dispatch = useDispatch();
 
+    // FIX: Permissions extraction safely
+    const canCreateProject = workspace.permissions?.canCreateProject;
+    const canCreateTaskInWs = workspace.permissions?.canCreateTask;
+
     return (
         <div key={workspaceId} className="mb-2">
             {/* Workspace Row */}
             <div
-                className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === workspaceId ? 'bg-slate-800/80 border-l-2 border-sky-500' : ''
-                    }`}
+                className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === workspaceId ? 'bg-slate-800/80 border-l-2 border-sky-500' : ''}`}
                 onClick={() => {
                     setSelectedItem(workspace);
                     toggleExpand(workspaceId);
@@ -35,15 +38,9 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                         }}
                         className="p-0.5 hover:bg-slate-700/50 rounded"
                     >
-                        {expandedItems.has(workspaceId) ? (
-                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                        ) : (
-                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                        )}
+                        {expandedItems.has(workspaceId) ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
                     </button>
-                ) : (
-                    <div className="w-5 h-5" />
-                )}
+                ) : <div className="w-5 h-5" />}
 
                 <div className="relative">
                     <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500/20 to-blue-600/20 border border-sky-500/30 flex items-center justify-center">
@@ -66,26 +63,33 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
                 </div>
 
                 <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleCreate(workspace, 'project', 'workspace');
-                        }}
-                        className="p-1 hover:bg-slate-700/50 rounded"
-                        title="Add Project"
-                    >
-                        <FolderOpen className="h-3.5 w-3.5 text-slate-400" />
-                    </button>
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            dispatch(setTaskPopupOpen(true)); // ✅ Fixed: was missing (true)
-                        }}
-                        className="p-1 hover:bg-slate-700/50 rounded"
-                        title="Add Task"
-                    >
-                        <CheckSquare className="h-3.5 w-3.5 text-slate-400" />
-                    </button>
+                    {/* FIX: Add Project Button Permission Check */}
+                    {canCreateProject && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleCreate(workspace, 'project', 'workspace');
+                            }}
+                            className="p-1 hover:bg-slate-700/50 rounded"
+                            title="Add Project"
+                        >
+                            <FolderOpen className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                    )}
+
+                    {/* FIX: Add Task Button Permission Check */}
+                    {canCreateTaskInWs && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                dispatch(setTaskPopupOpen(true));
+                            }}
+                            className="p-1 hover:bg-slate-700/50 rounded"
+                            title="Add Task"
+                        >
+                            <CheckSquare className="h-3.5 w-3.5 text-slate-400" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -93,62 +97,64 @@ const WorkspaceItem = ({ workspaceId, workspace, handleCreate, selectedItem, set
             {expandedItems.has(workspaceId) && (
                 <div className="ml-6 mt-1 space-y-1">
                     {/* Projects */}
-                    {workspace.projects?.map(project => (
-                        <div key={project.id}>
-                            <div
-                                className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === project.id ? 'bg-slate-800/80 border-l-2 border-purple-500' : ''
-                                    }`}
-                                onClick={() => setSelectedItem(project)}
-                            >
-                                {(project.tasks?.length > 0) ? (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleExpand(project.id); // ✅ Fixed: was using workspaceId instead of project.id
-                                        }}
-                                        className="p-0.5 hover:bg-slate-700/50 rounded"
-                                    >
-                                        {expandedItems.has(project.id) ? (
-                                            <ChevronDown className="h-4 w-4 text-slate-400" />
-                                        ) : (
-                                            <ChevronRight className="h-4 w-4 text-slate-400" />
-                                        )}
-                                    </button>
-                                ) : (
-                                    <div className="w-5 h-5" />
-                                )}
+                    {workspace.projects?.map(project => {
+                        // FIX: Project level permission check
+                        const canCreateTaskInProject = project.permissions?.canCreateTask;
 
-                                <div className="h-8 w-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                                    <FolderOpen className="h-4 w-4 text-purple-400" />
-                                </div>
-                                <span className="text-sm font-medium text-slate-200 flex-1 truncate">{project.name}</span>
-                                <button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        dispatch(setTaskPopupOpen(true));
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
-                                    title="Add Task"
+                        return (
+                            <div key={project.id}>
+                                <div
+                                    className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === project.id ? 'bg-slate-800/80 border-l-2 border-purple-500' : ''}`}
+                                    onClick={() => setSelectedItem(project)}
                                 >
-                                    <Plus className="h-3.5 w-3.5 text-slate-400" />
-                                </button>
-                            </div>
+                                    {(project.tasks?.length > 0) ? (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                toggleExpand(project.id);
+                                            }}
+                                            className="p-0.5 hover:bg-slate-700/50 rounded"
+                                        >
+                                            {expandedItems.has(project.id) ? <ChevronDown className="h-4 w-4 text-slate-400" /> : <ChevronRight className="h-4 w-4 text-slate-400" />}
+                                        </button>
+                                    ) : <div className="w-5 h-5" />}
 
-                            {/* Tasks under Project */}
-                            {expandedItems.has(project.id) && project.tasks?.map(task => (
-                                <div key={task.id} className="ml-6">
-                                    <TaskItem
-                                        task={task}
-                                        selectedItem={selectedItem}
-                                        setSelectedItem={setSelectedItem}
-                                        expandedItems={expandedItems}
-                                        toggleExpand={toggleExpand}
-                                        onCreateSubtask={(task) => handleCreate(task, 'subtask', 'task')}
-                                    />
+                                    <div className="h-8 w-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
+                                        <FolderOpen className="h-4 w-4 text-purple-400" />
+                                    </div>
+                                    <span className="text-sm font-medium text-slate-200 flex-1 truncate">{project.name}</span>
+
+                                    {/* FIX: Add Task in Project Permission Check */}
+                                    {canCreateTaskInProject && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                dispatch(setTaskPopupOpen(true));
+                                            }}
+                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                                            title="Add Task"
+                                        >
+                                            <Plus className="h-3.5 w-3.5 text-slate-400" />
+                                        </button>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    ))}
+
+                                {/* Tasks under Project */}
+                                {expandedItems.has(project.id) && project.tasks?.map(task => (
+                                    <div key={task.id} className="ml-6">
+                                        <TaskItem
+                                            task={task}
+                                            selectedItem={selectedItem}
+                                            setSelectedItem={setSelectedItem}
+                                            expandedItems={expandedItems}
+                                            toggleExpand={toggleExpand}
+                                            onCreateSubtask={(task) => handleCreate(task, 'subtask', 'task')}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        );
+                    })}
 
                     {/* Direct Workspace Tasks */}
                     {workspace.tasks?.length > 0 && (

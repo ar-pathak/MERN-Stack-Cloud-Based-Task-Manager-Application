@@ -1,6 +1,6 @@
 
 const Workspace = require('../../models/workspace');
-const WorkspaceMember = require('../../models/workspaceMember');
+const WorkspaceMember = require('../../models/workspaceMember.js');
 const WorkspaceInvite = require('../../models/workspaceInvite');
 const sendMail = require('../../helpers/sendEmail')
 

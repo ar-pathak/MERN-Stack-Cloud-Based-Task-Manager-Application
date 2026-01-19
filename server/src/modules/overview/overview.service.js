@@ -1,11 +1,15 @@
-const WorkspaceMember = require("../../models/workspaceMember");
 const Workspace = require("../../models/workspace");
 const Project = require("../../models/project");
 const Task = require("../../models/tasks");
 const Subtask = require("../../models/subtasks");
+const permissionService = require("./permission.service");
+const WorkspaceMember = require("../../models/workspaceMember");
 
 const overviewService = {
     activity: async (userId) => {
+        // Get user's permissions
+        const userPermissions = await permissionService.getUserPermissionsForTimeline(userId);
+
         const memberships = await WorkspaceMember
             .find({ user: userId })
             .select("workspace")
@@ -13,14 +17,25 @@ const overviewService = {
 
         const workspaceIds = memberships.map(m => m.workspace).filter(Boolean);
 
+        // Also include workspaces created by user
+        const createdWorkspaces = await Workspace.find({ createdBy: userId }).lean();
+        const createdWorkspaceIds = createdWorkspaces.map(w => w._id);
+        const allWorkspaceIds = [...new Set([...workspaceIds, ...createdWorkspaceIds])];
+
         const [workspaces, projects, tasks, subtasks] = await Promise.all([
-            Workspace.find({ _id: { $in: workspaceIds } }).lean(),
-            Project.find({ workspace: { $in: workspaceIds } }).lean(),
+            Workspace.find({ _id: { $in: allWorkspaceIds } }).lean(),
+            Project.find({
+                $or: [
+                    { workspace: { $in: allWorkspaceIds } },
+                    { owner: userId },
+                    { 'members.user': userId }
+                ]
+            }).lean(),
             Task.find({
                 $or: [
                     { assignees: userId },
                     { createdBy: userId },
-                    { workspace: { $in: workspaceIds } }
+                    { workspace: { $in: allWorkspaceIds } }
                 ]
             }).lean(),
             Subtask.find({}).lean()
@@ -42,13 +57,46 @@ const overviewService = {
         const globalTasks = [];
 
         for (const t of tasks) {
+            const taskId = String(t._id);
+
+            // Get permissions with fallback chain: task -> project -> workspace
+            let taskPermissions = userPermissions.tasks[taskId] || {};
+
+            // If task has a project, inherit project permissions
+            if (t.project && !taskPermissions.role) {
+                const projId = String(t.project);
+                const projPermissions = userPermissions.projects[projId];
+                if (projPermissions) {
+                    taskPermissions = {
+                        canCreateSubtask: projPermissions.canCreateTask || false,
+                        role: projPermissions.role || null
+                    };
+                }
+            }
+
+            // If task has a workspace (and no project permissions), inherit workspace permissions
+            if (t.workspace && !taskPermissions.role) {
+                const wsId = String(t.workspace);
+                const wsPermissions = userPermissions.workspaces[wsId];
+                if (wsPermissions) {
+                    taskPermissions = {
+                        canCreateSubtask: wsPermissions.canCreateTask || false,
+                        role: wsPermissions.role || null
+                    };
+                }
+            }
+
             const taskObj = {
                 id: t._id,
                 type: "task",
                 title: t.title,
                 status: t.status,
                 updatedAt: t.updatedAt,
-                subtasks: subtasksByTask[String(t._id)] || []
+                subtasks: subtasksByTask[taskId] || [],
+                permissions: {
+                    canCreateSubtask: taskPermissions.canCreateSubtask || false,
+                    role: taskPermissions.role || null
+                }
             };
 
             if (t.project) {
@@ -65,16 +113,29 @@ const overviewService = {
         }
 
         const workspaceNodes = workspaces.map(ws => {
+            const wsId = String(ws._id);
+            const wsPermissions = userPermissions.workspaces[wsId] || {};
+
             const wsProjects = projects
-                .filter(p => String(p.workspace) === String(ws._id))
-                .map(p => ({
-                    id: p._id,
-                    type: "project",
-                    name: p.name,
-                    updatedAt: p.updatedAt,
-                    tasks: (tasksByProject[String(p._id)] || [])
-                        .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-                }));
+                .filter(p => String(p.workspace) === wsId)
+                .map(p => {
+                    const projId = String(p._id);
+                    // Get project permissions, fallback to workspace permissions
+                    const projPermissions = userPermissions.projects[projId] || wsPermissions;
+
+                    return {
+                        id: p._id,
+                        type: "project",
+                        name: p.name,
+                        updatedAt: p.updatedAt,
+                        tasks: (tasksByProject[projId] || [])
+                            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+                        permissions: {
+                            canCreateTask: projPermissions.canCreateTask || false,
+                            role: projPermissions.role || null
+                        }
+                    };
+                });
 
             return {
                 id: ws._id,
@@ -82,12 +143,16 @@ const overviewService = {
                 name: ws.name,
                 updatedAt: ws.updatedAt,
                 projects: wsProjects,
-                tasks: (tasksByWorkspace[String(ws._id)] || [])
-                    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+                tasks: (tasksByWorkspace[wsId] || [])
+                    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+                permissions: {
+                    canCreateProject: wsPermissions.canCreateProject || false,
+                    canCreateTask: wsPermissions.canCreateTask || false,
+                    role: wsPermissions.role || null
+                }
             };
         });
 
-        // Final mixed activity feed
         const feed = [...workspaceNodes, ...globalTasks]
             .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
