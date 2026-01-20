@@ -391,16 +391,17 @@ const OverviewLayout = () => {
       <ProjectPopup
         isOpen={isProjectPopupOpen}
         onClose={() => dispatch(setIsProjectPopupOpen(false))}
-        onSubmit={async (data) => {
+        onSubmit={async (projectData) => {
           if (!selectedWorkspace?.id) {
             showToast("Please select a workspace first");
             return;
           }
-          await createProject(selectedWorkspace.id, data);
+          await createProject(selectedWorkspace.id, projectData);
           await refreshTimeline();
           showToast("Project created successfully 📁");
         }}
-        workspaces={workspaces}
+        workspaceId={selectedWorkspace?.id}
+        workspaceName={selectedWorkspace?.name}
         teams={teams}
       />
 

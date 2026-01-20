@@ -10,7 +10,7 @@ export const useScrollDirection = (ref) => {
 
         const handleScroll = () => {
             const currentY = el.scrollTop;
-            
+
             // IGNORE tiny movements (threshold) to prevent jitter
             if (Math.abs(currentY - lastScrollY.current) < 10) return;
 
