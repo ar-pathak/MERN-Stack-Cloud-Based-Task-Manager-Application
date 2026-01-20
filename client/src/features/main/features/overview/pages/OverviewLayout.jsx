@@ -307,15 +307,21 @@ const OverviewLayout = () => {
                 key={item.id}
                 workspaceId={item.id}
                 workspace={item}
-                handleCreate={(workspace, type, context, project) => {
+                handleCreate={(workspace, type, context, project, task) => {
                   if (type === 'project') {
                     handleCreateProject(workspace);
-                  } else if (type === 'task') {
+                  }
+                  else if (type === 'task') {
                     if (context === 'project' && project) {
                       handleCreateProjectTask(workspace, project);
                     } else {
                       handleCreateWorkspaceTask(workspace);
                     }
+                  }
+                  else if (type === 'subtask') {
+                    setSelectedWorkspace(workspace);
+                    setSelectedTask(task);
+                    dispatch(setIsSubtaskPopupOpen(true));
                   }
                 }}
                 selectedItem={selectedItem}
@@ -413,7 +419,7 @@ const OverviewLayout = () => {
           await refreshTimeline();
           showToast("Subtask created successfully ✅");
         }}
-        taskId={selectedTask?.id}
+        taskId={selectedTask?.id || selectedTask?._id}
         taskTitle={selectedTask?.title}
       />
 

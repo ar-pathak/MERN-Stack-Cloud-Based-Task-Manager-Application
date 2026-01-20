@@ -4,6 +4,8 @@ import api from "../config/axios";
 /**
  * Subtask Service
  * Handles all subtask-related API calls
+ * 
+ * IMPORTANT: Backend expects "taskId" not "task" in payload
  */
 
 /**
@@ -42,16 +44,54 @@ export const getSubtaskById = async (subtaskId) => {
 
 /**
  * Create a new subtask
- * @param {Object} subtaskData - Subtask data { task, title, completed }
+ * @param {Object} subtaskData - Subtask data
+ * @param {string} subtaskData.taskId - Parent task ID (REQUIRED)
+ * @param {string} subtaskData.title - Subtask title (REQUIRED)
+ * @param {string} subtaskData.description - Subtask description (OPTIONAL)
+ * @param {string} subtaskData.assignedTo - User ID to assign (OPTIONAL)
+ * @param {string} subtaskData.dueDate - Due date (OPTIONAL)
+ * @param {boolean} subtaskData.completed - Completion status (OPTIONAL, default: false)
  * @returns {Promise<Object>} Created subtask
  */
 export const createSubtask = async (subtaskData) => {
     try {
-        const response = await api.post('/api/subtasks/createSubtask', subtaskData);
+        // Validate required fields
+        if (!subtaskData.taskId) {
+            throw new Error("taskId is required");
+        }
+
+        if (!subtaskData.title || !subtaskData.title.trim()) {
+            throw new Error("title is required");
+        }
+
+        // Build clean payload
+        const payload = {
+            taskId: subtaskData.taskId,
+            title: subtaskData.title.trim()
+        };
+
+        // Add optional fields only if they exist
+        if (subtaskData.description && subtaskData.description.trim()) {
+            payload.description = subtaskData.description.trim();
+        }
+
+        if (subtaskData.assignedTo) {
+            payload.assignedTo = subtaskData.assignedTo;
+        }
+
+        if (subtaskData.dueDate) {
+            payload.dueDate = subtaskData.dueDate;
+        }
+
+        if (subtaskData.completed !== undefined) {
+            payload.completed = subtaskData.completed;
+        }
+
+        const response = await api.post('/api/subtasks/createSubtask', payload);
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to create subtask",
+            message: error.response?.data?.message || error.message || "Failed to create subtask",
             status: error.response?.status,
         };
     }
