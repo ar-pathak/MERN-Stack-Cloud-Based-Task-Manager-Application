@@ -1,7 +1,8 @@
 const isUserTaskAssignee = require('../../helpers/isUserTaskAssignee');
 const { canCreateTask } = require('../../middleware/resolveTaskCreatePermission');
 const Task = require('../../models/tasks')
-const Team = require('../../models/team')
+const Team = require('../../models/team');
+const { touchParents } = require('../utils/updateParent');
 
 const taskService = {
     createTask: async (userId, taskData, scope = {}) => {
@@ -16,13 +17,18 @@ const taskService = {
             throw new Error("Task with this name already exists in this scope");
         }
 
-        return Task.create({
+        const task = await Task.create({
             ...taskData,
             createdBy: userId,
             workspace: scope.workspaceId || null,
             project: scope.projectId || null,
         });
+
+        await touchParents(task);
+
+        return task;
     },
+
     addTaskAssignees: async (userId, taskId, assigneesData) => {
         const task = await Task.findById(taskId);
 
@@ -65,6 +71,7 @@ const taskService = {
                 $addToSet: updateQuery
             }
         );
+        await touchParents(task);
 
         return { message: "Added assignees to task" };
     },
@@ -110,6 +117,7 @@ const taskService = {
                 $pull: pullQuery
             }
         );
+        await touchParents(task);
 
         return { message: "Removed assignees from task" };
     },
@@ -140,7 +148,7 @@ const taskService = {
                 $set: { status: newStatus }
             }
         );
-
+        await touchParents(task);
         return { message: "Task status updated successfully" };
     },
     deleteTask: async (userId, taskId) => {
@@ -168,6 +176,7 @@ const taskService = {
                 $set: { status: "deleted" }
             }
         );
+        await touchParents(task);
 
         return { message: "Task deleted successfully" };
     },
@@ -205,6 +214,7 @@ const taskService = {
                 $set: { status: "active" }
             }
         );
+        await touchParents(task);
 
         return { message: "Task restored successfully" };
     },
@@ -225,6 +235,7 @@ const taskService = {
         }
 
         await Task.deleteOne({ _id: taskId });
+        await touchParents(task);
 
         return { message: "Task permanently deleted" };
     },

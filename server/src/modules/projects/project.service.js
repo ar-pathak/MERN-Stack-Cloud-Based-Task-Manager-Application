@@ -1,4 +1,5 @@
 const Project = require('../../models/project');
+const { touchWorkspace } = require('../utils/updateParent');
 
 const projectService = {
     createProject: async ({ data, workspaceId, userId }) => {
@@ -21,7 +22,7 @@ const projectService = {
                 ? data.members
                 : [{ user: userId, role: "admin" }]
         });
-
+        await touchWorkspace(workspaceId);
         return project;
     },
     getProjectsByWorkspace: async (workspaceId) => {
@@ -43,6 +44,7 @@ const projectService = {
         if (!project) {
             throw new Error('Project not found')
         }
+        await touchWorkspace(project.workspace);
         return project;
     },
     deleteProject: async (projectId) => {
@@ -50,6 +52,7 @@ const projectService = {
         if (!project) {
             throw new Error('Project not found')
         }
+        await touchWorkspace(project.workspace);
         return project;
     },
     getProjectTeams: async (projectId) => {

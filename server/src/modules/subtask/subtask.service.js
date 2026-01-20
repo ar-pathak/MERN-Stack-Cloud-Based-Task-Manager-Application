@@ -28,6 +28,10 @@ class SubtaskService {
 
         await subtask.save();
 
+        await Task.findByIdAndUpdate(taskId, {
+            $set: { updatedAt: new Date() }
+        });
+
         // Populate fields before returning
         await subtask.populate([
             { path: 'assignedTo', select: 'name email avatar' },
@@ -105,7 +109,9 @@ class SubtaskService {
         });
 
         await subtask.save();
-
+        await Task.findByIdAndUpdate(subtask.task, {
+            $set: { updatedAt: new Date() }
+        });
         await subtask.populate([
             { path: 'assignedTo', select: 'name email avatar' },
             { path: 'completedBy', select: 'name email avatar' }
@@ -134,7 +140,9 @@ class SubtaskService {
         }
 
         await subtask.save();
-
+        await Task.findByIdAndUpdate(subtask.task, {
+            $set: { updatedAt: new Date() }
+        });
         await subtask.populate([
             { path: 'assignedTo', select: 'name email avatar' },
             { path: 'completedBy', select: 'name email avatar' }
@@ -154,7 +162,9 @@ class SubtaskService {
 
         const taskId = subtask.task;
         await subtask.deleteOne();
-
+        await Task.findByIdAndUpdate(taskId, {
+            $set: { updatedAt: new Date() }
+        });
         // Reorder remaining subtasks
         await this.reorderSubtasks(taskId);
 
