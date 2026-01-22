@@ -1,20 +1,11 @@
 // services/project.service.js
 import api from "../config/axios";
 
-/**
- * Project Service
- * Handles all project-related API calls
- */
 
-/**
- * Get all projects for a workspace
- * @param {string} workspaceId - Workspace ID
- * @returns {Promise<Object>} Projects data
- */
+
 export const getProjectsByWorkspace = async (workspaceId) => {
     try {
         const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects`);
-        // Backend returns data directly (not wrapped in sendSuccess)
         return response.data || [];
     } catch (error) {
         throw {
@@ -24,16 +15,9 @@ export const getProjectsByWorkspace = async (workspaceId) => {
     }
 };
 
-/**
- * Get project by ID
- * @param {string} workspaceId - Workspace ID
- * @param {string} projectId - Project ID
- * @returns {Promise<Object>} Project data
- */
 export const getProjectById = async (workspaceId, projectId) => {
     try {
         const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`);
-        // Backend returns data directly
         return response.data || null;
     } catch (error) {
         throw {
@@ -43,12 +27,6 @@ export const getProjectById = async (workspaceId, projectId) => {
     }
 };
 
-/**
- * Create a new project
- * @param {string} workspaceId - Workspace ID
- * @param {Object} projectData - Project data
- * @returns {Promise<Object>} Created project
- */
 export const createProject = async (workspaceId, projectData) => {
     try {
         const response = await api.post(`/api/projects/workspaces/${workspaceId}/projects`, projectData);
@@ -61,13 +39,6 @@ export const createProject = async (workspaceId, projectData) => {
     }
 };
 
-/**
- * Update project
- * @param {string} workspaceId - Workspace ID
- * @param {string} projectId - Project ID
- * @param {Object} projectData - Updated project data
- * @returns {Promise<Object>} Updated project
- */
 export const updateProject = async (workspaceId, projectId, projectData) => {
     try {
         const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`, projectData);
@@ -80,14 +51,16 @@ export const updateProject = async (workspaceId, projectId, projectData) => {
     }
 };
 
-/**
- * Delete project
- * @param {string} workspaceId - Workspace ID
- * @param {string} projectId - Project ID
- * @returns {Promise<Object>} Deletion response
- */
-export const deleteProject = async (workspaceId, projectId) => {
+export const deleteProject = async (projectId) => {
     try {
+        // Extract workspaceId from project if needed, or fetch it first
+        const project = await api.get(`/api/projects/${projectId}`).catch(() => null);
+        const workspaceId = project?.data?.workspace;
+        
+        if (!workspaceId) {
+            throw new Error("Workspace ID required for project deletion");
+        }
+        
         const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`);
         return response.data;
     } catch (error) {
@@ -98,3 +71,84 @@ export const deleteProject = async (workspaceId, projectId) => {
     }
 };
 
+// Project Teams Management
+export const getProjectTeams = async (workspaceId, projectId) => {
+    try {
+        const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`);
+        return response.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch project teams",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const addProjectTeams = async (workspaceId, projectId, teams) => {
+    try {
+        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`, {
+            teams
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add teams to project",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const removeProjectTeams = async (workspaceId, projectId, teams) => {
+    try {
+        const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`, {
+            data: { teams }
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove teams from project",
+            status: error.response?.status,
+        };
+    }
+};
+
+// Project Members Management
+export const getProjectMembers = async (workspaceId, projectId) => {
+    try {
+        const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`);
+        return response.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch project members",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const addProjectMembers = async (workspaceId, projectId, members) => {
+    try {
+        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, {
+            members
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add members to project",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const removeProjectMembers = async (workspaceId, projectId, users) => {
+    try {
+        const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, {
+            data: { users }
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove members from project",
+            status: error.response?.status,
+        };
+    }
+};

@@ -6,12 +6,6 @@ import api from "../config/axios";
  * Handles all team-related API calls
  */
 
-/**
- * Create a new team in a workspace
- * @param {string} workspaceId - Workspace ID
- * @param {Object} teamData - Team data { name, description }
- * @returns {Promise<Object>} Created team
- */
 export const createTeam = async (workspaceId, teamData) => {
     try {
         const response = await api.post(`/api/teams/workspaces/${workspaceId}/teams`, teamData);
@@ -24,11 +18,6 @@ export const createTeam = async (workspaceId, teamData) => {
     }
 };
 
-/**
- * Get all teams in a workspace
- * @param {string} workspaceId - Workspace ID
- * @returns {Promise<Array>} Teams data
- */
 export const getTeamsByWorkspace = async (workspaceId) => {
     try {
         const response = await api.get(`/api/teams/workspaces/${workspaceId}/teams`);
@@ -41,12 +30,6 @@ export const getTeamsByWorkspace = async (workspaceId) => {
     }
 };
 
-/**
- * Get team by ID
- * @param {string} workspaceId - Workspace ID
- * @param {string} teamId - Team ID
- * @returns {Promise<Object>} Team data
- */
 export const getTeamById = async (workspaceId, teamId) => {
     try {
         const response = await api.get(`/api/teams/workspaces/${workspaceId}/team/${teamId}`);
@@ -59,13 +42,6 @@ export const getTeamById = async (workspaceId, teamId) => {
     }
 };
 
-/**
- * Update team
- * @param {string} workspaceId - Workspace ID
- * @param {string} teamId - Team ID
- * @param {Object} teamData - Updated team data
- * @returns {Promise<Object>} Updated team
- */
 export const updateTeam = async (workspaceId, teamId, teamData) => {
     try {
         const response = await api.patch(`/api/teams/workspaces/${workspaceId}/team/${teamId}`, teamData);
@@ -78,12 +54,6 @@ export const updateTeam = async (workspaceId, teamId, teamData) => {
     }
 };
 
-/**
- * Delete team
- * @param {string} workspaceId - Workspace ID
- * @param {string} teamId - Team ID
- * @returns {Promise<Object>} Deletion response
- */
 export const deleteTeam = async (workspaceId, teamId) => {
     try {
         const response = await api.delete(`/api/teams/workspaces/${workspaceId}/team/${teamId}`);
@@ -91,6 +61,63 @@ export const deleteTeam = async (workspaceId, teamId) => {
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to delete team",
+            status: error.response?.status,
+        };
+    }
+};
+
+// NEW: Get team members
+export const getTeamMembers = async (workspaceId, teamId) => {
+    try {
+        const response = await api.get(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members`);
+        return response.data?.data || response.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch team members",
+            status: error.response?.status,
+        };
+    }
+};
+
+// NEW: Add team member
+export const addTeamMember = async (workspaceId, teamId, { memberId, role = "member" }) => {
+    try {
+        const response = await api.post(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members`, {
+            memberId,
+            role
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add team member",
+            status: error.response?.status,
+        };
+    }
+};
+
+// NEW: Remove team member
+export const removeTeamMember = async (workspaceId, teamId, memberId) => {
+    try {
+        const response = await api.delete(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members/${memberId}`);
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove team member",
+            status: error.response?.status,
+        };
+    }
+};
+
+// NEW: Update team member role
+export const updateTeamMemberRole = async (workspaceId, teamId, memberId, role) => {
+    try {
+        const response = await api.patch(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members/${memberId}/role`, {
+            role
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to update member role",
             status: error.response?.status,
         };
     }
