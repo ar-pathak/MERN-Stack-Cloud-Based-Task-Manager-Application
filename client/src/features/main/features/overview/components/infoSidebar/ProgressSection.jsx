@@ -6,7 +6,7 @@ import {
 
 
 // Enhanced Progress Section
-const EnhancedProgressSection = ({ item, overview }) => {
+const ProgressSection = ({ item, overview }) => {
     const data = useMemo(() => {
         if (item.type === 'workspace' && overview?.stats) {
             const { totalTasks = 0, completedTasks = 0, inProgressTasks = 0 } = overview.stats;
@@ -87,4 +87,4 @@ const EnhancedProgressSection = ({ item, overview }) => {
     );
 };
 
-export default EnhancedProgressSection
+export default ProgressSection

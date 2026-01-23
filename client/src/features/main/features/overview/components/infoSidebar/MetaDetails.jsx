@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 
 
-const EnhancedMetaDetails = ({ item }) => {
+const MetaDetails = ({ item }) => {
     const [copied, setCopied] = useState(false);
     const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-US', {
         month: 'short',
@@ -91,4 +91,4 @@ const EnhancedMetaDetails = ({ item }) => {
     );
 };
 
-export default EnhancedMetaDetails
+export default MetaDetails

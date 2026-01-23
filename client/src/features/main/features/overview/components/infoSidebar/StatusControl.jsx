@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 
-const EnhancedStatusControl = ({ item }) => {
+const StatusControl = ({ item }) => {
     const [status, setStatus] = useState(item.status || 'todo');
     const statuses = [
         { value: 'todo', label: 'To Do', color: 'slate' },
@@ -49,4 +49,4 @@ const EnhancedStatusControl = ({ item }) => {
     );
 };
 
-export default EnhancedStatusControl
+export default StatusControl

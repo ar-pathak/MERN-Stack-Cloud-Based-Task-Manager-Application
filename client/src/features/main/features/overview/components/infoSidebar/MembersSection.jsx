@@ -5,7 +5,7 @@ import {
     MoreVertical, UserMinus, Edit2, Image as ImageIcon,
 } from "lucide-react";
 
-const EnhancedMembersSection = ({ item }) => {
+const MembersSection = ({ item }) => {
     const [showInvite, setShowInvite] = useState(false);
     const [inviteEmail, setInviteEmail] = useState("");
     const [inviteRole, setInviteRole] = useState("member");
@@ -189,4 +189,4 @@ const EnhancedMembersSection = ({ item }) => {
 };
 
 
-export default EnhancedMembersSection
+export default MembersSection

@@ -7,18 +7,18 @@ import {
 } from "lucide-react";
 
 import QuickStatsSection from "./QuickStatsSection";
-import EnhancedProgressSection from "./EnhancedProgressSection";
-import EnhancedStatusControl from "./EnhancedStatusControl";
-import EnhancedQuickActions from "./EnhancedQuickActions";
-import EnhancedDescription from "./EnhancedDescription";
-import EnhancedMetaDetails from "./EnhancedMetaDetails";
-import EnhancedMembersSection from "./EnhancedMembersSection";
-import EnhancedTeamsSection from "./EnhancedTeamsSection";
+import ProgressSection from "./ProgressSection";
+import StatusControl from "./StatusControl";
+import QuickActions from "./QuickActions";
+import Description from "./Description";
+import MetaDetails from "./MetaDetails";
+import MembersSection from "./MembersSection";
+import TeamsSection from "./TeamsSection";
 import { SettingsSection } from "./SettingsSection";
 import DangerZoneSection from "./DangerZoneSection";
 import AnalyticsSection from "./AnalyticsSection";
 
-const EnhancedInfoSidebar = ({ item, overview, onClose }) => {
+const InfoSidebar = ({ item, overview, onClose }) => {
     const [activeTab, setActiveTab] = useState("overview");
     const [details, setDetails] = useState(item);
     const [loading, setLoading] = useState(false);
@@ -110,21 +110,21 @@ const EnhancedInfoSidebar = ({ item, overview, onClose }) => {
                             <QuickStatsSection item={item} overview={overview} />
 
                             {/* Progress */}
-                            <EnhancedProgressSection item={item} overview={overview} />
+                            <ProgressSection item={item} overview={overview} />
 
                             {/* Status & Priority (Tasks) */}
                             {item.type === 'task' && (
-                                <EnhancedStatusControl item={item} />
+                                <StatusControl item={item} />
                             )}
 
                             {/* Quick Actions */}
-                            <EnhancedQuickActions item={item} />
+                            <QuickActions item={item} />
 
                             {/* Description */}
-                            <EnhancedDescription item={item} />
+                            <Description item={item} />
 
                             {/* Meta Details */}
-                            <EnhancedMetaDetails item={item} />
+                            <MetaDetails item={item} />
                         </motion.div>
                     )}
 
@@ -148,8 +148,8 @@ const EnhancedInfoSidebar = ({ item, overview, onClose }) => {
                             exit={{ opacity: 0, x: -20 }}
                             className="space-y-6"
                         >
-                            <EnhancedMembersSection item={item} />
-                            {item.type === 'workspace' && <EnhancedTeamsSection item={item} />}
+                            <MembersSection item={item} />
+                            {item.type === 'workspace' && <TeamsSection item={item} />}
                         </motion.div>
                     )}
 
@@ -188,4 +188,4 @@ const EnhancedInfoSidebar = ({ item, overview, onClose }) => {
 };
 
 
-export default EnhancedInfoSidebar
+export default InfoSidebar

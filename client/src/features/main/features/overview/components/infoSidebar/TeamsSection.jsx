@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 
-const EnhancedTeamsSection = ({ item }) => {
+const TeamsSection = ({ item }) => {
     const [showCreate, setShowCreate] = useState(false);
     const [newTeamName, setNewTeamName] = useState("");
     const [newTeamDesc, setNewTeamDesc] = useState("");
@@ -116,4 +116,4 @@ const EnhancedTeamsSection = ({ item }) => {
 
 
 
-export default EnhancedTeamsSection
+export default TeamsSection

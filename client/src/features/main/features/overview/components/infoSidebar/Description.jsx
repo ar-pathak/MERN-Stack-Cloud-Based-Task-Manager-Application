@@ -5,7 +5,7 @@ import {
 } from "lucide-react";
 
 
-const EnhancedDescription = ({ item }) => {
+const Description = ({ item }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [description, setDescription] = useState(item.description || '');
 
@@ -61,4 +61,4 @@ const EnhancedDescription = ({ item }) => {
     );
 };
 
-export default EnhancedDescription
+export default Description

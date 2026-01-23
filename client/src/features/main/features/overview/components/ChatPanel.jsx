@@ -4,12 +4,11 @@ import {
     X, Loader2, Briefcase, FolderOpen, CheckSquare, Link as LinkIcon, Star, BellOff,
     Phone, Video, Info, Paperclip, Send, Smile, MessageSquare,
     Search, Image as ImageIcon,
-    Reply, Pin,
+    Reply, Pin
 } from "lucide-react";
 import ChatMessage from "./ChatMessage";
-import EnhancedInfoSidebar from "./infoSidebar/EnhancedInfoSidebar";
+import InfoSidebar from "./infoSidebar/InfoSidebar";
 
-// ==================== ENHANCED CHAT PANEL ====================
 
 const ChatPanel = ({
     item,
@@ -471,7 +470,7 @@ const ChatPanel = ({
                 {/* Info Sidebar */}
                 <AnimatePresence>
                     {showChatInfo && (
-                        <EnhancedInfoSidebar item={item} overview={overview} onClose={() => setShowChatInfo(false)} />
+                        <InfoSidebar item={item} overview={overview} onClose={() => setShowChatInfo(false)} />
                     )}
                 </AnimatePresence>
             </div>

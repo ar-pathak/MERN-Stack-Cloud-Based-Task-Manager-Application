@@ -4,7 +4,7 @@ import {
     Check, Link as LinkIcon, Star, Bell, BellOff, Image as ImageIcon, Archive, Zap
 } from "lucide-react";
 
-const EnhancedQuickActions = ({ item }) => {
+const QuickActions = ({ item }) => {
     const [starred, setStarred] = useState(item.starred || false);
     const [muted, setMuted] = useState(item.muted || false);
     const [copied, setCopied] = useState(false);
@@ -81,4 +81,4 @@ const EnhancedQuickActions = ({ item }) => {
         </section>
     );
 };
-export default EnhancedQuickActions
+export default QuickActions
