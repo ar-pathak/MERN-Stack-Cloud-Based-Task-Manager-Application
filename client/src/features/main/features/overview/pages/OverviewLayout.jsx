@@ -18,7 +18,7 @@ import {
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
 import TaskItem from "../components/TaskItem";
-import ChatPanel from "../components/ChatPanel";
+import ChatPanel from "../components/chat/ChatPanel";
 import EmptyState from "../components/EmptyState";
 import SidebarHeader from "../components/SidebarHeader";
 import OverviewStats from "../components/OverviewStats";
