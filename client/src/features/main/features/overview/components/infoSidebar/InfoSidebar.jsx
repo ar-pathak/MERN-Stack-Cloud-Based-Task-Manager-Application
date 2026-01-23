@@ -20,8 +20,6 @@ import AnalyticsSection from "./AnalyticsSection";
 
 const InfoSidebar = ({ item, overview, onClose }) => {
     const [activeTab, setActiveTab] = useState("overview");
-    const [details, setDetails] = useState(item);
-    const [loading, setLoading] = useState(false);
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -32,13 +30,13 @@ const InfoSidebar = ({ item, overview, onClose }) => {
 
     return (
         <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 384, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="border-l border-slate-800/50 bg-slate-950/60 backdrop-blur-xl flex-shrink-0 overflow-hidden flex flex-col"
+            initial={{ x: "100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: "100%", opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeInOut" }}
+            className="w-full h-full max-h-full flex flex-col bg-slate-950/60 backdrop-blur-xl overflow-hidden min-h-0"
         >
-            {/* Header */}
+            {/* Header - Fixed Height */}
             <div className="p-6 pb-4 border-b border-slate-800/50 flex-shrink-0">
                 <div className="flex justify-between items-start mb-4">
                     <motion.div
@@ -96,7 +94,7 @@ const InfoSidebar = ({ item, overview, onClose }) => {
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+            <div className="flex-1 basis-0 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-6">
                 <AnimatePresence mode="wait">
                     {activeTab === "overview" && (
                         <motion.div
@@ -104,26 +102,13 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
-                            className="space-y-6"
+                            className="space-y-6 pb-6"
                         >
-                            {/* Quick Stats */}
                             <QuickStatsSection item={item} overview={overview} />
-
-                            {/* Progress */}
                             <ProgressSection item={item} overview={overview} />
-
-                            {/* Status & Priority (Tasks) */}
-                            {item.type === 'task' && (
-                                <StatusControl item={item} />
-                            )}
-
-                            {/* Quick Actions */}
+                            {item.type === 'task' && <StatusControl item={item} />}
                             <QuickActions item={item} />
-
-                            {/* Description */}
                             <Description item={item} />
-
-                            {/* Meta Details */}
                             <MetaDetails item={item} />
                         </motion.div>
                     )}
@@ -134,7 +119,7 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
-                            className="space-y-6"
+                            className="space-y-6 pb-6"
                         >
                             <AnalyticsSection item={item} overview={overview} />
                         </motion.div>
@@ -146,7 +131,7 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
-                            className="space-y-6"
+                            className="space-y-6 pb-6"
                         >
                             <MembersSection item={item} />
                             {item.type === 'workspace' && <TeamsSection item={item} />}
@@ -159,7 +144,7 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
-                            className="space-y-6"
+                            className="space-y-6 pb-6"
                         >
                             <SettingsSection item={item} />
                             <DangerZoneSection item={item} />
@@ -187,5 +172,4 @@ const InfoSidebar = ({ item, overview, onClose }) => {
     );
 };
 
-
-export default InfoSidebar
+export default InfoSidebar;

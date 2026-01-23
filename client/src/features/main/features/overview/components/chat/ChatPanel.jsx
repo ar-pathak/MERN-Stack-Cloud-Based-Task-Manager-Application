@@ -78,56 +78,77 @@ const ChatPanel = ({
             exit={{ opacity: 0 }}
             className="flex-1 flex flex-col h-full overflow-hidden"
         >
-            <ChatHeader
-                item={item}
-                typingMembers={typingMembers}
-                showSearch={showSearch}
-                setShowSearch={setShowSearch}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                messageFilter={messageFilter}
-                setMessageFilter={setMessageFilter}
-                showChatInfo={showChatInfo}
-                setShowChatInfo={setShowChatInfo}
-            />
+            <AnimatePresence mode="wait">
+                {showChatInfo ? (
+                    <motion.div
+                        key="info"
+                        initial={{ x: "100%", opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: "100%", opacity: 0 }}
+                        className="w-full h-full flex overflow-hidden min-h-0"
+                    >
 
-            <PinnedBanner pinnedMessages={pinnedMessages} />
+                        <InfoSidebar
+                            item={item}
+                            overview={overview}
+                            onClose={() => setShowChatInfo(false)}
+                        />
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key="chat"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="flex-1 flex flex-col h-full overflow-hidden"
+                    >
+                        <ChatHeader
+                            item={item}
+                            typingMembers={typingMembers}
+                            showSearch={showSearch}
+                            setShowSearch={setShowSearch}
+                            searchQuery={searchQuery}
+                            setSearchQuery={setSearchQuery}
+                            messageFilter={messageFilter}
+                            setMessageFilter={setMessageFilter}
+                            showChatInfo={showChatInfo}
+                            setShowChatInfo={setShowChatInfo}
+                        />
 
-            <div className="flex-1 flex overflow-hidden min-h-0">
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <MessageList
-                        messages={filteredMessages}
-                        itemType={item.type}
-                        selectedMessage={selectedMessage}
-                        setSelectedMessage={setSelectedMessage}
-                        handleDeleteMessage={handleDeleteMessage}
-                        handlePinMessage={handlePinMessage}
-                        onReact={handleReaction}
-                        onReply={setReplyingTo}
-                        reactions={reactions}
-                        chatEndRef={chatEndRef}
-                    />
+                        <PinnedBanner pinnedMessages={pinnedMessages} />
 
-                    <ChatInput
-                        chatMessage={chatMessage}
-                        setChatMessage={setChatMessage}
-                        handleSend={handleSendWithContext}
-                        fileInputRef={fileInputRef}
-                        handleFileUpload={handleFileUpload}
-                        uploadingFile={uploadingFile}
-                        replyingTo={replyingTo}
-                        setReplyingTo={setReplyingTo}
-                        showEmojiPicker={showEmojiPicker}
-                        setShowEmojiPicker={setShowEmojiPicker}
-                    />
-                </div>
+                        <div className="flex-1 flex overflow-hidden min-h-0">
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                <MessageList
+                                    messages={filteredMessages}
+                                    itemType={item.type}
+                                    selectedMessage={selectedMessage}
+                                    setSelectedMessage={setSelectedMessage}
+                                    handleDeleteMessage={handleDeleteMessage}
+                                    handlePinMessage={handlePinMessage}
+                                    onReact={handleReaction}
+                                    onReply={setReplyingTo}
+                                    reactions={reactions}
+                                    chatEndRef={chatEndRef}
+                                />
 
-                <AnimatePresence>
-                    {showChatInfo && (
-                        <InfoSidebar item={item} overview={overview} onClose={() => setShowChatInfo(false)} />
-                    )}
-                </AnimatePresence>
-            </div>
+                                <ChatInput
+                                    chatMessage={chatMessage}
+                                    setChatMessage={setChatMessage}
+                                    handleSend={handleSendWithContext}
+                                    fileInputRef={fileInputRef}
+                                    handleFileUpload={handleFileUpload}
+                                    uploadingFile={uploadingFile}
+                                    replyingTo={replyingTo}
+                                    setReplyingTo={setReplyingTo}
+                                    showEmojiPicker={showEmojiPicker}
+                                    setShowEmojiPicker={setShowEmojiPicker}
+                                />
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 };
