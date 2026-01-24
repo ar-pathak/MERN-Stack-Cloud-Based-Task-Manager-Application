@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Plus, ChevronRight, ChevronDown, CheckSquare } from 'lucide-react';
 import { useDispatch } from "react-redux";
 import { setIsSubtaskPopupOpen } from "../../../../../store/slice/overviewSlice";
-import { usePermissions } from "../hook/usePermissions"; // IMPORT ADDED
+import { usePermissions } from "../hook/usePermissions";
 
 const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleExpand, onCreateSubtask, variant = 'child' }) => {
     const hasSubtasks = task.subtasks && task.subtasks.length > 0;
@@ -10,16 +10,17 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
     const isExpanded = expandedItems.has(task.id);
     const dispatch = useDispatch();
 
-    // FIX: Get permissions
     const { canCreateSubtask } = usePermissions(task);
 
     if (variant === 'global') {
         return (
             <div>
+                {/* Parent Task Row */}
                 <div
                     className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-sky-500' : ''}`}
                     onClick={() => setSelectedItem(task)}
                 >
+                    {/* ... (Existing Parent Task Content) ... */}
                     {hasSubtasks ? (
                         <button
                             onClick={(e) => {
@@ -45,8 +46,6 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                         {task.isHighPriority && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/10 text-red-400">High</span>
                         )}
-
-                        {/* FIX: Conditional Rendering for Add Button */}
                         {canCreateSubtask && (
                             <button
                                 onClick={(e) => {
@@ -62,30 +61,51 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                     </div>
                 </div>
 
+                {/* --- FIX START: Global Subtasks --- */}
                 {isExpanded && hasSubtasks && (
                     <div className="ml-14 mt-1 space-y-1">
-                        {task.subtasks.map(subtask => (
-                            <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-slate-800/30 transition-colors">
-                                <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
-                                    {subtask.completed && <span className="text-white text-xs">✓</span>}
+                        {task.subtasks.map(subtask => {
+                            // Check if subtask is selected
+                            const isSubtaskSelected = selectedItem?.id === subtask.id;
+
+                            return (
+                                <div
+                                    key={subtask.id}
+                                    // Added onClick handler
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedItem(subtask);
+                                    }}
+                                    // Added cursor-pointer and selection styling
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${isSubtaskSelected
+                                            ? 'bg-slate-800/80 border-l-2 border-emerald-500'
+                                            : 'hover:bg-slate-800/30 border-l-2 border-transparent'
+                                        }`}
+                                >
+                                    <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
+                                        {subtask.completed && <span className="text-white text-xs">✓</span>}
+                                    </div>
+                                    <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+                                        {subtask.title}
+                                    </span>
                                 </div>
-                                <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                                    {subtask.title}
-                                </span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
+                {/* --- FIX END --- */}
             </div>
         );
     }
 
     return (
         <div>
+            {/* Parent Task Row (Default View) */}
             <div
                 className={`group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-emerald-500' : ''}`}
                 onClick={() => setSelectedItem(task)}
             >
+                {/* ... (Existing Parent Task Content) ... */}
                 {hasSubtasks ? (
                     <button
                         onClick={(e) => {
@@ -113,7 +133,6 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                     )}
                     <div className={`h-2 w-2 rounded-full ${task.status === 'completed' ? 'bg-emerald-400' : task.status === 'active' ? 'bg-blue-400' : 'bg-slate-500'}`} />
 
-                    {/* FIX: Conditional Rendering for Add Button */}
                     {canCreateSubtask && (
                         <button
                             onClick={(e) => {
@@ -130,20 +149,39 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                 </div>
             </div>
 
+            {/* --- FIX START: Default View Subtasks --- */}
             {isExpanded && hasSubtasks && (
                 <div className="ml-12 mt-1 space-y-1">
-                    {task.subtasks.map(subtask => (
-                        <div key={subtask.id} className="flex items-center gap-2 px-3 py-1.5 ml-2 rounded-lg hover:bg-slate-800/30 transition-colors">
-                            <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
-                                {subtask.completed && <span className="text-white text-xs">✓</span>}
+                    {task.subtasks.map(subtask => {
+                        // Check if subtask is selected
+                        const isSubtaskSelected = selectedItem?.id === subtask.id;
+
+                        return (
+                            <div
+                                key={subtask.id}
+                                // Added onClick handler
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedItem(subtask);
+                                }}
+                                // Added cursor-pointer and selection styling
+                                className={`flex items-center gap-2 px-3 py-1.5 ml-2 rounded-lg transition-all cursor-pointer ${isSubtaskSelected
+                                        ? 'bg-slate-800/80 border-l-2 border-emerald-500'
+                                        : 'hover:bg-slate-800/30 border-l-2 border-transparent'
+                                    }`}
+                            >
+                                <div className={`h-4 w-4 rounded border-2 flex items-center justify-center ${subtask.completed ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
+                                    {subtask.completed && <span className="text-white text-xs">✓</span>}
+                                </div>
+                                <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
+                                    {subtask.title}
+                                </span>
                             </div>
-                            <span className={`text-sm ${subtask.completed ? 'text-slate-500 line-through' : 'text-slate-300'}`}>
-                                {subtask.title}
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
+            {/* --- FIX END --- */}
         </div>
     );
 };

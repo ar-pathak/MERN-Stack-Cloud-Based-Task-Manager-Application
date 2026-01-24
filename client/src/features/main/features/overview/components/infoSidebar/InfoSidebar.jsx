@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     X, Briefcase, FolderOpen, CheckSquare,
     Users, Settings, Link as LinkIcon, Image as ImageIcon,
-    Activity, BarChart3
+    Activity, BarChart3, ListTodo
 } from "lucide-react";
 
 import QuickStatsSection from "./QuickStatsSection";
@@ -28,6 +28,20 @@ const InfoSidebar = ({ item, overview, onClose }) => {
         { id: "settings", label: "Settings", icon: Settings }
     ];
 
+    // FIX: Helper function to handle colors cleanly including subtask
+    const getHeaderColorClass = (type) => {
+        switch (type) {
+            case 'workspace':
+                return 'bg-gradient-to-br from-sky-500/20 to-blue-600/20 border-sky-500/30';
+            case 'project':
+                return 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30';
+            case 'subtask':
+                return 'bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-cyan-500/30';
+            default:
+                return 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30';
+        }
+    };
+
     return (
         <motion.div
             initial={{ x: "100%", opacity: 0 }}
@@ -41,16 +55,12 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                 <div className="flex justify-between items-start mb-4">
                     <motion.div
                         whileHover={{ scale: 1.05 }}
-                        className={`h-14 w-14 rounded-xl flex items-center justify-center border shadow-lg transition-all cursor-pointer ${item.type === 'workspace'
-                            ? 'bg-gradient-to-br from-sky-500/20 to-blue-600/20 border-sky-500/30'
-                            : item.type === 'project'
-                                ? 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30'
-                                : 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30'
-                            }`}
+                        className={`h-14 w-14 rounded-xl flex items-center justify-center border shadow-lg transition-all cursor-pointer ${getHeaderColorClass(item.type)}`}
                     >
                         {item.type === 'workspace' && <Briefcase className="h-7 w-7 text-sky-400" />}
                         {item.type === 'project' && <FolderOpen className="h-7 w-7 text-purple-400" />}
                         {item.type === 'task' && <CheckSquare className="h-7 w-7 text-emerald-400" />}
+                        {item.type === 'subtask' && <ListTodo className="h-7 w-7 text-cyan-400" />}
                     </motion.div>
 
                     <motion.button
@@ -106,7 +116,10 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                         >
                             <QuickStatsSection item={item} overview={overview} />
                             <ProgressSection item={item} overview={overview} />
-                            {item.type === 'task' && <StatusControl item={item} />}
+
+                            {/* FIX: Show StatusControl for both 'task' AND 'subtask' */}
+                            {(item.type === 'task' || item.type === 'subtask') && <StatusControl item={item} />}
+
                             <QuickActions item={item} />
                             <Description item={item} />
                             <MetaDetails item={item} />

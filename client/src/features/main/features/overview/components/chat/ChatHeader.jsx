@@ -1,7 +1,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Briefcase, FolderOpen, CheckSquare, Star, BellOff,
-    Loader2, Search, Phone, Video, Info
+    Loader2, Search, Phone, Video, Info,
+    ListTodo
 } from "lucide-react";
 
 const ChatHeader = ({
@@ -9,20 +10,26 @@ const ChatHeader = ({
     searchQuery, setSearchQuery, messageFilter, setMessageFilter,
     showChatInfo, setShowChatInfo
 }) => {
+    const getItemTitle = (item) => {
+        return item.name || item.title || "Untitled";
+    };
 
     const getItemIcon = (type) => {
         switch (type) {
             case "workspace": return <Briefcase className="h-5 w-5 text-sky-400" />;
             case "project": return <FolderOpen className="h-5 w-5 text-purple-400" />;
             case "task": return <CheckSquare className="h-5 w-5 text-emerald-400" />;
+            case "subtask": return <ListTodo className="h-5 w-5 text-cyan-400" />;
             default: return <Briefcase className="h-5 w-5 text-sky-400" />;
         }
     };
+
 
     const getItemColorClass = (type) => {
         switch (type) {
             case "workspace": return 'bg-gradient-to-br from-sky-500/20 to-blue-600/20 border-sky-500/30 group-hover:border-sky-400/50';
             case "project": return 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30 group-hover:border-purple-400/50';
+            case "subtask": return 'bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-cyan-500/30 group-hover:border-cyan-400/50'; // New Color
             default: return 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30 group-hover:border-emerald-400/50';
         }
     };
@@ -53,7 +60,7 @@ const ChatHeader = ({
 
                     <div>
                         <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                            {item.name}
+                            {getItemTitle(item)}
                             {item.starred && (
                                 <motion.div whileHover={{ rotate: 72 }}>
                                     <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
@@ -61,6 +68,7 @@ const ChatHeader = ({
                             )}
                             {item.muted && <BellOff className="h-4 w-4 text-slate-500" />}
                         </h2>
+
 
                         <div className="flex items-center gap-2">
                             {typingMembers?.length > 0 ? (

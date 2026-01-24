@@ -21,7 +21,6 @@ import TaskItem from "../components/TaskItem";
 import ChatPanel from "../components/chat/ChatPanel";
 import EmptyState from "../components/EmptyState";
 import SidebarHeader from "../components/SidebarHeader";
-import OverviewStats from "../components/OverviewStats";
 
 // Popups
 import WorkspacePopup from "../../../components/popup/WorkspacePopup";
@@ -39,7 +38,6 @@ const OverviewLayout = () => {
   const [filterType, setFilterType] = useState("all");
 
   const [overview, setOverview] = useState(null);
-  const [loadingOverview, setLoadingOverview] = useState(false);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   const [toast, setToast] = useState(null);
@@ -91,7 +89,11 @@ const OverviewLayout = () => {
         };
       }
 
-      const subtasks = item.subtasks || [];
+      const subtasks = (item.subtasks || []).map(sub => ({
+        ...sub,
+        type: 'subtask',
+        id: sub.id || sub._id
+      }));
       return {
         ...item,
         id: item.id || item._id,
@@ -339,7 +341,6 @@ const OverviewLayout = () => {
         <AnimatePresence mode="wait">
           {selectedItem ? (
             <div key={selectedItem.id} className="flex-1 flex flex-col">
-              <OverviewStats overview={overview} loading={loadingOverview} />
               <ChatPanel
                 item={selectedItem}
                 overview={overview}
