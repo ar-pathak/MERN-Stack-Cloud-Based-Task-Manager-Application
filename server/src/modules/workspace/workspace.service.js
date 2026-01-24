@@ -415,6 +415,22 @@ const workspaceService = {
             user: userId
         });
     },
+    getQuickStatus: async (workspaceId, userId) => {
+        const member = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        }).select('isStarred isMuted status');
+
+        if (!member) {
+            throw new Error("You are not a member of this workspace");
+        }
+
+        return {
+            isStarred: member.isStarred || false,
+            isMuted: member.isMuted || false,
+            isArchived: member.status === 'archived'
+        };
+    },
     toggleStar: async (workspaceId, userId) => {
         const member = await WorkspaceMember.findOne({
             workspace: workspaceId,

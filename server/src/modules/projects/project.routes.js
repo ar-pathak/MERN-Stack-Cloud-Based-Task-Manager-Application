@@ -10,7 +10,7 @@ router.use(authMiddleware);
 
 router.post('/workspaces/:workspaceId/projects', checkWorkspaceMemberRole('owner', 'admin'), projectController.createProject);
 router.get('/workspaces/:workspaceId/projects', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), projectController.getProjectsByWorkspace);
-router.get('/workspaces/:workspaceId/projects/:projectId', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), projectController.getProjectById);
+router.get('/:projectId', projectController.getProjectById);
 router.patch('/workspaces/:workspaceId/projects/:projectId', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), projectController.updateProject);
 router.delete('/workspaces/:workspaceId/projects/:projectId', checkWorkspaceMemberRole('owner', 'admin'), projectController.deleteProject);
 

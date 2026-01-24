@@ -47,6 +47,9 @@ const overviewService = {
             acc[key].push({
                 id: st._id,
                 title: st.title,
+                description: st.description,
+                createdAt: st.createdAt,
+                updatedAt: st.updatedAt,
                 completed: st.completed
             });
             return acc;
@@ -90,7 +93,9 @@ const overviewService = {
                 id: t._id,
                 type: "task",
                 title: t.title,
+                description: t.description,
                 status: t.status,
+                createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
                 subtasks: subtasksByTask[taskId] || [],
                 permissions: {
@@ -127,6 +132,8 @@ const overviewService = {
                         id: p._id,
                         type: "project",
                         name: p.name,
+                        description: p.description,
+                        createdAt: p.createdAt,
                         updatedAt: p.updatedAt,
                         tasks: (tasksByProject[projId] || [])
                             .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
@@ -141,6 +148,8 @@ const overviewService = {
                 id: ws._id,
                 type: "workspace",
                 name: ws.name,
+                description: ws.description,
+                createdAt: ws.createdAt,
                 updatedAt: ws.updatedAt,
                 projects: wsProjects,
                 tasks: (tasksByWorkspace[wsId] || [])

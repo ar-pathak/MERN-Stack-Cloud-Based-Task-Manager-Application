@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     X, Briefcase, FolderOpen, CheckSquare,
-    Users, Settings, Link as LinkIcon, Image as ImageIcon,
-    Activity, BarChart3, ListTodo
+    Users, Settings, BarChart3, ListTodo, Edit2, Check, XCircle,
+    Activity
 } from "lucide-react";
 
 import QuickStatsSection from "./QuickStatsSection";
@@ -18,8 +18,27 @@ import { SettingsSection } from "./SettingsSection";
 import DangerZoneSection from "./DangerZoneSection";
 import AnalyticsSection from "./AnalyticsSection";
 
-const InfoSidebar = ({ item, overview, onClose }) => {
+// Import all necessary hooks
+import { useWorkspace } from "../../hook/useWorkspace";
+import { useProject } from "../../hook/useProject";
+import { useTask } from "../../hook/useTask";
+import { useSubtask } from "../../hook/useSubtask";
+
+const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
+    // Local state to manage immediate UI updates
+    const [item, setItem] = useState(initialItem);
     const [activeTab, setActiveTab] = useState("overview");
+
+    // Title Editing State
+    const [isEditingTitle, setIsEditingTitle] = useState(false);
+    const [title, setTitle] = useState(item.name || item.title || "");
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Initialize Hooks
+    const { updateWorkspace } = useWorkspace();
+    const { fetchProjectById, updateProject } = useProject();
+    const { updateTask } = useTask();
+    const { updateSubtask } = useSubtask();
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -28,7 +47,17 @@ const InfoSidebar = ({ item, overview, onClose }) => {
         { id: "settings", label: "Settings", icon: Settings }
     ];
 
-    // FIX: Helper function to handle colors cleanly including subtask
+    // Update local state if prop changes (e.g. user clicks a different item)
+    useEffect(() => {
+        setItem(initialItem);
+        setTitle(initialItem.name || initialItem.title || "");
+        setIsEditingTitle(false);
+    }, [initialItem]);
+
+    // CHECK ROLE: Support both nested permissions (from feed) and direct role
+    const userRole = item.permissions?.role || item.role || item.userRole;
+    const canEdit = userRole === 'owner'; // You can expand this to include 'admin' if needed
+
     const getHeaderColorClass = (type) => {
         switch (type) {
             case 'workspace':
@@ -40,6 +69,68 @@ const InfoSidebar = ({ item, overview, onClose }) => {
             default:
                 return 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30';
         }
+    };
+
+    // Generic Update Handler
+    const handleUpdateItem = async (updates) => {
+        setIsSaving(true);
+        let result = { success: false, data: null };
+        const itemId = item.id || item._id;
+
+        try {
+            switch (item.type) {
+                case 'workspace':
+                    result = await updateWorkspace(itemId, updates);
+                    break;
+
+                case 'project': {
+                    const project = await fetchProjectById(itemId);
+                    console.log("project", project.data)
+                    result = await updateProject(project.data.workspace, itemId, updates);
+                    break;
+                }
+
+                case 'task':
+                    result = await updateTask(itemId, updates);
+                    break;
+
+                case 'subtask':
+                    result = await updateSubtask(itemId, updates);
+                    break;
+
+                default:
+                    console.warn("Unknown item type:", item.type);
+            }
+
+            if (result.success && result.data) {
+                const updatedData = result.data;
+                setItem(prev => ({ ...prev, ...updatedData }));
+
+                if (updatedData.name || updatedData.title) {
+                    setTitle(updatedData.name || updatedData.title);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to update item", error);
+        } finally {
+            setIsSaving(false);
+            setIsEditingTitle(false);
+        }
+
+        return result.success;
+    };
+
+
+    const handleTitleSave = () => {
+        if (!title.trim() || title === (item.name || item.title)) {
+            setIsEditingTitle(false);
+            return;
+        }
+
+        // Determine field name based on type
+        // Workspaces and Projects usually use 'name', Tasks and Subtasks use 'title'
+        const fieldName = (item.type === 'task' || item.type === 'subtask') ? 'title' : 'name';
+        handleUpdateItem({ [fieldName]: title });
     };
 
     return (
@@ -73,9 +164,59 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                     </motion.button>
                 </div>
 
-                <h2 className="text-xl font-bold text-slate-100 leading-tight mb-2 line-clamp-2">
-                    {item.name || item.title}
-                </h2>
+                {/* Title Section with Edit Capability */}
+                <div className="mb-2 min-h-[32px] flex items-center gap-2 group">
+                    {isEditingTitle ? (
+                        <div className="flex-1 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+                            <input
+                                type="text"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                autoFocus
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xl font-bold text-white focus:outline-none focus:border-sky-500"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleTitleSave();
+                                    if (e.key === 'Escape') {
+                                        setTitle(item.name || item.title);
+                                        setIsEditingTitle(false);
+                                    }
+                                }}
+                            />
+                            <button
+                                onClick={handleTitleSave}
+                                disabled={isSaving}
+                                className="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded-md transition-colors"
+                            >
+                                <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setTitle(item.name || item.title);
+                                    setIsEditingTitle(false);
+                                }}
+                                disabled={isSaving}
+                                className="p-1.5 bg-slate-800 text-slate-400 hover:text-white rounded-md transition-colors"
+                            >
+                                <XCircle className="h-4 w-4" />
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex items-start justify-between gap-2">
+                            <h2 className="text-xl font-bold text-slate-100 leading-tight line-clamp-2">
+                                {item.name || item.title}
+                            </h2>
+                            {canEdit && (
+                                <motion.button
+                                    whileHover={{ scale: 1.1 }}
+                                    onClick={() => setIsEditingTitle(true)}
+                                    className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-sky-400 transition-all"
+                                >
+                                    <Edit2 className="h-4 w-4" />
+                                </motion.button>
+                            )}
+                        </div>
+                    )}
+                </div>
 
                 <div className="flex items-center gap-2 text-slate-500 text-xs font-medium uppercase tracking-wider mb-4">
                     <span>{item.type}</span>
@@ -85,21 +226,29 @@ const InfoSidebar = ({ item, overview, onClose }) => {
 
                 {/* Tabs */}
                 <div className="flex gap-1 p-1 bg-slate-900/40 rounded-lg border border-slate-800/50">
-                    {tabs.map(tab => (
-                        <motion.button
-                            key={tab.id}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${activeTab === tab.id
-                                ? 'bg-slate-800 text-slate-100 shadow-lg'
-                                : 'text-slate-500 hover:text-slate-300'
-                                }`}
-                        >
-                            <tab.icon className="h-3.5 w-3.5" />
-                            <span className="hidden lg:inline">{tab.label}</span>
-                        </motion.button>
-                    ))}
+                    {tabs
+                        .filter(tab => {
+                            // Analytics only for workspace
+                            if (tab.id === "analytics") {
+                                return item.type === "workspace";
+                            }
+                            return true;
+                        })
+                        .map(tab => (
+                            <motion.button
+                                key={tab.id}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition-all ${activeTab === tab.id
+                                    ? 'bg-slate-800 text-slate-100 shadow-lg'
+                                    : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                            >
+                                <tab.icon className="h-3.5 w-3.5" />
+                                <span className="hidden lg:inline">{tab.label}</span>
+                            </motion.button>
+                        ))}
                 </div>
             </div>
 
@@ -117,16 +266,22 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             <QuickStatsSection item={item} overview={overview} />
                             <ProgressSection item={item} overview={overview} />
 
-                            {/* FIX: Show StatusControl for both 'task' AND 'subtask' */}
                             {(item.type === 'task' || item.type === 'subtask') && <StatusControl item={item} />}
 
-                            <QuickActions item={item} />
-                            <Description item={item} />
+                            {item.type === 'workspace' && <QuickActions item={item} />}
+
+                            {/* Pass control props to Description */}
+                            <Description
+                                item={item}
+                                canEdit={canEdit}
+                                onSave={(desc) => handleUpdateItem({ description: desc })}
+                            />
+
                             <MetaDetails item={item} />
                         </motion.div>
                     )}
 
-                    {activeTab === "analytics" && (
+                    {item.type === 'workspace' && activeTab === "analytics" && (
                         <motion.div
                             key="analytics"
                             initial={{ opacity: 0, x: 20 }}
@@ -137,7 +292,6 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             <AnalyticsSection item={item} overview={overview} />
                         </motion.div>
                     )}
-
                     {activeTab === "members" && (
                         <motion.div
                             key="members"
@@ -159,28 +313,18 @@ const InfoSidebar = ({ item, overview, onClose }) => {
                             exit={{ opacity: 0, x: -20 }}
                             className="space-y-6 pb-6"
                         >
-                            <SettingsSection item={item} />
+                            {item.type === 'workspace' && <SettingsSection item={item} />}
                             <DangerZoneSection item={item} />
                         </motion.div>
                     )}
                 </AnimatePresence>
             </div>
-
             <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #334155;
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #475569;
-        }
-      `}</style>
+                .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+                .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #475569; }
+            `}</style>
         </motion.div>
     );
 };

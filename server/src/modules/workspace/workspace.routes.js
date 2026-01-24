@@ -29,6 +29,7 @@ router.post('/:workspaceId/leave', checkWorkspaceMemberRole("owner", "admin", "m
 router.post('/:workspaceId/transfer-ownership', checkWorkspaceMemberRole("owner"), workspaceController.transferOwnership);
 
 // Quick Actions (Star, Mute, Archive)
+router.get('/:workspaceId/quick-status', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.getQuickStatus);
 router.patch('/:workspaceId/star', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleStar);
 router.patch('/:workspaceId/mute', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleMute);
 router.patch('/:workspaceId/archive', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleArchive);

@@ -173,3 +173,52 @@ export const transferOwnership = async ({ workspaceId, newOwnerId }) => {
         };
     }
 };
+
+// Quick Actions (Star, Mute, Archive)
+export const getQuickStatus = async (workspaceId) => {
+    try {
+        const response = await api.get(`/api/workspace/${workspaceId}/quick-status`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch quick status",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const toggleStarWorkspace = async (workspaceId) => {
+    try {
+        const response = await api.patch(`/api/workspace/${workspaceId}/star`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to toggle star",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const toggleMuteWorkspace = async (workspaceId) => {
+    try {
+        const response = await api.patch(`/api/workspace/${workspaceId}/mute`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to toggle mute",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const toggleArchiveWorkspace = async (workspaceId) => {
+    try {
+        const response = await api.patch(`/api/workspace/${workspaceId}/archive`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to toggle archive",
+            status: error.response?.status,
+        };
+    }
+};

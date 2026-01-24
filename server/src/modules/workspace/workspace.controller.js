@@ -290,6 +290,21 @@ const workspaceController = {
             return handleError(error, res);
         }
     },
+    getQuickStatus: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ success: false, message: "Invalid workspace ID" });
+            }
+
+            const status = await workspaceService.getQuickStatus(workspaceId, userId);
+            return sendSuccess(res, status, 'Quick actions status retrieved');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
     toggleStar: async (req, res) => {
         try {
             const { workspaceId } = req.params;

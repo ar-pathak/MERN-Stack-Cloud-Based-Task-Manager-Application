@@ -15,9 +15,9 @@ export const getProjectsByWorkspace = async (workspaceId) => {
     }
 };
 
-export const getProjectById = async (workspaceId, projectId) => {
+export const getProjectById = async (projectId) => {
     try {
-        const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`);
+        const response = await api.get(`/api/projects/${projectId}`);
         return response.data || null;
     } catch (error) {
         throw {
@@ -56,11 +56,11 @@ export const deleteProject = async (projectId) => {
         // Extract workspaceId from project if needed, or fetch it first
         const project = await api.get(`/api/projects/${projectId}`).catch(() => null);
         const workspaceId = project?.data?.workspace;
-        
+
         if (!workspaceId) {
             throw new Error("Workspace ID required for project deletion");
         }
-        
+
         const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`);
         return response.data;
     } catch (error) {

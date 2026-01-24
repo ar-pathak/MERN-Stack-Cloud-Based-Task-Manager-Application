@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 // Services & Store
@@ -63,46 +63,47 @@ const OverviewLayout = () => {
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
 
-  useEffect(() => {
-    const normalizeNode = (item) => {
-      if (item.type === "workspace") {
-        const projects = (item.projects || []).map(normalizeNode);
-        const tasks = (item.tasks || []).map(normalizeNode);
-        return {
-          ...item,
-          id: item.id || item._id,
-          name: item.name,
-          projects,
-          tasks,
-          hasChildren: projects.length > 0 || tasks.length > 0,
-        };
-      }
-
-      if (item.type === "project") {
-        const tasks = (item.tasks || []).map(normalizeNode);
-        return {
-          ...item,
-          id: item.id || item._id,
-          name: item.name,
-          tasks,
-          hasChildren: tasks.length > 0,
-        };
-      }
-
-      const subtasks = (item.subtasks || []).map(sub => ({
-        ...sub,
-        type: 'subtask',
-        id: sub.id || sub._id
-      }));
+  // Normalize data helper
+  const normalizeNode = useCallback((item) => {
+    if (item.type === "workspace") {
+      const projects = (item.projects || []).map(normalizeNode);
+      const tasks = (item.tasks || []).map(normalizeNode);
       return {
         ...item,
         id: item.id || item._id,
-        title: item.title,
-        subtasks,
-        hasChildren: subtasks.length > 0,
+        name: item.name,
+        projects,
+        tasks,
+        hasChildren: projects.length > 0 || tasks.length > 0,
       };
-    };
+    }
 
+    if (item.type === "project") {
+      const tasks = (item.tasks || []).map(normalizeNode);
+      return {
+        ...item,
+        id: item.id || item._id,
+        name: item.name,
+        tasks,
+        hasChildren: tasks.length > 0,
+      };
+    }
+
+    const subtasks = (item.subtasks || []).map(sub => ({
+      ...sub,
+      type: 'subtask',
+      id: sub.id || sub._id
+    }));
+    return {
+      ...item,
+      id: item.id || item._id,
+      title: item.title,
+      subtasks,
+      hasChildren: subtasks.length > 0,
+    };
+  }, []);
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         setLoadingTimeline(true);
@@ -124,7 +125,39 @@ const OverviewLayout = () => {
     };
 
     fetchData();
-  }, [dispatch]);
+  }, [dispatch, normalizeNode]);
+
+  // FIX: Sync selectedItem with timeline updates
+  useEffect(() => {
+    if (!selectedItem || !timeline) return;
+
+    const findUpdatedItem = (items, targetId) => {
+      for (const item of items) {
+        if ((item.id || item._id) === targetId) return item;
+        if (item.projects) {
+          const found = findUpdatedItem(item.projects, targetId);
+          if (found) return found;
+        }
+        if (item.tasks) {
+          const found = findUpdatedItem(item.tasks, targetId);
+          if (found) return found;
+        }
+        if (item.subtasks) {
+          const found = findUpdatedItem(item.subtasks, targetId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const targetId = selectedItem.id || selectedItem._id;
+    const updatedItem = findUpdatedItem(timeline, targetId);
+
+    // If we found the item and it is a different reference/version than the current selectedItem, update it.
+    if (updatedItem && updatedItem !== selectedItem) {
+      setSelectedItem(updatedItem);
+    }
+  }, [timeline, selectedItem]);
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
@@ -143,7 +176,7 @@ const OverviewLayout = () => {
         return label.toLowerCase().includes(searchQuery.toLowerCase());
       }
       if (filterType === "unread") return item.unreadCount > 0;
-      if (filterType === "starred") return item.starred;
+      if (filterType === "starred") return item.starred || item.isStarred; // Check both flags
       return true;
     });
   }, [timeline, searchQuery, filterType]);
@@ -153,7 +186,7 @@ const OverviewLayout = () => {
     setTimeout(() => setToast(null), 2500);
   };
 
-  const refreshTimeline = async () => {
+  const refreshTimeline = useCallback(async () => {
     try {
       const res = await getOverviewActivity();
       const payload = res?.data?.data || res?.data || res;
@@ -163,48 +196,13 @@ const OverviewLayout = () => {
         return;
       }
 
-      const normalizeNode = (item) => {
-        if (item.type === "workspace") {
-          const projects = (item.projects || []).map(normalizeNode);
-          const tasks = (item.tasks || []).map(normalizeNode);
-          return {
-            ...item,
-            id: item.id || item._id,
-            name: item.name,
-            projects,
-            tasks,
-            hasChildren: projects.length > 0 || tasks.length > 0,
-          };
-        }
-
-        if (item.type === "project") {
-          const tasks = (item.tasks || []).map(normalizeNode);
-          return {
-            ...item,
-            id: item.id || item._id,
-            name: item.name,
-            tasks,
-            hasChildren: tasks.length > 0,
-          };
-        }
-
-        const subtasks = item.subtasks || [];
-        return {
-          ...item,
-          id: item.id || item._id,
-          title: item.title,
-          subtasks,
-          hasChildren: subtasks.length > 0,
-        };
-      };
-
       const normalized = payload.map(normalizeNode);
       dispatch(setOverviewData({ timeline: normalized }));
     } catch (err) {
       console.error("Failed to refresh timeline", err);
       showToast("Something went wrong while refreshing");
     }
-  };
+  }, [dispatch, normalizeNode]);
 
   // NEW: Enhanced task creation handlers
   const handleCreateGlobalTask = () => {
@@ -361,6 +359,7 @@ const OverviewLayout = () => {
                 chatEndRef={chat.refs.chatEndRef}
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}
+                onUpdate={refreshTimeline} // Pass refresh trigger to children
               />
             </div>
           ) : (
