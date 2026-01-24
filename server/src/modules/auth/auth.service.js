@@ -4,27 +4,31 @@ const crypto = require('crypto')
 const User = require("../../models/user");
 const RefreshToken = require('../../models/RefreshToken')
 const { generateAccessToken, generateRefreshToken } = require('../../helpers/tokenHelper')
-const sendEmail = require('../../helpers/sendEmail')
+const sendEmail = require('../../helpers/sendEmail');
+const generateUniqueUsername = require('../utils/generateUniqueUsername');
 
 const AuthService = {
   signUp: async ({ name, email, password }) => {
-    // 1. Check if user already exists
+    //  Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       throw new Error("Email already registered");
     }
 
-    // 2. Hash password
+    //  Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3. Create user
+    //GENERATE UNIQUE USERNAME
+    const username = await generateUniqueUsername(email);
+    //  Create user
     const user = new User({
       name,
       email,
+      username,
       passwordHash: hashedPassword,
     });
 
-    // 4. Save to DB
+    //  Save to DB
     await user.save();
 
     return user;
@@ -69,13 +73,13 @@ const AuthService = {
       if (token) {
         await RefreshToken.deleteOne({ token });
       }
-      
+
       // If userId is provided, delete all refresh tokens for that user (logout from all devices)
       // This is useful for security - if user wants to logout from all devices
       if (userId) {
         await RefreshToken.deleteMany({ user: userId });
       }
-      
+
       return { message: "Logged out successfully" };
     } catch (error) {
       // Even if token deletion fails, return success to ensure cookies are cleared
@@ -146,7 +150,7 @@ const AuthService = {
   forgotPassword: async ({ email }) => {
     // 1. Find user by email
     const user = await User.findOne({ email });
-    
+
     // Don't reveal if email exists or not (security best practice)
     if (!user) {
       // Still return success to prevent email enumeration

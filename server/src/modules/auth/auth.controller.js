@@ -1,9 +1,9 @@
 const { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } = require('./auth.validation')
 const AuthService = require('./auth.service')
-const { 
-    setAccessTokenCookie, 
-    setRefreshTokenCookie, 
-    clearAuthCookies 
+const {
+    setAccessTokenCookie,
+    setRefreshTokenCookie,
+    clearAuthCookies
 } = require('../../helpers/cookieHelper')
 const { sendSuccess, handleError } = require('../../helpers/responseHelper')
 
@@ -18,15 +18,16 @@ const AuthController = {
                 data: {
                     user: {
                         id: result._id,
+                        username: result.username,
                         name: result.name,
                         email: result.email
                     }
                 }
             });
         } catch (error) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     },
@@ -38,7 +39,7 @@ const AuthController = {
             setAccessTokenCookie(res, result.accessToken);
             setRefreshTokenCookie(res, result.refreshToken);
 
-            return res.status(200).json({ 
+            return res.status(200).json({
                 success: true,
                 message: "Login successful",
                 data: {
@@ -51,9 +52,9 @@ const AuthController = {
             });
 
         } catch (error) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     },
@@ -61,10 +62,10 @@ const AuthController = {
         try {
             const token = req.cookies?.refreshToken;
             const userId = req.user?._id; // Get user from auth middleware if available
-            
+
             // Always clear cookies first
             clearAuthCookies(res);
-            
+
             // Then try to delete refresh token (non-blocking)
             try {
                 await AuthService.logOut(token, userId);
@@ -72,26 +73,26 @@ const AuthController = {
                 // Log error but don't fail the logout
                 console.error("Error deleting refresh token:", tokenError.message);
             }
-            
-            return res.status(200).json({ 
+
+            return res.status(200).json({
                 success: true,
-                message: "Logged out successfully" 
+                message: "Logged out successfully"
             });
         } catch (error) {
             // Always clear cookies even on error
             clearAuthCookies(res);
-            return res.status(200).json({ 
+            return res.status(200).json({
                 success: true,
-                message: "Logged out successfully" 
+                message: "Logged out successfully"
             });
         }
     },
     refresh: async (req, res) => {
         const token = req.cookies.refreshToken;
         if (!token) {
-            return res.status(401).json({ 
+            return res.status(401).json({
                 success: false,
-                message: "No refresh token provided" 
+                message: "No refresh token provided"
             });
         }
 
@@ -99,17 +100,17 @@ const AuthController = {
             const result = await AuthService.refresh(token);
             setAccessTokenCookie(res, result.accessToken);
             setRefreshTokenCookie(res, result.refreshToken);
-            
-            return res.status(200).json({ 
+
+            return res.status(200).json({
                 success: true,
-                message: "Token refreshed successfully" 
+                message: "Token refreshed successfully"
             });
 
         } catch (error) {
             clearAuthCookies(res); // Clear invalid tokens
-            return res.status(403).json({ 
+            return res.status(403).json({
                 success: false,
-                message: error.message 
+                message: error.message
             });
         }
     },
@@ -117,7 +118,7 @@ const AuthController = {
         try {
             const data = forgotPasswordSchema.parse(req.body);
             const result = await AuthService.forgotPassword(data);
-            
+
             // Always return success message (security: don't reveal if email exists)
             return sendSuccess(res, null, result.message || "If that email exists, we've sent a password reset link.");
         } catch (error) {
@@ -128,9 +129,9 @@ const AuthController = {
         try {
             const { token } = req.params;
             const { password } = resetPasswordSchema.parse({ ...req.body, token });
-            
+
             const result = await AuthService.resetPassword({ token, password });
-            
+
             return sendSuccess(res, null, result.message || "Password has been reset successfully");
         } catch (error) {
             return handleError(error, res);

@@ -28,4 +28,10 @@ router.post('/invites/accept/:token', workspaceController.acceptInvite);
 router.post('/:workspaceId/leave', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.leaveWorkspace);
 router.post('/:workspaceId/transfer-ownership', checkWorkspaceMemberRole("owner"), workspaceController.transferOwnership);
 
+// Quick Actions (Star, Mute, Archive)
+router.patch('/:workspaceId/star', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleStar);
+router.patch('/:workspaceId/mute', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleMute);
+router.patch('/:workspaceId/archive', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.toggleArchive);
+
+
 module.exports = router;

@@ -1,7 +1,7 @@
 const Workspace = require('../../models/workspace');
 const WorkspaceMember = require('../../models/workspaceMember.js');
 const WorkspaceInvite = require('../../models/workspaceInvite');
-const User = require('../../models/user'); 
+const User = require('../../models/user');
 const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
 
@@ -414,7 +414,52 @@ const workspaceService = {
             workspace: workspaceId,
             user: userId
         });
-    }
+    },
+    toggleStar: async (workspaceId, userId) => {
+        const member = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        });
+
+        if (!member) {
+            throw new Error("You are not a member of this workspace");
+        }
+
+        member.isStarred = !member.isStarred;
+        await member.save();
+        return member;
+    },
+
+    toggleMute: async (workspaceId, userId) => {
+        const member = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        });
+
+        if (!member) {
+            throw new Error("You are not a member of this workspace");
+        }
+
+        member.isMuted = !member.isMuted;
+        await member.save();
+        return member;
+    },
+
+    toggleArchive: async (workspaceId, userId) => {
+        const member = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: userId
+        });
+
+        if (!member) {
+            throw new Error("You are not a member of this workspace");
+        }
+
+        // Toggle between 'active' and 'archived'
+        member.status = member.status === 'active' ? 'archived' : 'active';
+        await member.save();
+        return member;
+    },
 };
 
 module.exports = workspaceService;

@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-
 const workspaceMemberSchema = new mongoose.Schema({
   workspace: {
     type: mongoose.Schema.Types.ObjectId,
@@ -17,6 +16,21 @@ const workspaceMemberSchema = new mongoose.Schema({
     enum: ["owner", "admin", "member", "viewer"],
     default: "member"
   },
+
+  isStarred: {
+    type: Boolean,
+    default: false
+  },
+  isMuted: {
+    type: Boolean,
+    default: false
+  },
+  status: {
+    type: String,
+    enum: ["active", "archived"],
+    default: "active"
+  },
+
   joinedAt: {
     type: Date,
     default: Date.now

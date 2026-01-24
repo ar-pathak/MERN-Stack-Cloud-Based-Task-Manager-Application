@@ -9,6 +9,16 @@ const userSchema = new Schema({
         maxLength: 30,
     },
 
+    username: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true,
+        match: [/^[a-z0-9_]{3,20}$/, "Invalid username"],
+        index: true
+    },
+
     email: {
         type: String,
         required: [true, "Email is required"],
@@ -21,7 +31,7 @@ const userSchema = new Schema({
     passwordHash: {
         type: String,
         required: true,
-        select: false, // prevents accidental exposure
+        select: false,
     },
 
     isActive: {
@@ -38,8 +48,7 @@ const userSchema = new Schema({
         type: Date,
         select: false,
     },
-}, { timestamps: true, })
+}, { timestamps: true })
 
 const User = mongoose.model('User', userSchema)
-
-module.exports = User;
+module.exports = User

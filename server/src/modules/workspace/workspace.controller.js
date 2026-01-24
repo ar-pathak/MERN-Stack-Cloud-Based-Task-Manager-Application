@@ -289,7 +289,57 @@ const workspaceController = {
         } catch (error) {
             return handleError(error, res);
         }
-    }
+    },
+    toggleStar: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ success: false, message: "Invalid workspace ID" });
+            }
+
+            const result = await workspaceService.toggleStar(workspaceId, userId);
+            const message = result.isStarred ? "Workspace starred" : "Workspace unstarred";
+            return sendSuccess(res, result, message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    toggleMute: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ success: false, message: "Invalid workspace ID" });
+            }
+
+            const result = await workspaceService.toggleMute(workspaceId, userId);
+            const message = result.isMuted ? "Workspace muted" : "Workspace unmuted";
+            return sendSuccess(res, result, message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    toggleArchive: async (req, res) => {
+        try {
+            const { workspaceId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({ success: false, message: "Invalid workspace ID" });
+            }
+
+            const result = await workspaceService.toggleArchive(workspaceId, userId);
+            const message = result.status === 'archived' ? "Workspace archived" : "Workspace unarchived";
+            return sendSuccess(res, result, message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
 };
 
 module.exports = workspaceController;
