@@ -1,130 +1,256 @@
-
-
 const mongoose = require('mongoose');
-const teamsService = require('./teams.service')
-const { createTeamSchema, updateTeamSchema, addTeamMemberSchema, updateTeamMemberRoleSchema } = require('./teams.validation')
+const teamsService = require('./teams.service');
+const {
+    createTeamSchema,
+    updateTeamSchema,
+    addTeamMemberSchema,
+    updateTeamMemberRoleSchema
+} = require('./teams.validation');
+const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
 const teamController = {
     createTeam: async (req, res) => {
         try {
             const { workspaceId } = req.params;
+
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-                throw new Error("Invalid workspace ID");
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
             }
-            const { name, description } = createTeamSchema.parse(req.body)
-            const result = await teamsService.createTeam({ name, description, workspaceId, userId: req.user._id });
-            res.status(201).json(result);
+
+            const { name, description } = createTeamSchema.parse(req.body);
+            const team = await teamsService.createTeam({
+                name,
+                description,
+                workspaceId,
+                userId: req.user._id
+            });
+
+            return sendSuccess(res, team, 'Team created successfully', 201);
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res);
         }
     },
+
     getTeamsByWorkspace: async (req, res) => {
         try {
             const { workspaceId } = req.params;
+
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-                throw new Error("Invalid Workspace ID");
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
             }
-            const team = await teamsService.getTeamsByWorkspace(workspaceId);
-            res.status(200).json(team);
+
+            const teams = await teamsService.getTeamsByWorkspace(workspaceId);
+            return sendSuccess(res, teams, 'Teams retrieved successfully');
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res);
         }
     },
+
     getTeamById: async (req, res) => {
         try {
-            const { teamId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error("Invalid Team ID");
+            const { workspaceId, teamId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
             }
-            const team = await teamsService.getTeamById(teamId);
-            res.status(200).json(team);
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            const team = await teamsService.getTeamById(teamId, workspaceId);
+            return sendSuccess(res, team, 'Team retrieved successfully');
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res);
         }
     },
+
     updateTeam: async (req, res) => {
         try {
-            const { teamId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error("Invalid Team ID");
+            const { workspaceId, teamId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
             }
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
             const data = updateTeamSchema.parse(req.body);
-            const updatedTeam = await teamsService.updateTeam(teamId, data);
+            const updatedTeam = await teamsService.updateTeam(teamId, workspaceId, data);
 
-            res.status(201).json(updatedTeam);
-
+            return sendSuccess(res, updatedTeam, 'Team updated successfully');
         } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res);
         }
     },
+
     deleteTeam: async (req, res) => {
         try {
-            const { teamId } = req.params;
+            const { workspaceId, teamId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
             if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error("Invalid Team ID");
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
             }
-            await teamsService.deleteTeam(teamId);
-            res.status(200).json({ message: "Team deleted successfully" });
+
+            await teamsService.deleteTeam(teamId, workspaceId);
+            return sendSuccess(res, null, 'Team deleted successfully');
         } catch (error) {
-            res.status(400).json({ error: error.message })
-        }
-    },
-    addTeamMember: async (req, res) => {
-        try {
-            const { teamId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error("Invalid Team ID");
-            }
-            const data = addTeamMemberSchema.parse(req.body);
-            const newMember = await teamsService.addTeamMember(teamId, data);
-            res.status(201).json(newMember);
-        } catch (error) {
-            res.status(400).json({ error: error.message })
-        }
-    }, getTeamMembers: async (req, res) => {
-        try {
-            const { teamId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error("Invalid Team ID");
-            }
-            const teamMembers = await teamsService.getTeamMembers(teamId);
-            res.status(200).json(teamMembers);
-        } catch (error) {
-            res.status(400).json({ error: error.message });
-        }
-    },
-    removeTeamMember: async (req, res) => {
-        try {
-            const { teamId, memberId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error('Invalid Team ID');
-            }
-            if (!mongoose.Types.ObjectId.isValid(memberId)) {
-                throw new Error('Invalid Member ID');
-            }
-            const result = await teamsService.removeTeamMember(teamId, memberId);
-            res.status(200).json(result);
-        } catch (error) {
-            res.status(400).json({ error: error.message })
-        }
-    },
-    updateTeamMemberRole: async (req, res) => {
-        try {
-            const { teamId, memberId } = req.params;
-            if (!mongoose.Types.ObjectId.isValid(teamId)) {
-                throw new Error('Invalid Team ID');
-            }
-            if (!mongoose.Types.ObjectId.isValid(memberId)) {
-                throw new Error('Invalid Member ID');
-            }
-            const data = updateTeamMemberRoleSchema.parse(req.body);
-            const team = await teamsService.updateTeamMemberRole(teamId, memberId, data.role);
-            res.status(200).json(team);
-        } catch (error) {
-            res.status(400).json({ error: error.message })
+            return handleError(error, res);
         }
     },
 
-}
+    addTeamMember: async (req, res) => {
+        try {
+            const { workspaceId, teamId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            const data = addTeamMemberSchema.parse(req.body);
+            const team = await teamsService.addTeamMember(teamId, workspaceId, data);
+
+            return sendSuccess(res, team, 'Member added to team successfully', 201);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    getTeamMembers: async (req, res) => {
+        try {
+            const { workspaceId, teamId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            const members = await teamsService.getTeamMembers(teamId, workspaceId);
+            return sendSuccess(res, members, 'Team members retrieved successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    removeTeamMember: async (req, res) => {
+        try {
+            const { workspaceId, teamId, memberId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(memberId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid member ID"
+                });
+            }
+
+            const result = await teamsService.removeTeamMember(teamId, workspaceId, memberId);
+            return sendSuccess(res, result, 'Member removed from team successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    updateTeamMemberRole: async (req, res) => {
+        try {
+            const { workspaceId, teamId, memberId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid workspace ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            if (!mongoose.Types.ObjectId.isValid(memberId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid member ID"
+                });
+            }
+
+            const { role } = updateTeamMemberRoleSchema.parse(req.body);
+            const team = await teamsService.updateTeamMemberRole(
+                teamId,
+                workspaceId,
+                memberId,
+                role
+            );
+
+            return sendSuccess(res, team, 'Team member role updated successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    }
+};
 
 module.exports = teamController;

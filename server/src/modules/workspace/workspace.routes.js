@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+// Workspace CRUD
 router.post('/createWorkspaces', workspaceController.createWorkspace);
 router.get('/getAllWorkspaces', workspaceController.getAllWorkspaces);
 router.get('/getWorkspaces/:id', workspaceController.getWorkspaceById);
@@ -23,5 +24,8 @@ router.patch('/:workspaceId/members/:memberId/role', checkWorkspaceMemberRole("o
 router.post('/:workspaceId/invites', checkWorkspaceMemberRole("owner", "admin"), workspaceController.sendInvite);
 router.post('/invites/accept/:token', workspaceController.acceptInvite);
 
+// Workspace actions
+router.post('/:workspaceId/leave', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.leaveWorkspace);
+router.post('/:workspaceId/transfer-ownership', checkWorkspaceMemberRole("owner"), workspaceController.transferOwnership);
 
 module.exports = router;

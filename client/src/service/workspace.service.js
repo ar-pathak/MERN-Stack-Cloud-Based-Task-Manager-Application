@@ -33,7 +33,7 @@ export const getWorkspaceById = async (workspaceId) => {
 export const createWorkspace = async (workspaceData) => {
     try {
         const response = await api.post("/api/workspace/createWorkspaces", workspaceData);
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to create workspace",
@@ -45,7 +45,7 @@ export const createWorkspace = async (workspaceData) => {
 export const updateWorkspace = async (workspaceId, workspaceData) => {
     try {
         const response = await api.patch(`/api/workspace/updateWorkspace/${workspaceId}`, workspaceData);
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update workspace",
@@ -66,6 +66,7 @@ export const deleteWorkspace = async (workspaceId) => {
     }
 };
 
+// Member Management
 export const getWorkspaceMembers = async (workspaceId) => {
     try {
         const response = await api.get(`/api/workspace/${workspaceId}/members`);
@@ -78,55 +79,20 @@ export const getWorkspaceMembers = async (workspaceId) => {
     }
 };
 
-// NEW: Send workspace invite
-export const sendWorkspaceInvite = async ({ workspaceId, email, role, invitedBy }) => {
+export const addWorkspaceMember = async ({ workspaceId, userId }) => {
     try {
-        const response = await api.post(`/api/workspace/${workspaceId}/invite`, {
-            email,
-            role,
-            invitedBy
+        const response = await api.post(`/api/workspace/${workspaceId}/members`, {
+            userId
         });
         return response.data?.data || response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to send invite",
+            message: error.response?.data?.message || "Failed to add member",
             status: error.response?.status,
         };
     }
 };
 
-// NEW: Accept workspace invite
-export const acceptWorkspaceInvite = async (token, userId) => {
-    try {
-        const response = await api.post(`/api/workspace/invite/accept`, {
-            token,
-            userId
-        });
-        return response.data;
-    } catch (error) {
-        throw {
-            message: error.response?.data?.message || "Failed to accept invite",
-            status: error.response?.status,
-        };
-    }
-};
-
-// NEW: Update member role
-export const updateMemberRole = async ({ workspaceId, memberId, role }) => {
-    try {
-        const response = await api.patch(`/api/workspace/${workspaceId}/members/${memberId}/role`, {
-            role
-        });
-        return response.data;
-    } catch (error) {
-        throw {
-            message: error.response?.data?.message || "Failed to update member role",
-            status: error.response?.status,
-        };
-    }
-};
-
-// NEW: Remove member from workspace
 export const removeMember = async ({ workspaceId, memberId }) => {
     try {
         const response = await api.delete(`/api/workspace/${workspaceId}/members/${memberId}`);
@@ -139,17 +105,70 @@ export const removeMember = async ({ workspaceId, memberId }) => {
     }
 };
 
-// NEW: Add member to workspace
-export const addWorkspaceMember = async ({ workspaceId, userId, role = "member" }) => {
+export const updateMemberRole = async ({ workspaceId, memberId, role }) => {
     try {
-        const response = await api.post(`/api/workspace/${workspaceId}/members`, {
-            userId,
+        const response = await api.patch(`/api/workspace/${workspaceId}/members/${memberId}/role`, {
             role
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to update member role",
+            status: error.response?.status,
+        };
+    }
+};
+
+// Invite Management
+export const sendWorkspaceInvite = async ({ workspaceId, email, role, invitedBy }) => {
+    try {
+        const response = await api.post(`/api/workspace/${workspaceId}/invites`, {
+            email,
+            role
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to send invite",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const acceptWorkspaceInvite = async (token) => {
+    try {
+        const response = await api.post(`/api/workspace/invites/accept/${token}`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to accept invite",
+            status: error.response?.status,
+        };
+    }
+};
+
+// Workspace Settings
+export const leaveWorkspace = async (workspaceId) => {
+    try {
+        const response = await api.post(`/api/workspace/${workspaceId}/leave`);
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave workspace",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const transferOwnership = async ({ workspaceId, newOwnerId }) => {
+    try {
+        const response = await api.post(`/api/workspace/${workspaceId}/transfer-ownership`, {
+            newOwnerId
         });
         return response.data;
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to add member",
+            message: error.response?.data?.message || "Failed to transfer ownership",
             status: error.response?.status,
         };
     }
