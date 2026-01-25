@@ -10,7 +10,7 @@ import {
 
 const QuickStatsSection = ({ item }) => {
     const stats = useMemo(() => {
-        
+
         // PROJECT STATS
         // Schema: Project (Includes members array, status enum).
         if (item.type === 'project') {
@@ -34,7 +34,7 @@ const QuickStatsSection = ({ item }) => {
 
         // TASK STATS
         if (item.type === 'task') {
-            const isHigh = item.isHighPriority; 
+            const isHigh = item.isHighPriority;
 
             return [
                 {
@@ -83,20 +83,20 @@ const QuickStatsSection = ({ item }) => {
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: i * 0.05 }}
                         className={`p-4 rounded-xl border bg-gradient-to-br ${stat.color === 'emerald' ? 'from-emerald-500/10 to-green-600/10 border-emerald-500/20' :
-                                stat.color === 'sky' ? 'from-sky-500/10 to-blue-600/10 border-sky-500/20' :
-                                    stat.color === 'amber' ? 'from-amber-500/10 to-orange-600/10 border-amber-500/20' :
-                                        stat.color === 'purple' ? 'from-purple-500/10 to-pink-600/10 border-purple-500/20' :
-                                            stat.color === 'rose' ? 'from-rose-500/10 to-red-600/10 border-rose-500/20' :
-                                                'from-slate-500/10 to-gray-600/10 border-slate-500/20'
+                            stat.color === 'sky' ? 'from-sky-500/10 to-blue-600/10 border-sky-500/20' :
+                                stat.color === 'amber' ? 'from-amber-500/10 to-orange-600/10 border-amber-500/20' :
+                                    stat.color === 'purple' ? 'from-purple-500/10 to-pink-600/10 border-purple-500/20' :
+                                        stat.color === 'rose' ? 'from-rose-500/10 to-red-600/10 border-rose-500/20' :
+                                            'from-slate-500/10 to-gray-600/10 border-slate-500/20'
                             }`}
                     >
                         <div className="flex items-center gap-2 mb-2">
                             <stat.icon className={`h-4 w-4 ${stat.color === 'emerald' ? 'text-emerald-400' :
-                                    stat.color === 'sky' ? 'text-sky-400' :
-                                        stat.color === 'amber' ? 'text-amber-400' :
-                                            stat.color === 'purple' ? 'text-purple-400' :
-                                                stat.color === 'rose' ? 'text-rose-400' :
-                                                    'text-slate-400'
+                                stat.color === 'sky' ? 'text-sky-400' :
+                                    stat.color === 'amber' ? 'text-amber-400' :
+                                        stat.color === 'purple' ? 'text-purple-400' :
+                                            stat.color === 'rose' ? 'text-rose-400' :
+                                                'text-slate-400'
                                 }`} />
                             <span className="text-xs text-slate-400 font-medium">{stat.label}</span>
                         </div>

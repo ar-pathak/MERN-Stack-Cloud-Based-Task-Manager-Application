@@ -53,7 +53,8 @@ const projectSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-
+  dueDate: Date
+  
 }, { timestamps: true });
 
 module.exports = mongoose.model("Project", projectSchema);

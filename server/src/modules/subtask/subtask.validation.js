@@ -50,11 +50,7 @@ const updateSubtaskSchema = z
         isHighPriority: z.boolean().optional(),
         assignedTo: objectId.optional().nullable(),
 
-        dueDate: z
-            .string()
-            .datetime({ message: "Invalid date format. Use ISO 8601 format" })
-            .optional()
-            .nullable()
+        dueDate: z.coerce.date().optional(),
     })
     .refine(data => Object.keys(data).length > 0, {
         message: "At least one field is required for update"

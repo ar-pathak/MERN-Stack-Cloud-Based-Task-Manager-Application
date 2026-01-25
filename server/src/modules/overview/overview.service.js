@@ -53,7 +53,8 @@ const overviewService = {
                 description: st.description,
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
-                completed: st.completed
+                completed: st.completed,
+                dueDate: st.dueDate
             });
             return acc;
         }, {});
@@ -101,6 +102,7 @@ const overviewService = {
                 isHighPriority: t.isHighPriority,
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
+                dueDate: t.dueDate,
                 subtasks: subtasksByTask[taskId] || [],
                 permissions: {
                     canCreateSubtask: taskPermissions.canCreateSubtask || false,
@@ -136,11 +138,13 @@ const overviewService = {
                         id: p._id,
                         type: "project",
                         name: p.name,
+                        workspace: p.workspace,
                         description: p.description,
                         status: p.status,
                         isHighPriority: p.isHighPriority,
                         createdAt: p.createdAt,
                         updatedAt: p.updatedAt,
+                        dueDate: p.dueDate,
                         tasks: (tasksByProject[projId] || [])
                             .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
                         permissions: {

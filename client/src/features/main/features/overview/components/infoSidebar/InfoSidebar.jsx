@@ -35,7 +35,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
 
     // Initialize Hooks
     const { updateWorkspace } = useWorkspace();
-    const { fetchProjectById, updateProject } = useProject();
+    const { updateProject } = useProject();
     const { updateTask } = useTask();
 
     const tabs = [
@@ -81,8 +81,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                     break;
 
                 case 'project': {
-                    const project = await fetchProjectById(itemId);
-                    result = await updateProject(project.data.workspace, itemId, updates);
+                    result = await updateProject(item?.workspace, itemId, updates);
                     break;
                 }
 
