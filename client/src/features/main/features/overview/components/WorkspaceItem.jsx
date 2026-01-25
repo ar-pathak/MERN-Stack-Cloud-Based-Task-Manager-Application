@@ -7,7 +7,9 @@ import {
     Briefcase,
     FolderOpen,
     CheckSquare,
-    Plus
+    Plus,
+    Flag,
+    Check
 } from "lucide-react";
 import TaskItem from "./TaskItem";
 
@@ -20,7 +22,6 @@ const WorkspaceItem = ({
     expandedItems,
     toggleExpand
 }) => {
-    // Extract permissions safely
     const canCreateProject = workspace.permissions?.canCreateProject;
     const canCreateTaskInWs = workspace.permissions?.canCreateTask;
 
@@ -74,7 +75,6 @@ const WorkspaceItem = ({
                 </div>
 
                 <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity">
-                    {/* Add Project Button */}
                     {canCreateProject && (
                         <button
                             onClick={(e) => {
@@ -88,7 +88,6 @@ const WorkspaceItem = ({
                         </button>
                     )}
 
-                    {/* Add Task Button */}
                     {canCreateTaskInWs && (
                         <button
                             onClick={(e) => {
@@ -110,13 +109,18 @@ const WorkspaceItem = ({
                     {/* Projects */}
                     {workspace.projects?.map(project => {
                         const canCreateTaskInProject = project.permissions?.canCreateTask;
+                        const isProjectCompleted = project.status === 'completed';
+                        const isProjectHighPriority = project.isHighPriority;
 
                         return (
                             <div key={project.id}>
                                 <div
                                     className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === project.id ? 'bg-slate-800/80 border-l-2 border-purple-500' : ''
                                         }`}
-                                    onClick={() => setSelectedItem(project)}
+                                    onClick={() => {
+                                        toggleExpand(project.id);
+                                        setSelectedItem(project);
+                                    }}
                                 >
                                     {(project.tasks?.length > 0) ? (
                                         <button
@@ -136,24 +140,46 @@ const WorkspaceItem = ({
                                         <div className="w-5 h-5" />
                                     )}
 
-                                    <div className="h-8 w-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                                        <FolderOpen className="h-4 w-4 text-purple-400" />
+                                    <div className={`h-8 w-8 rounded-lg border flex items-center justify-center ${isProjectCompleted
+                                        ? 'bg-purple-500/20 border-purple-500/30'
+                                        : 'bg-purple-500/10 border-purple-500/20'
+                                        }`}>
+                                        {isProjectCompleted ? (
+                                            <Check className="h-4 w-4 text-purple-400" />
+                                        ) : (
+                                            <FolderOpen className="h-4 w-4 text-purple-400" />
+                                        )}
                                     </div>
-                                    <span className="text-sm font-medium text-slate-200 flex-1 truncate">{project.name}</span>
 
-                                    {/* Add Task in Project */}
-                                    {canCreateTaskInProject && (
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleCreate(workspace, 'task', 'project', project);
-                                            }}
-                                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
-                                            title="Add Task"
-                                        >
-                                            <Plus className="h-3.5 w-3.5 text-slate-400" />
-                                        </button>
-                                    )}
+                                    <span className={`text-sm font-medium flex-1 truncate ${isProjectCompleted ? 'text-slate-500 line-through' : 'text-slate-200'
+                                        }`}>
+                                        {project.name}
+                                    </span>
+
+                                    <div className="flex items-center gap-1.5">
+                                        {/* High Priority */}
+                                        {isProjectHighPriority && (
+                                            <Flag className="h-3 w-3 text-rose-400 fill-rose-400" />
+                                        )}
+
+                                        {/* Completion Status */}
+                                        {isProjectCompleted && (
+                                            <div className="h-2 w-2 rounded-full bg-emerald-400" />
+                                        )}
+
+                                        {canCreateTaskInProject && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleCreate(workspace, 'task', 'project', project);
+                                                }}
+                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                                                title="Add Task"
+                                            >
+                                                <Plus className="h-3.5 w-3.5 text-slate-400" />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Tasks under Project */}

@@ -166,11 +166,7 @@ const MetaDetails = ({ item }) => {
             if (item.type === 'task') {
                 result = await updateTask(item.id || item._id, updateData);
             } else if (item.type === 'project') {
-                const project = await fetchProjectById(item.workspace, item.id || item._id);
-                if (!project?.data?.workspace) {
-                    throw new Error('Project workspace not found');
-                }
-                result = await updateProject(project.data.workspace, item.id || item._id, updateData);
+                result = await updateProject(item.workspace, item.id || item._id, updateData);
             } else if (item.type === 'subtask') {
                 result = await updateSubtask(item.id || item._id, updateData);
             }
