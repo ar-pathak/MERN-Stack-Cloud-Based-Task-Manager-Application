@@ -24,7 +24,14 @@ const createTaskSchema = z.object({
             { message: "Duplicate team IDs not allowed" }
         ).optional()
 });
-
+const updateTaskSchema = z.object({
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    dueDate: z.coerce.date().optional(),
+    isHighPriority: z.boolean().optional(),
+}).refine(data => Object.keys(data).length > 0, {
+    message: "At least one field must be provided for update"
+});
 const addTaskAssigneesSchema = z.object({
     assigneesTeams: z
         .array(objectId)
@@ -72,4 +79,4 @@ const changeTaskStatusSchema = z.object({
 });
 
 
-module.exports = { createTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema };
+module.exports = { createTaskSchema, updateTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema };

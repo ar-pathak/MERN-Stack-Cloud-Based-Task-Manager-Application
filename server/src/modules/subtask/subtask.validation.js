@@ -47,7 +47,7 @@ const updateSubtaskSchema = z
             .or(z.literal("")),
 
         completed: z.boolean().optional(),
-
+        isHighPriority: z.boolean().optional(),
         assignedTo: objectId.optional().nullable(),
 
         dueDate: z
@@ -59,7 +59,7 @@ const updateSubtaskSchema = z
     .refine(data => Object.keys(data).length > 0, {
         message: "At least one field is required for update"
     });
-    
+
 const validateCreateSubtask = (req, res, next) => {
     const result = createSubtaskSchema.safeParse(req.body);
 

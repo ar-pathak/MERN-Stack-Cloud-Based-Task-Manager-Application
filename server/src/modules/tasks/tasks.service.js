@@ -28,7 +28,28 @@ const taskService = {
 
         return task;
     },
+    updateTask: async (userId, taskId, data) => {
+        const task = await Task.findById(taskId);
 
+        if (!task) {
+            throw new Error("Task not found");
+        }
+
+        const isCreator = task.createdBy.toString() === userId.toString();
+
+        if (!isCreator) {
+            throw new Error("You are not allowed to update this task");
+        }
+
+        await Task.updateOne(
+            { _id: taskId },
+            { $set: data }
+        );
+
+        await touchParents(task);
+
+        return { message: "Task updated successfully" };
+    },
     addTaskAssignees: async (userId, taskId, assigneesData) => {
         const task = await Task.findById(taskId);
 

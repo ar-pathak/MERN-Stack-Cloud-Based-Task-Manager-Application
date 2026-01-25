@@ -22,7 +22,6 @@ import AnalyticsSection from "./AnalyticsSection";
 import { useWorkspace } from "../../hook/useWorkspace";
 import { useProject } from "../../hook/useProject";
 import { useTask } from "../../hook/useTask";
-import { useSubtask } from "../../hook/useSubtask";
 
 const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Local state to manage immediate UI updates
@@ -38,7 +37,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     const { updateWorkspace } = useWorkspace();
     const { fetchProjectById, updateProject } = useProject();
     const { updateTask } = useTask();
-    const { updateSubtask } = useSubtask();
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -46,7 +44,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
         { id: "members", label: "Members", icon: Users },
         { id: "settings", label: "Settings", icon: Settings }
     ];
-
     // Update local state if prop changes (e.g. user clicks a different item)
     useEffect(() => {
         setItem(initialItem);
@@ -55,8 +52,8 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     }, [initialItem]);
 
     // CHECK ROLE: Support both nested permissions (from feed) and direct role
-    const userRole = item.permissions?.role || item.role || item.userRole;
-    const canEdit = userRole === 'owner'; // You can expand this to include 'admin' if needed
+    const userRole = item.permissions?.role || item?.role || item?.userRole;
+    const canEdit = userRole === 'owner' || userRole === 'creator';
 
     const getHeaderColorClass = (type) => {
         switch (type) {
@@ -85,17 +82,12 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
 
                 case 'project': {
                     const project = await fetchProjectById(itemId);
-                    console.log("project", project.data)
                     result = await updateProject(project.data.workspace, itemId, updates);
                     break;
                 }
 
                 case 'task':
                     result = await updateTask(itemId, updates);
-                    break;
-
-                case 'subtask':
-                    result = await updateSubtask(itemId, updates);
                     break;
 
                 default:
@@ -266,7 +258,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             <QuickStatsSection item={item} overview={overview} />
                             <ProgressSection item={item} overview={overview} />
 
-                            {(item.type === 'task' || item.type === 'subtask') && <StatusControl item={item} />}
+                            {(item.type === 'task' || item.type === 'subtask' || item.type == 'project') && <StatusControl item={item} />}
 
                             {item.type === 'workspace' && <QuickActions item={item} />}
 

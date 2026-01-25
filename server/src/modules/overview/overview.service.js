@@ -47,6 +47,9 @@ const overviewService = {
             acc[key].push({
                 id: st._id,
                 title: st.title,
+                type: 'subtask',
+                completed: st.completed,
+                isHighPriority: st.isHighPriority,
                 description: st.description,
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
@@ -95,6 +98,7 @@ const overviewService = {
                 title: t.title,
                 description: t.description,
                 status: t.status,
+                isHighPriority: t.isHighPriority,
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
                 subtasks: subtasksByTask[taskId] || [],
@@ -133,6 +137,8 @@ const overviewService = {
                         type: "project",
                         name: p.name,
                         description: p.description,
+                        status: p.status,
+                        isHighPriority: p.isHighPriority,
                         createdAt: p.createdAt,
                         updatedAt: p.updatedAt,
                         tasks: (tasksByProject[projId] || [])

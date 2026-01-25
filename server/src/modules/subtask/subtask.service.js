@@ -101,7 +101,7 @@ class SubtaskService {
         }
 
         // Update other fields
-        const allowedUpdates = ['title', 'description', 'assignedTo', 'dueDate'];
+        const allowedUpdates = ['title', 'description', 'assignedTo', 'dueDate', 'isHighPriority'];
         allowedUpdates.forEach(field => {
             if (updates[field] !== undefined) {
                 subtask[field] = updates[field];

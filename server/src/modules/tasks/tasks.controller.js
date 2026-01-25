@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 const taskService = require("./tasks.service");
-const { createTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema } = require('./tasks.validation')
+const { createTaskSchema, updateTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema } = require('./tasks.validation')
 
 const taskController = {
     createTaskAtGlobalLevel: async (req, res) => {
@@ -41,6 +41,28 @@ const taskController = {
             const data = createTaskSchema.parse(req.body);
             const task = await taskService.createTask(userId, data, { workspaceId, projectId })
             sendSuccess(res, task)
+        } catch (error) {
+            handleError(error, res);
+        }
+    },
+    updateTask: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+
+            const data = updateTaskSchema.parse(req.body);
+
+            const result = await taskService.updateTask(
+                userId,
+                taskId,
+                data
+            );
+
+            sendSuccess(res, null, result.message);
         } catch (error) {
             handleError(error, res);
         }

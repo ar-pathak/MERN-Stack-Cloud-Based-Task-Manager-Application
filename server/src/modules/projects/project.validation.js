@@ -36,6 +36,7 @@ const updateProjectSchema = z.object({
     name: z.string().min(1, "Project name is required").optional(),
     description: z.string().optional(),
     color: z.string().optional(),
+    isHighPriority: z.boolean().optional(),
     teams: z
         .array(objectId)
         .optional()

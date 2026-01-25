@@ -20,6 +20,10 @@ const subtaskSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isHighPriority: {
+        type: Boolean,
+        default: false,
+    },
     completedAt: Date,
     completedBy: {
         type: mongoose.Schema.Types.ObjectId,

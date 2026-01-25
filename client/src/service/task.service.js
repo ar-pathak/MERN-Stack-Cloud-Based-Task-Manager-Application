@@ -77,7 +77,7 @@ export const getTaskById = async (taskId) => {
  */
 export const updateTask = async (taskId, taskData) => {
     try {
-        const response = await api.patch(`/api/tasks/${taskId}`, taskData);
+        const response = await api.patch(`/api/tasks/${taskId}/update`, taskData);
         return response.data?.data || response.data;
     } catch (error) {
         throw {
