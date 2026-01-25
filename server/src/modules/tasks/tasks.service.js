@@ -159,10 +159,6 @@ const taskService = {
             throw new Error("Task already has this status");
         }
 
-        if (newStatus === "completed" && task.assignees.length === 0 && task.assigneesTeams.length === 0) {
-            throw new Error("Cannot complete unassigned task");
-        }
-
         await Task.updateOne(
             { _id: taskId },
             {
