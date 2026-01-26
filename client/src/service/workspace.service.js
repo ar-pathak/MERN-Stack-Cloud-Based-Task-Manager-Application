@@ -79,10 +79,10 @@ export const getWorkspaceMembers = async (workspaceId) => {
     }
 };
 
-export const addWorkspaceMember = async ({ workspaceId, userId }) => {
+export const addWorkspaceMember = async ( workspaceId,memberData) => {
     try {
         const response = await api.post(`/api/workspace/${workspaceId}/members`, {
-            userId
+           memberData
         });
         return response.data?.data || response.data;
     } catch (error) {
