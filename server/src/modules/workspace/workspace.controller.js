@@ -97,7 +97,8 @@ const workspaceController = {
     addMember: async (req, res) => {
         try {
             const { workspaceId } = req.params;
-            const data = addMemberSchema.parse(req.body);
+
+            const { userId, username, email, role } = addMemberSchema.parse(req.body);
 
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 return res.status(400).json({
@@ -106,17 +107,14 @@ const workspaceController = {
                 });
             }
 
-            if (!mongoose.Types.ObjectId.isValid(data.userId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid user ID"
-                });
-            }
-
             const member = await workspaceService.addMember({
                 workspaceId,
-                userId: data.userId
+                userId,
+                username,
+                email,
+                role
             });
+
             return sendSuccess(res, member, 'Member added successfully', 201);
         } catch (error) {
             return handleError(error, res);

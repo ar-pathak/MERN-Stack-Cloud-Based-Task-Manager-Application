@@ -33,10 +33,15 @@ const updateMemberRoleSchema = z.object({
 
 const addMemberSchema = z.object({
     userId: z.string()
-        .min(1, "User ID is required")
-        .refine(val => /^[a-f\d]{24}$/i.test(val), {
-            message: "Invalid user ID format"
-        })
+        .refine(val => /^[a-f\d]{24}$/i.test(val), { message: "Invalid user ID format" })
+        .optional(),
+    email: z.string().email("Invalid email format").toLowerCase().optional(),
+    username: z.string().min(1, "Username cannot be empty").optional(),
+    role: z.enum(["admin", "member", "viewer"], {
+        errorMap: () => ({ message: "Role must be one of: admin, member, viewer" })
+    }).default("member")
+}).refine(data => data.userId || data.email || data.username, {
+    message: "Must provide either userId, email, or username to add a member"
 });
 
 const sendInviteSchema = z.object({

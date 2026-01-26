@@ -127,9 +127,18 @@ const workspaceService = {
         }
     },
 
-    addMember: async ({ workspaceId, userId }) => {
-        // Validate user exists
-        const user = await User.findById(userId);
+    addMember: async ({ workspaceId, userId, username, email, role = 'member' }) => {
+        let user = null;
+
+
+        if (userId) {
+            user = await User.findById(userId);
+        } else if (email) {
+            user = await User.findOne({ email: email.toLowerCase() });
+        } else if (username) {
+            user = await User.findOne({ username });
+        }
+
         if (!user) {
             throw new Error("User not found");
         }
@@ -137,17 +146,18 @@ const workspaceService = {
         // Check if user is already a member
         const exists = await WorkspaceMember.findOne({
             workspace: workspaceId,
-            user: userId
+            user: user._id
         });
 
         if (exists) {
             throw new Error("User is already a member of this workspace");
         }
 
+        // Create member with the specified role
         const member = await WorkspaceMember.create({
             workspace: workspaceId,
-            user: userId,
-            role: "member"
+            user: user._id,
+            role: role
         });
 
         return await member.populate('user', 'name email');
