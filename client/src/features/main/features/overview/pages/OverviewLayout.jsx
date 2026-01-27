@@ -31,6 +31,116 @@ import ProjectPopup from "../../../components/popup/ProjectPopup";
 // Hooks
 import { useChatLogic } from "../hook/useChatLogic";
 
+// Skeleton Loader Component
+const SkeletonLoader = () => {
+  return (
+    <div className="space-y-3 p-2 animate-pulse">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="space-y-2">
+          {/* Main item skeleton */}
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/30">
+            <div className="w-8 h-8 rounded-lg bg-slate-700/50" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-slate-700/50 rounded w-3/4" />
+              <div className="h-3 bg-slate-700/30 rounded w-1/2" />
+            </div>
+            <div className="w-16 h-6 bg-slate-700/30 rounded" />
+          </div>
+
+          {/* Nested items skeleton (for some items) */}
+          {i % 2 === 0 && (
+            <div className="ml-8 space-y-2">
+              <div className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-800/20">
+                <div className="w-6 h-6 rounded bg-slate-700/40" />
+                <div className="flex-1">
+                  <div className="h-3 bg-slate-700/40 rounded w-2/3" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Empty Timeline State Component
+const EmptyTimeline = ({ onCreateTask, onCreateWorkspace }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center h-full p-8 text-center"
+    >
+      <div className="relative mb-6">
+        {/* Animated background circle */}
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.3, 0.5, 0.3],
+          }}
+          transition={{
+            duration: 3,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+          className="absolute inset-0 -m-8 rounded-full bg-gradient-to-br from-sky-500/20 to-violet-500/20 blur-2xl"
+        />
+
+        {/* Icon */}
+        <div className="relative w-20 h-20 rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 flex items-center justify-center">
+          <svg
+            className="w-10 h-10 text-slate-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+            />
+          </svg>
+        </div>
+      </div>
+
+      <h3 className="text-lg font-semibold text-slate-200 mb-2">
+        There is no activity
+      </h3>
+      <p className="text-sm text-slate-400 mb-6 max-w-xs">
+        Create your first workspace or task and organize your work
+      </p>
+
+      <div className="flex gap-3">
+        <button
+          onClick={onCreateWorkspace}
+          className="group relative px-5 py-2.5 rounded-lg bg-gradient-to-br from-sky-500 to-sky-600 hover:from-sky-400 hover:to-sky-500 text-white text-sm font-medium shadow-lg shadow-sky-500/25 transition-all duration-200 hover:scale-105 active:scale-95"
+        >
+          <span className="relative z-10 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Create Workspace
+          </span>
+        </button>
+
+        <button
+          onClick={onCreateTask}
+          className="px-5 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-200 text-sm font-medium border border-slate-700/50 hover:border-slate-600 transition-all duration-200 hover:scale-105 active:scale-95"
+        >
+          <span className="flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            Create Task
+          </span>
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
@@ -112,6 +222,7 @@ const OverviewLayout = () => {
 
         if (!Array.isArray(payload)) {
           console.error("Overview API did not return array:", payload);
+          dispatch(setOverviewData({ timeline: [] }));
           return;
         }
 
@@ -119,6 +230,7 @@ const OverviewLayout = () => {
         dispatch(setOverviewData({ timeline: normalized }));
       } catch (err) {
         console.error("Failed to load overview data:", err);
+        dispatch(setOverviewData({ timeline: [] }));
       } finally {
         setLoadingTimeline(false);
       }
@@ -176,7 +288,7 @@ const OverviewLayout = () => {
         return label.toLowerCase().includes(searchQuery.toLowerCase());
       }
       if (filterType === "unread") return item.unreadCount > 0;
-      if (filterType === "starred") return item.starred || item.isStarred; // Check both flags
+      if (filterType === "starred") return item.starred || item.isStarred;
       return true;
     });
   }, [timeline, searchQuery, filterType]);
@@ -265,7 +377,11 @@ const OverviewLayout = () => {
     return allProjects;
   }, [timeline]);
 
-  const teams = []; // Add teams logic when available
+  const teams = [];
+
+  // Check if timeline is empty after loading
+  const isTimelineEmpty = !loadingTimeline && timeline.length === 0;
+  const hasFilteredResults = filteredItems.length > 0;
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
@@ -285,52 +401,105 @@ const OverviewLayout = () => {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-2">
-          {filteredItems.map((item) => {
-            if (item.type === "task") {
-              return (
-                <TaskItem
-                  key={item.id}
-                  task={item}
-                  selectedItem={selectedItem}
-                  setSelectedItem={setSelectedItem}
-                  expandedItems={expandedItems}
-                  toggleExpand={toggleExpand}
-                  onCreateSubtask={handleCreateSubtask}
-                  variant="global"
-                />
-              );
-            }
+        <div className="flex-1 overflow-y-auto">
+          {/* Show skeleton while loading */}
+          {loadingTimeline && <SkeletonLoader />}
 
-            return (
-              <WorkspaceItem
-                key={item.id}
-                workspaceId={item.id}
-                workspace={item}
-                handleCreate={(workspace, type, context, project, task) => {
-                  if (type === 'project') {
-                    handleCreateProject(workspace);
+          {/* Show empty state when no data */}
+          {!loadingTimeline && isTimelineEmpty && (
+            <EmptyTimeline
+              onCreateTask={handleCreateGlobalTask}
+              onCreateWorkspace={() => dispatch(setWorkspacePopupOpen(true))}
+            />
+          )}
+
+          {/* Show "no results" when search/filter returns empty */}
+          {!loadingTimeline && !isTimelineEmpty && !hasFilteredResults && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center h-full p-8 text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-slate-800/50 flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </div>
+              <h3 className="text-sm font-medium text-slate-300 mb-1">
+                Koi results nahi mile
+              </h3>
+              <p className="text-xs text-slate-500">
+                {searchQuery ? 'Apni search query change karke try karo' : 'Filter change karke dekho'}
+              </p>
+            </motion.div>
+          )}
+
+          {/* Show actual content */}
+          {!loadingTimeline && hasFilteredResults && (
+            <div className="p-2">
+              <AnimatePresence mode="popLayout">
+                {filteredItems.map((item, index) => {
+                  if (item.type === "task") {
+                    return (
+                      <motion.div
+                        key={item.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ delay: index * 0.03 }}
+                      >
+                        <TaskItem
+                          task={item}
+                          selectedItem={selectedItem}
+                          setSelectedItem={setSelectedItem}
+                          expandedItems={expandedItems}
+                          toggleExpand={toggleExpand}
+                          onCreateSubtask={handleCreateSubtask}
+                          variant="global"
+                        />
+                      </motion.div>
+                    );
                   }
-                  else if (type === 'task') {
-                    if (context === 'project' && project) {
-                      handleCreateProjectTask(workspace, project);
-                    } else {
-                      handleCreateWorkspaceTask(workspace);
-                    }
-                  }
-                  else if (type === 'subtask') {
-                    setSelectedWorkspace(workspace);
-                    setSelectedTask(task);
-                    dispatch(setIsSubtaskPopupOpen(true));
-                  }
-                }}
-                selectedItem={selectedItem}
-                setSelectedItem={setSelectedItem}
-                expandedItems={expandedItems}
-                toggleExpand={toggleExpand}
-              />
-            );
-          })}
+
+                  return (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ delay: index * 0.03 }}
+                    >
+                      <WorkspaceItem
+                        workspaceId={item.id}
+                        workspace={item}
+                        handleCreate={(workspace, type, context, project, task) => {
+                          if (type === 'project') {
+                            handleCreateProject(workspace);
+                          }
+                          else if (type === 'task') {
+                            if (context === 'project' && project) {
+                              handleCreateProjectTask(workspace, project);
+                            } else {
+                              handleCreateWorkspaceTask(workspace);
+                            }
+                          }
+                          else if (type === 'subtask') {
+                            setSelectedWorkspace(workspace);
+                            setSelectedTask(task);
+                            dispatch(setIsSubtaskPopupOpen(true));
+                          }
+                        }}
+                        selectedItem={selectedItem}
+                        setSelectedItem={setSelectedItem}
+                        expandedItems={expandedItems}
+                        toggleExpand={toggleExpand}
+                      />
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
 
@@ -359,7 +528,7 @@ const OverviewLayout = () => {
                 chatEndRef={chat.refs.chatEndRef}
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}
-                onUpdate={refreshTimeline} // Pass refresh trigger to children
+                onUpdate={refreshTimeline}
               />
             </div>
           ) : (
