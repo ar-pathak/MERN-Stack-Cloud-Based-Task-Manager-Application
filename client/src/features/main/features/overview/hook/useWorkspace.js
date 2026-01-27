@@ -73,8 +73,8 @@ export const useWorkspace = () => {
         return await execute(workspaceService.getWorkspaceMembers, workspaceId);
     }, [execute]);
 
-    const addMember = useCallback(async (workspaceId, memberData) => {
-        return await execute(workspaceService.addWorkspaceMember, workspaceId, memberData);
+    const addMember = useCallback(async (params) => {
+        return await execute(workspaceService.addWorkspaceMember, params);
     }, [execute]);
 
     const removeMemberFromWorkspace = useCallback(async (params) => {

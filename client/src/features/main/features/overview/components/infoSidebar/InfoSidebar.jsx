@@ -12,7 +12,6 @@ import StatusControl from "./StatusControl";
 import QuickActions from "./QuickActions";
 import Description from "./Description";
 import MetaDetails from "./MetaDetails";
-import MembersSection from "./MembersSection";
 import TeamsSection from "./TeamsSection";
 import { SettingsSection } from "./SettingsSection";
 import DangerZoneSection from "./DangerZoneSection";
@@ -22,6 +21,7 @@ import AnalyticsSection from "./AnalyticsSection";
 import { useWorkspace } from "../../hook/useWorkspace";
 import { useProject } from "../../hook/useProject";
 import { useTask } from "../../hook/useTask";
+import MembersSection from "./components/MembersSection/MembersSection";
 
 const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Local state to manage immediate UI updates

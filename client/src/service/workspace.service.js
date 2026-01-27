@@ -79,10 +79,11 @@ export const getWorkspaceMembers = async (workspaceId) => {
     }
 };
 
-export const addWorkspaceMember = async ( workspaceId,memberData) => {
+export const addWorkspaceMember = async ({ workspaceId, username, role }) => {
     try {
         const response = await api.post(`/api/workspace/${workspaceId}/members`, {
-           memberData
+            username,
+            role
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -120,7 +121,7 @@ export const updateMemberRole = async ({ workspaceId, memberId, role }) => {
 };
 
 // Invite Management
-export const sendWorkspaceInvite = async ({ workspaceId, email, role, invitedBy }) => {
+export const sendWorkspaceInvite = async ({ workspaceId, email, role }) => {
     try {
         const response = await api.post(`/api/workspace/${workspaceId}/invites`, {
             email,
