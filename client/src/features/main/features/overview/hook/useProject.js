@@ -85,7 +85,9 @@ export const useProject = () => {
     const addTeamsToProject = useCallback(async (workspaceId, projectId, teams) => {
         return await execute(projectService.addProjectTeams, workspaceId, projectId, teams);
     }, [execute]);
-
+    const updateMemberRole = useCallback(async (workspaceId, projectId, memberId, role) => {
+        return await execute(projectService.updateProjectMemberRole, workspaceId, projectId, memberId, role);
+    }, [execute]);
     const removeTeamsFromProject = useCallback(async (workspaceId, projectId, teams) => {
         return await execute(projectService.removeProjectTeams, workspaceId, projectId, teams);
     }, [execute]);
@@ -100,8 +102,8 @@ export const useProject = () => {
         return await execute(projectService.addProjectMembers, workspaceId, projectId, data);
     }, [execute]);
 
-    const removeMembersFromProject = useCallback(async (workspaceId, projectId, users) => {
-        return await execute(projectService.removeProjectMembers, workspaceId, projectId, users);
+    const removeMembersFromProject = useCallback(async (workspaceId, projectId, data) => {
+        return await execute(projectService.removeProjectMembers, workspaceId, projectId, data);
     }, [execute]);
 
     return {
@@ -126,6 +128,7 @@ export const useProject = () => {
         // Member Actions
         fetchProjectMembers,
         addProjectMembers: addMembersToProject,
+        updateProjectMembersRole: updateMemberRole,
         removeProjectMembers: removeMembersFromProject,
 
         // Utilities

@@ -4,7 +4,7 @@ import { useProject } from "../../../../hook/useProject";
 
 export const useMembersLogic = (item) => {
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
-    const { fetchProjectMembers, addProjectMembers, updateProject } = useProject()
+    const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject()
 
     // Core Data State
     const [members, setMembers] = useState([]);
@@ -70,11 +70,13 @@ export const useMembersLogic = (item) => {
 
     const roleStats = useMemo(() => ({
         all: members.length,
-        owner: members.filter(m => m.role === "owner").length,
+        ...(item.type === 'workspace' && {
+            owner: members.filter(m => m.role === "owner").length
+        }),
         admin: members.filter(m => m.role === "admin").length,
         member: members.filter(m => m.role === "member").length,
         viewer: members.filter(m => m.role === "viewer").length,
-    }), [members]);
+    }), [members, item.type]);
 
     const handleAddMember = async (username, role) => {
         setIsGlobalLoading(true);
@@ -143,12 +145,23 @@ export const useMembersLogic = (item) => {
 
     const handleRemoveMember = async (memberId) => {
         try {
-            const result = await removeMember({ workspaceId, memberId });
-            if (result?.success) {
-                setMembers(prev => prev.filter(m => m.user._id !== memberId));
-                notify("success", "Member removed successfully");
-            } else {
-                notify("error", result?.message);
+            if (item.type === 'workspace') {
+
+                const result = await removeMember({ workspaceId, memberId });
+                if (result?.success) {
+                    setMembers(prev => prev.filter(m => m.user._id !== memberId));
+                    notify("success", "Member removed successfully");
+                } else {
+                    notify("error", result?.message);
+                }
+            } else if (item.type === 'project') {
+                const result = await removeProjectMembers(item.workspace, item.id, { users: [memberId] });
+                if (result?.success) {
+                    setMembers(prev => prev.filter(m => m.user._id !== memberId));
+                    notify("success", "Member removed successfully");
+                } else {
+                    notify("error", result?.message);
+                }
             }
         } catch (err) {
             notify("error", err.message);
@@ -166,7 +179,7 @@ export const useMembersLogic = (item) => {
                     notify("error", result?.message);
                 }
             } else if (item.type === 'project') {
-                const result = await updateProject(item.workspace, item.id, { role: newRole });
+                const result = await updateProjectMembersRole(item.workspace, item.id, memberId, newRole);
                 if (result?.success) {
                     setMembers(prev => prev.map(m => m.user._id === memberId ? { ...m, role: newRole } : m));
                     notify("success", `Role updated to ${newRole}`);

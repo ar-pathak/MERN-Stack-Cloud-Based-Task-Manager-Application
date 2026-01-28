@@ -40,7 +40,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
-        { id: "analytics", label: "Analytics", icon: BarChart3 },
+        // { id: "analytics", label: "Analytics", icon: BarChart3 },
         { id: "members", label: "Members", icon: Users },
         { id: "settings", label: "Settings", icon: Settings }
     ];
@@ -272,7 +272,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                         </motion.div>
                     )}
 
-                    {item.type === 'workspace' && activeTab === "analytics" && (
+                    {/* {item.type === 'workspace' && activeTab === "analytics" && (
                         <motion.div
                             key="analytics"
                             initial={{ opacity: 0, x: 20 }}
@@ -282,7 +282,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                         >
                             <AnalyticsSection item={item} overview={overview} />
                         </motion.div>
-                    )}
+                    )} */}
                     {activeTab === "members" && (
                         <motion.div
                             key="members"

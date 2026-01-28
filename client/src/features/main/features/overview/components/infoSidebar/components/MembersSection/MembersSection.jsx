@@ -75,9 +75,9 @@ const MembersSection = ({ item }) => {
                         <button onClick={() => setShowAdd(true)} className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-sky-500/20">
                             <UserPlus className="h-4 w-4" /> Add
                         </button>
-                        <button onClick={() => setShowInvite(true)} className="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-purple-500/20">
+                        {item.type === 'workspace' && <button onClick={() => setShowInvite(true)} className="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-purple-500/20">
                             <Mail className="h-4 w-4" /> Invite
-                        </button>
+                        </button>}
                     </div>
                 )}
             </div>

@@ -137,15 +137,29 @@ export const addProjectMembers = async (workspaceId, projectId, data) => {
     }
 };
 
-export const removeProjectMembers = async (workspaceId, projectId, users) => {
+export const removeProjectMembers = async (workspaceId, projectId, data) => {
     try {
         const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, {
-            data: { users }
+            data: data
         });
         return response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to remove members from project",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const updateProjectMemberRole = async (workspaceId, projectId, memberId, role) => {
+    try {
+        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members/${memberId}`, {
+            role
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to update member role",
             status: error.response?.status,
         };
     }
