@@ -1,6 +1,6 @@
 const express = require('express')
 const authMiddleware = require('../../middleware/authMiddleware')
-const {checkWorkspaceMemberRole} = require('../../middleware/checkRoleMiddleware')
+const { checkWorkspaceMemberRole } = require('../../middleware/checkRoleMiddleware')
 const teamController = require('./teams.controller')
 
 const router = express.Router()
@@ -18,8 +18,8 @@ router.delete('/workspaces/:workspaceId/team/:teamId', checkWorkspaceMemberRole(
 // Team member management routes
 router.post('/workspaces/:workspaceId/team/:teamId/members', checkWorkspaceMemberRole("owner", "admin"), teamController.addTeamMember);
 router.get('/workspaces/:workspaceId/team/:teamId/members', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), teamController.getTeamMembers);
-router.delete('/workspaces/:workspaceId/team/:teamId/member/:memberId', checkWorkspaceMemberRole("owner", "admin"), teamController.removeTeamMember);
-router.patch('/workspaces/:workspaceId/team/:teamId/member/:memberId/role', checkWorkspaceMemberRole("owner", "admin"), teamController.updateTeamMemberRole);
+router.delete('/workspaces/:workspaceId/team/:teamId/members/:memberId', checkWorkspaceMemberRole("owner", "admin"), teamController.removeTeamMember);
+router.patch('/workspaces/:workspaceId/team/:teamId/members/:memberId/role', checkWorkspaceMemberRole("owner", "admin"), teamController.updateTeamMemberRole);
 
 
 module.exports = router

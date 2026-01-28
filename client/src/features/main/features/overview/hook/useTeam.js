@@ -9,7 +9,7 @@ import {
     addTeamMember,
     removeTeamMember,
     updateTeamMemberRole
-} from '../../../../../service/team.service'; // Adjust path if needed
+} from '../../../../../service/team.service';
 
 export const useTeam = () => {
     const [teams, setTeams] = useState([]);
@@ -121,7 +121,6 @@ export const useTeam = () => {
     // --- Team Member Operations ---
 
     const fetchMembers = useCallback(async (workspaceId, teamId) => {
-        // Don't set global loading here to avoid flickering entire UI for just a list update
         try {
             const members = await getTeamMembers(workspaceId, teamId);
             setTeamMembers(members);
