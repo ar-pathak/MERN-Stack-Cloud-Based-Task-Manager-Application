@@ -6,13 +6,14 @@ import MemberCard from "./MemberCard";
 import MemberFilters from "./MemberFilters";
 import InviteModal from "./InviteModal";
 import AddMemberModal from "./AddMemberModal";
+import AssignProjectMemberModal from "./AssignProjectMemberModal";
 
 const MembersSection = ({ item }) => {
     // 1. Initialize Logic
     const {
         members, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
         searchQuery, setSearchQuery, filterRole, setFilterRole,
-        loadMembers, handleAddMember, handleInvite, handleRemoveMember, handleUpdateRole
+        loadMembers, handleAddMember, handleAssignProjectMembers, handleInvite, handleRemoveMember, handleUpdateRole
     } = useMembersLogic(item);
 
     // 2. Local Modal UI State
@@ -109,7 +110,15 @@ const MembersSection = ({ item }) => {
 
             {/* Modals */}
             <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
-            <AddMemberModal isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />
+            {item.type === 'workspace' && <AddMemberModal isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
+            {item.type === 'project' && <AssignProjectMemberModal
+                isOpen={showAdd}
+                onClose={() => setShowAdd(false)}
+                onAssign={handleAssignProjectMembers}
+                workspaceId={item.workspace}
+                currentProjectMembers={members}
+                isLoading={isGlobalLoading}
+            />}
         </section>
     );
 };

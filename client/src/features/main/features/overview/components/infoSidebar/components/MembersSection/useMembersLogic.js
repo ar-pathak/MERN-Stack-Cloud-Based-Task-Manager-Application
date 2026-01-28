@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
+import { useProject } from "../../../../hook/useProject";
 
 export const useMembersLogic = (item) => {
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
+    const { fetchProjectMembers, addProjectMembers, updateProject } = useProject()
 
     // Core Data State
     const [members, setMembers] = useState([]);
@@ -30,17 +32,25 @@ export const useMembersLogic = (item) => {
         if (!workspaceId) return;
         try {
             if (showLoader) setIsRefreshing(true);
-            const memberData = await fetchMembers(workspaceId);
-            if (memberData?.data) {
-                setMembers(memberData.data);
-                setInitialLoadComplete(true);
+            if (item.type === 'workspace') {
+                const memberData = await fetchMembers(workspaceId);
+                if (memberData?.data) {
+                    setMembers(memberData.data);
+                    setInitialLoadComplete(true);
+                }
+            } else if (item.type === 'project') {
+                const memberData = await fetchProjectMembers(item.workspace, item.id)
+                if (memberData?.data) {
+                    setMembers(memberData.data.data);
+                    setInitialLoadComplete(true);
+                }
             }
         } catch (error) {
             notify("error", "Failed to load members.");
         } finally {
             if (showLoader) setIsRefreshing(false);
         }
-    }, [fetchMembers, workspaceId, notify]);
+    }, [fetchMembers, fetchProjectMembers, item, workspaceId, notify]);
 
     useEffect(() => {
         loadMembers(true);
@@ -66,7 +76,6 @@ export const useMembersLogic = (item) => {
         viewer: members.filter(m => m.role === "viewer").length,
     }), [members]);
 
-    // --- Actions ---
     const handleAddMember = async (username, role) => {
         setIsGlobalLoading(true);
         try {
@@ -77,6 +86,32 @@ export const useMembersLogic = (item) => {
                 return true;
             } else {
                 notify("error", result?.message || "Failed to add member");
+                return false;
+            }
+        } catch (err) {
+            notify("error", err.message);
+            return false;
+        } finally {
+            setIsGlobalLoading(false);
+        }
+    };
+
+    const handleAssignProjectMembers = async (selectedUserIds) => {
+        setIsGlobalLoading(true);
+        try {
+            const membersPayload = selectedUserIds.map(userId => ({
+                user: userId,
+                role: "viewer"
+            }));
+
+            const result = await addProjectMembers(item.workspace, item.id, { members: membersPayload });
+
+            if (result?.success) {
+                notify("success", "Members assigned successfully!");
+                await loadMembers(false);
+                return true;
+            } else {
+                notify("error", result?.message || "Failed to assign members");
                 return false;
             }
         } catch (err) {
@@ -122,12 +157,22 @@ export const useMembersLogic = (item) => {
 
     const handleUpdateRole = async (memberId, newRole) => {
         try {
-            const result = await updateMemberRole({ workspaceId, memberId, role: newRole });
-            if (result?.success) {
-                setMembers(prev => prev.map(m => m.user._id === memberId ? { ...m, role: newRole } : m));
-                notify("success", `Role updated to ${newRole}`);
-            } else {
-                notify("error", result?.message);
+            if (item.type === 'workspace') {
+                const result = await updateMemberRole({ workspaceId, memberId, role: newRole });
+                if (result?.success) {
+                    setMembers(prev => prev.map(m => m.user._id === memberId ? { ...m, role: newRole } : m));
+                    notify("success", `Role updated to ${newRole}`);
+                } else {
+                    notify("error", result?.message);
+                }
+            } else if (item.type === 'project') {
+                const result = await updateProject(item.workspace, item.id, { role: newRole });
+                if (result?.success) {
+                    setMembers(prev => prev.map(m => m.user._id === memberId ? { ...m, role: newRole } : m));
+                    notify("success", `Role updated to ${newRole}`);
+                } else {
+                    notify("error", result?.message);
+                }
             }
         } catch (err) {
             notify("error", err.message);
@@ -155,6 +200,7 @@ export const useMembersLogic = (item) => {
         // Actions
         loadMembers,
         handleAddMember,
+        handleAssignProjectMembers,
         handleInvite,
         handleRemoveMember,
         handleUpdateRole

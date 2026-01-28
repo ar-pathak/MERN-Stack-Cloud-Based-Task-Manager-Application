@@ -125,11 +125,9 @@ export const getProjectMembers = async (workspaceId, projectId) => {
     }
 };
 
-export const addProjectMembers = async (workspaceId, projectId, members) => {
+export const addProjectMembers = async (workspaceId, projectId, data) => {
     try {
-        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, {
-            members
-        });
+        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, data);
         return response.data;
     } catch (error) {
         throw {

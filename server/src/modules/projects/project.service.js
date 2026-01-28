@@ -39,7 +39,7 @@ const projectService = {
         }
         return project;
     },
-    
+
     updateProject: async (projectId, updateData) => {
         const project = await Project.findByIdAndUpdate(projectId, updateData, { new: true })
         if (!project) {
@@ -99,27 +99,40 @@ const projectService = {
     },
     getProjectMembers: async (projectId) => {
         const project = await Project.findById(projectId)
+            .populate('members.user', 'name email');
+
         if (!project) {
-            throw new Error('Project not found')
+            throw new Error('Project not found');
         }
-        return project.members
+
+        return project.members;
     },
     addProjectMembers: async (projectId, { members }) => {
-        const project = await Project.findByIdAndUpdate(
-            projectId,
-            {
-                $addToSet: {
-                    members: { $each: members }
-                }
-            },
-            { new: true }
-        );
+        const project = await Project.findById(projectId).select('members');
 
         if (!project) {
             throw new Error("Project not found");
         }
 
-        return { message: "Members added to project" };
+        const existingUserIds = new Set(project.members.map(m => m.user.toString()));
+
+        const newMembers = members.filter(m => !existingUserIds.has(m.user.toString()));
+
+        if (newMembers.length === 0) {
+            return { message: "All selected members are already in the project" };
+        }
+
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $push: {
+                    members: { $each: newMembers }
+                }
+            },
+            { new: true }
+        );
+
+        return { message: `${newMembers.length} new members added successfully` };
     },
     removeProjectMembers: async (projectId, { users }) => {
         const project = await Project.findByIdAndUpdate(
@@ -137,7 +150,24 @@ const projectService = {
         }
 
         return { message: "Members removed from project" };
-    }
+    }, updateProjectMemberRole: async (projectId, memberId, role) => {
+        const project = await Project.findOneAndUpdate(
+            {
+                _id: projectId,
+                "members.user": memberId
+            },
+            {
+                $set: { "members.$.role": role }
+            },
+            { new: true }
+        );
+
+        if (!project) {
+            throw new Error("Project not found or user is not a member of this project");
+        }
+
+        return { message: "Member role updated successfully" };
+    },
 }
 
 module.exports = projectService;

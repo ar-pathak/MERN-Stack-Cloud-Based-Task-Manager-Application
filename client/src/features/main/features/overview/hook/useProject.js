@@ -96,8 +96,8 @@ export const useProject = () => {
         return await execute(projectService.getProjectMembers, workspaceId, projectId);
     }, [execute]);
 
-    const addMembersToProject = useCallback(async (workspaceId, projectId, members) => {
-        return await execute(projectService.addProjectMembers, workspaceId, projectId, members);
+    const addMembersToProject = useCallback(async (workspaceId, projectId, data) => {
+        return await execute(projectService.addProjectMembers, workspaceId, projectId, data);
     }, [execute]);
 
     const removeMembersFromProject = useCallback(async (workspaceId, projectId, users) => {

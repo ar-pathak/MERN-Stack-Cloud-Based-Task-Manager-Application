@@ -21,7 +21,11 @@ router.delete('/workspaces/:workspaceId/projects/:projectId/teams', checkWorkspa
 router.get('/workspaces/:workspaceId/projects/:projectId/members', checkWorkspaceMemberRole('owner', 'admin', 'member', 'viewer'), projectController.getProjectMembers)
 router.patch('/workspaces/:workspaceId/projects/:projectId/members', checkWorkspaceMemberRole('owner', 'admin'), projectController.addProjectMembers)
 router.delete('/workspaces/:workspaceId/projects/:projectId/members', checkWorkspaceMemberRole('owner', 'admin'), projectController.removeProjectMembers)
-
+router.patch(
+    '/workspaces/:workspaceId/projects/:projectId/members/:memberId',
+    checkWorkspaceMemberRole('owner', 'admin'),
+    projectController.updateProjectMemberRole
+);
 
 
 module.exports = router;

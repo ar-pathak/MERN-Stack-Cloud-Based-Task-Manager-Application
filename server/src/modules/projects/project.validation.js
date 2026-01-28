@@ -23,7 +23,7 @@ const createProjectSchema = z.object({
         .array(
             z.object({
                 user: objectId,
-                role: z.enum(["admin", "editor", "viewer"]).default("viewer")
+                role: z.enum(["admin", "member", "viewer"]).default("viewer")
             })
         )
         .optional(),
@@ -49,7 +49,7 @@ const updateProjectSchema = z.object({
         .array(
             z.object({
                 user: objectId,
-                role: z.enum(["admin", "editor", "viewer"]).default("viewer")
+                role: z.enum(["admin", "member", "viewer"]).default("viewer")
             })
         )
         .optional(),
@@ -77,7 +77,7 @@ const addProjectMembersSchema = z.object({
         .array(
             z.object({
                 user: objectId,
-                role: z.enum(["admin", "editor", "viewer"]).default("viewer")
+                role: z.enum(["admin", "member", "viewer"]).default("viewer")
             })
         ).min(1, "At least one member is required")
 })
@@ -88,4 +88,9 @@ const removeProjectMembersSchema = z.object({
         .min(1, "At least one user is required")
 });
 
-module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema };
+const updateProjectMemberRoleSchema = z.object({
+    role: z.enum(["admin", "member", "viewer"], {
+        message: "Role must be one of: admin, member, viewer"
+    })
+});
+module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema, updateProjectMemberRoleSchema };

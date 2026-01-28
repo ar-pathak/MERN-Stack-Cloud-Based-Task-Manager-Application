@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 const projectService = require('./project.service')
-const { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema } = require('./project.validation');
+const { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema, updateProjectMemberRoleSchema } = require('./project.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
 const projectController = {
@@ -58,6 +58,22 @@ const projectController = {
             res.status(201).json({ message: 'project updated successfully' })
         } catch (error) {
             return handleError(error, res)
+        }
+    }, updateProjectMemberRole: async (req, res) => {
+        try {
+            const { projectId, memberId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(memberId)) {
+                throw new Error("Invalid Project ID or Member ID");
+            }
+
+            const { role } = updateProjectMemberRoleSchema.parse(req.body);
+
+            const result = await projectService.updateProjectMemberRole(projectId, memberId, role);
+
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
         }
     },
     deleteProject: async (req, res) => {
