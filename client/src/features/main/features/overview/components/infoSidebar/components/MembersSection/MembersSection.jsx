@@ -11,7 +11,7 @@ import AssignProjectMemberModal from "./AssignProjectMemberModal";
 const MembersSection = ({ item }) => {
     // 1. Initialize Logic
     const {
-        members, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
+        members, taskData, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
         searchQuery, setSearchQuery, filterRole, setFilterRole,
         loadMembers, handleAddMember, handleAssignProjectMembers, handleInvite, handleRemoveMember, handleUpdateRole
     } = useMembersLogic(item);
@@ -96,6 +96,7 @@ const MembersSection = ({ item }) => {
                         filteredMembers.map(member => (
                             <MemberCard
                                 key={member._id}
+                                item={item}
                                 member={member}
                                 canManageMembers={canManageMembers}
                                 onRemove={handleRemoveMember}
@@ -111,8 +112,10 @@ const MembersSection = ({ item }) => {
             {/* Modals */}
             <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
             {item.type === 'workspace' && <AddMemberModal isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
-            {item.type === 'project' && <AssignProjectMemberModal
+            {(item.type === 'project' || taskData.workspace !== null || taskData.project !== null) && <AssignProjectMemberModal
+                item={item}
                 isOpen={showAdd}
+                taskData={taskData}
                 onClose={() => setShowAdd(false)}
                 onAssign={handleAssignProjectMembers}
                 workspaceId={item.workspace}

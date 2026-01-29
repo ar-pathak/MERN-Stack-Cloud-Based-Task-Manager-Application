@@ -274,9 +274,19 @@ const taskService = {
         const task = await Task.findById(taskId)
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
-            .populate('project')
+
+            // Nested Populate: Project -> Members -> User
+            .populate({
+                path: 'project',
+                populate: {
+                    path: 'members.user', // Yahan wo field likhein jo User model ko refer kar raha hai
+                    select: 'name email'  // User ka sirf name aur email chahiye (optional)
+                }
+            })
+
             .populate('workspace')
             .exec();
+
         if (!task) {
             throw new Error('Task not found')
         }

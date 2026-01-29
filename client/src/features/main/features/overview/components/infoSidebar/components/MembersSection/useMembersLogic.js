@@ -1,16 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
 import { useProject } from "../../../../hook/useProject";
+import { useTask } from "../../../../hook/useTask";
 
 export const useMembersLogic = (item) => {
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
     const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject()
-
+    const { fetchTaskById, assignUsers } = useTask();
     // Core Data State
     const [members, setMembers] = useState([]);
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
+    const [taskData, setTaskData] = useState([])
 
     // UI State
     const [searchQuery, setSearchQuery] = useState("");
@@ -19,7 +21,7 @@ export const useMembersLogic = (item) => {
 
     const workspaceId = item?.id;
     const currentUserRole = item?.permissions?.role;
-    const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin';
+    const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserRole === "creator";
 
     // --- Notifications ---
     const notify = useCallback((type, message) => {
@@ -44,6 +46,15 @@ export const useMembersLogic = (item) => {
                     setMembers(memberData.data.data);
                     setInitialLoadComplete(true);
                 }
+            } else if (item.type == 'task') {
+                const memberData = await fetchTaskById(item.id);
+                console.log('memberData', memberData)
+                if (memberData?.data) {
+                    setTaskData(memberData.data)
+                    setMembers(memberData.data.assignees);
+                    setInitialLoadComplete(true);
+                }
+
             }
         } catch (error) {
             notify("error", "Failed to load members.");
@@ -105,16 +116,30 @@ export const useMembersLogic = (item) => {
                 user: userId,
                 role: "viewer"
             }));
+            const taskPayload = selectedUserIds.map(userId => (
+                userId
+            ))
+            if (item.type === 'project') {
+                const result = await addProjectMembers(item.workspace, item.id, { members: membersPayload });
+                if (result?.success) {
+                    notify("success", "Members assigned successfully!");
+                    await loadMembers(false);
+                    return true;
+                } else {
+                    notify("error", result?.message || "Failed to assign members");
+                    return false;
+                }
+            } else if (item.type === 'task') {
+                const result = await assignUsers(item.id, taskPayload);
+                if (result?.success) {
+                    notify("success", "Members assigned successfully!");
+                    await loadMembers(false);
+                    return true;
+                } else {
+                    notify("error", result?.message || "Failed to assign members");
+                    return false;
+                }
 
-            const result = await addProjectMembers(item.workspace, item.id, { members: membersPayload });
-
-            if (result?.success) {
-                notify("success", "Members assigned successfully!");
-                await loadMembers(false);
-                return true;
-            } else {
-                notify("error", result?.message || "Failed to assign members");
-                return false;
             }
         } catch (err) {
             notify("error", err.message);
@@ -195,6 +220,7 @@ export const useMembersLogic = (item) => {
     return {
         // Data
         members,
+        taskData,
         filteredMembers,
         roleStats,
         initialLoadComplete,

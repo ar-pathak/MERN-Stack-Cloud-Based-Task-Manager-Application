@@ -175,9 +175,9 @@ export const toggleTaskCompletion = async (taskId) => {
  * Route: PATCH /api/tasks/:taskId/assign
  * FIX: Added method to assign users
  */
-export const assignUsersToTask = async (taskId, userIds) => {
+export const assignUsersToTask = async (taskId, assignees) => {
     try {
-        const response = await api.patch(`/api/tasks/${taskId}/assign`, { userIds });
+        const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { assignees });
         return response.data;
     } catch (error) {
         throw {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Crown, Shield, Users, Eye, MoreVertical, Copy, CheckCircle2, UserMinus, Loader2 } from "lucide-react";
 
-const MemberCard = ({ member, canManageMembers, onRemove, onUpdateRole }) => {
+const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) => {
     const [isSelected, setIsSelected] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -13,6 +13,9 @@ const MemberCard = ({ member, canManageMembers, onRemove, onUpdateRole }) => {
             member: { icon: Users, color: "text-sky-400", bg: "bg-sky-500/10", border: "border-sky-500/20" },
             viewer: { icon: Eye, color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" },
         };
+        if (item.type === 'task') {
+            return badges.member
+        }
         return badges[role] || badges.viewer;
     };
 
@@ -39,17 +42,17 @@ const MemberCard = ({ member, canManageMembers, onRemove, onUpdateRole }) => {
                 {/* Avatar */}
                 <div className="relative flex-shrink-0">
                     <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${getAvatarGradient(member._id)} flex items-center justify-center text-sm font-bold text-white shadow-lg`}>
-                        {member.user?.name ? member.user.name.substring(0, 2).toUpperCase() : "??"}
+                        {member.user?.name ? member.user.name.substring(0, 2).toUpperCase() : member?.name ? member.name.substring(0, 2).toUpperCase() : "??"}
                     </div>
                     {member.online && <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center"><div className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" /></div>}
                 </div>
 
                 {/* Details */}
                 <div className="flex-1 min-w-0">
-                    <h4 className="text-sm font-semibold text-slate-200 truncate">{member.user?.name || "Unknown"}</h4>
+                    <h4 className="text-sm font-semibold text-slate-200 truncate">{member.user?.name || member?.name || "Unknown"}</h4>
                     <div className="flex items-center gap-2 mt-1">
-                        <p className="text-xs text-slate-500 truncate">{member.user?.email}</p>
-                        <button onClick={() => navigator.clipboard.writeText(member.user.email)} className="text-slate-600 hover:text-slate-400"><Copy className="h-3 w-3" /></button>
+                        <p className="text-xs text-slate-500 truncate">{member.user?.email || member?.email}</p>
+                        <button onClick={() => navigator.clipboard.writeText(member.user.email || member?.email)} className="text-slate-600 hover:text-slate-400"><Copy className="h-3 w-3" /></button>
                     </div>
                 </div>
 

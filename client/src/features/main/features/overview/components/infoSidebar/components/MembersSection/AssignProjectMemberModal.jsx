@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, X, Loader2, Search, CheckCircle2, Circle } from "lucide-react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
 
-const AssignProjectMemberModal = ({ isOpen, onClose, onAssign, workspaceId, currentProjectMembers, isLoading }) => {
+const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, workspaceId, currentProjectMembers, isLoading }) => {
     const { fetchMembers } = useWorkspace();
     const [workspaceMembers, setWorkspaceMembers] = useState([]);
     const [isFetchingMembers, setIsFetchingMembers] = useState(false);
@@ -12,35 +12,62 @@ const AssignProjectMemberModal = ({ isOpen, onClose, onAssign, workspaceId, curr
 
     // 1. Fetch Workspace Members when modal opens
     useEffect(() => {
-        if (isOpen && workspaceId) {
-            const loadWorkspaceMembers = async () => {
-                setIsFetchingMembers(true);
-                try {
-                    const res = await fetchMembers(workspaceId);
-                    if (res?.data) {
-                        setWorkspaceMembers(res.data);
+        if (isOpen) {
+            console.log('item', item)
+            if (item.type === 'project' && workspaceId) {
+                const loadWorkspaceMembers = async () => {
+                    setIsFetchingMembers(true);
+                    try {
+                        const res = await fetchMembers(workspaceId);
+                        if (res?.data) {
+                            setWorkspaceMembers(res.data);
+                        }
+                    } catch (error) {
+                        console.error("Failed to load workspace members", error);
+                    } finally {
+                        setIsFetchingMembers(false);
                     }
-                } catch (error) {
-                    console.error("Failed to load workspace members", error);
-                } finally {
-                    setIsFetchingMembers(false);
+                };
+                loadWorkspaceMembers();
+            } else if (item.type === 'task') {
+                const loadTaskParentMembers = async () => {
+                    setIsFetchingMembers(true);
+                    try {
+
+                        if (taskData.project !== null) {
+                            setWorkspaceMembers(taskData.project.members)
+                        } else if (taskData.workspace !== null) {
+                            const res = await fetchMembers(taskData.workspace._id)
+                            if (res?.data) {
+                                setWorkspaceMembers(res.data);
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to load workspace members", error);
+                    } finally {
+                        setIsFetchingMembers(false);
+                    }
                 }
-            };
-            loadWorkspaceMembers();
-            setSelectedUsers([]); // Reset selection
+                loadTaskParentMembers();
+            }
+            setSelectedUsers([]);
             setSearchQuery("");
         }
-    }, [isOpen, workspaceId, fetchMembers]);
+    }, [isOpen, workspaceId, fetchMembers, item, taskData]);
 
     // 2. Filter: Only show members NOT already in the project
     const availableMembers = useMemo(() => {
-        const existingUserIds = new Set(currentProjectMembers.map(m => m.user._id));
+        // Handle both "Member Wrapper" (project/workspace) and "Direct User" (task assignees) structures
+        const existingUserIds = new Set(currentProjectMembers.map(m => m.user?._id || m._id));
 
         return workspaceMembers.filter(m => {
+            // Ensure m.user exists before accessing properties to prevent crashes in the filter as well
+            if (!m.user) return false;
+
             const isNotMember = !existingUserIds.has(m.user._id);
             const matchesSearch =
-                m.user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                m.user.email.toLowerCase().includes(searchQuery.toLowerCase());
+                (m.user.name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
+                (m.user.email?.toLowerCase() || "").includes(searchQuery.toLowerCase());
             return isNotMember && matchesSearch;
         });
     }, [workspaceMembers, currentProjectMembers, searchQuery]);
