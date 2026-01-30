@@ -114,6 +114,11 @@ export const useTask = () => {
         if (success) updateLocalState(data);
         return { success, data };
     }, [execute, updateLocalState]);
+    const assignTeams = useCallback(async (taskId, teamIds) => {
+        const { success, data } = await execute(taskService.assignTeamsToTask, taskId, teamIds);
+        if (success) updateLocalState(data);
+        return { success, data };
+    }, [execute, updateLocalState]);
     const assignUsersByUsername = useCallback(async (taskId, usernames) => {
         const { success, data } = await execute(taskService.assignUsersToTaskByUsername, taskId, usernames);
         if (success) updateLocalState(data);
@@ -121,6 +126,11 @@ export const useTask = () => {
     }, [execute, updateLocalState]);
     const removeAssignUsers = useCallback(async (taskId, userIds) => {
         const { success, data, error } = await execute(taskService.removeAssignUsersFromTask, taskId, userIds);
+        if (success) updateLocalState(data);
+        return { success, data, error };
+    }, [execute, updateLocalState]);
+    const removeAssignTeams = useCallback(async (taskId, teamIds) => {
+        const { success, data, error } = await execute(taskService.removeAssignTeamsFromTask, taskId, teamIds);
         if (success) updateLocalState(data);
         return { success, data, error };
     }, [execute, updateLocalState]);
@@ -180,8 +190,10 @@ export const useTask = () => {
         updateStatus: changeTaskStatus,
         toggleComplete: toggleTaskComplete,
         assignUsers,
+        assignTeams,
         assignUsersByUsername,
         removeAssignUsers,
+        removeAssignTeams,
 
         // Delete/Restore Actions
         deleteTask: removeTask,           // Soft Delete

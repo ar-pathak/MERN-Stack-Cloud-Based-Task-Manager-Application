@@ -186,6 +186,17 @@ export const assignUsersToTask = async (taskId, assignees) => {
         };
     }
 };
+export const assignTeamsToTask = async (taskId, assigneesTeams) => {
+    try {
+        const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { assigneesTeams });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to assign teams",
+            status: error.response?.status,
+        };
+    }
+};
 export const assignUsersToTaskByUsername = async (taskId, usernames) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { usernames });
@@ -202,6 +213,19 @@ export const removeAssignUsersFromTask = async (taskId, assignees) => {
     try {
         const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
             data: { assignees }
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove assignees",
+            status: error.response?.status,
+        };
+    }
+};
+export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
+    try {
+        const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
+            data: { assigneesTeams }
         });
         return response.data;
     } catch (error) {

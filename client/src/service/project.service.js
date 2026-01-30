@@ -97,12 +97,17 @@ export const addProjectTeams = async (workspaceId, projectId, teams) => {
         };
     }
 };
-
 export const removeProjectTeams = async (workspaceId, projectId, teams) => {
     try {
-        const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`, {
-            data: { teams }
-        });
+        const teamArray = Array.isArray(teams) ? teams : [teams];
+
+        const response = await api.delete(
+            `/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`,
+            {
+                data: { teams: teamArray },
+            }
+        );
+
         return response.data;
     } catch (error) {
         throw {
@@ -111,6 +116,7 @@ export const removeProjectTeams = async (workspaceId, projectId, teams) => {
         };
     }
 };
+
 
 // Project Members Management
 export const getProjectMembers = async (workspaceId, projectId) => {

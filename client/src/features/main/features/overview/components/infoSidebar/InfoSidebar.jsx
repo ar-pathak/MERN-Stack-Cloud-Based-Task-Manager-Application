@@ -292,7 +292,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             className="space-y-6 pb-6"
                         >
                             <MembersSection item={item} />
-                            {item.type === 'workspace' && <TeamsSection item={item} />}
+                            {item.type !== 'subtask' && (item.workspace !== null || item.project !== null) && <TeamsSection item={item} />}
                         </motion.div>
                     )}
 

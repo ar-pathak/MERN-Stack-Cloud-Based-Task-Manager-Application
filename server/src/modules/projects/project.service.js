@@ -57,7 +57,7 @@ const projectService = {
         return project;
     },
     getProjectTeams: async (projectId) => {
-        const project = await Project.findById(projectId);
+        const project = await Project.findById(projectId).populate('teams');
         if (!project) {
             throw new Error('Project not found')
         }
