@@ -6,7 +6,7 @@ import { useTask } from "../../../../hook/useTask";
 export const useMembersLogic = (item) => {
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
     const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject()
-    const { fetchTaskById, assignUsers } = useTask();
+    const { fetchTaskById, assignUsers, removeAssignUsers } = useTask();
     // Core Data State
     const [members, setMembers] = useState([]);
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -169,6 +169,7 @@ export const useMembersLogic = (item) => {
     };
 
     const handleRemoveMember = async (memberId) => {
+        console.log("Removing member:", memberId, "Item Type:", item.type);
         try {
             if (item.type === 'workspace') {
 
@@ -186,6 +187,15 @@ export const useMembersLogic = (item) => {
                     notify("success", "Member removed successfully");
                 } else {
                     notify("error", result?.message);
+                }
+            } else if (item.type === 'task') {
+                const result = await removeAssignUsers(item.id, [memberId]);
+                console.log("Remove assign users result:", result);
+                if (result?.success) {
+                    setMembers(prev => prev.filter(m => m._id !== memberId));
+                    notify("success", "Member removed successfully");
+                } else {
+                    notify("error", result?.error || "Failed to remove member from task");
                 }
             }
         } catch (err) {

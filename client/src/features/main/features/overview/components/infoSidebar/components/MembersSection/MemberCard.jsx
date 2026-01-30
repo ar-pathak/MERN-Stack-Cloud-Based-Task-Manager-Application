@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Crown, Shield, Users, Eye, MoreVertical, Copy, CheckCircle2, UserMinus, Loader2 } from "lucide-react";
 
 const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) => {
+    console.log("Rendering MemberCard for member:", member);
     const [isSelected, setIsSelected] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const removedId = member?.user?._id || member?._id;
 
     const getRoleBadge = (role) => {
         const badges = {
@@ -74,13 +76,13 @@ const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) 
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setIsSelected(false)} />
                                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 top-full mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-20 w-48 overflow-hidden">
-                                            {["viewer", "member", "admin"].map((role) => (
+                                            {item.type !== 'task' && ["viewer", "member", "admin"].map((role) => (
                                                 <button key={role} disabled={member.role === role} onClick={() => handleAction(() => onUpdateRole(member.user._id, role))} className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-800 flex justify-between capitalize">
                                                     {role} {member.role === role && <CheckCircle2 className="h-3 w-3" />}
                                                 </button>
                                             ))}
                                             <div className="my-1 h-px bg-slate-800" />
-                                            <button onClick={() => handleAction(() => onRemove(member.user._id))} className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 flex items-center gap-2">
+                                            <button onClick={() => handleAction(() => onRemove(removedId))} className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 flex items-center gap-2">
                                                 <UserMinus className="h-3.5 w-3.5" /> Remove Member
                                             </button>
                                         </motion.div>

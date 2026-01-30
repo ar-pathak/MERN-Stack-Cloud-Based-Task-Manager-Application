@@ -187,6 +187,20 @@ export const assignUsersToTask = async (taskId, assignees) => {
     }
 };
 
+export const removeAssignUsersFromTask = async (taskId, assignees) => {
+    try {
+        const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
+            data: { assignees }
+        });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove assignees",
+            status: error.response?.status,
+        };
+    }
+};
+
 /**
  * Get Tasks based on scope (Helper function)
  */
