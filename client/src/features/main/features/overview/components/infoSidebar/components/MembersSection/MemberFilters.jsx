@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Search, X, Users, Shield, Crown, Eye } from "lucide-react";
 import { useRef } from "react";
 
-const MemberFilters = ({ searchQuery, setSearchQuery, filterRole, setFilterRole, roleStats }) => {
+const MemberFilters = ({searchQuery, setSearchQuery, filterRole, setFilterRole, roleStats }) => {
     const searchInputRef = useRef(null);
 
     const getRoleIcon = (role) => {

@@ -114,10 +114,15 @@ export const useTask = () => {
         if (success) updateLocalState(data);
         return { success, data };
     }, [execute, updateLocalState]);
-    const removeAssignUsers = useCallback(async (taskId, userIds) => {
-        const { success, data ,error} = await execute(taskService.removeAssignUsersFromTask, taskId, userIds);
+    const assignUsersByUsername = useCallback(async (taskId, usernames) => {
+        const { success, data } = await execute(taskService.assignUsersToTaskByUsername, taskId, usernames);
         if (success) updateLocalState(data);
-        return { success, data,error };
+        return { success, data };
+    }, [execute, updateLocalState]);
+    const removeAssignUsers = useCallback(async (taskId, userIds) => {
+        const { success, data, error } = await execute(taskService.removeAssignUsersFromTask, taskId, userIds);
+        if (success) updateLocalState(data);
+        return { success, data, error };
     }, [execute, updateLocalState]);
 
     // --- Delete / Restore Operations ---
@@ -175,6 +180,7 @@ export const useTask = () => {
         updateStatus: changeTaskStatus,
         toggleComplete: toggleTaskComplete,
         assignUsers,
+        assignUsersByUsername,
         removeAssignUsers,
 
         // Delete/Restore Actions

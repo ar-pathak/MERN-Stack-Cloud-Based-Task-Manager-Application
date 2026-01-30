@@ -47,10 +47,19 @@ const addTaskAssigneesSchema = z.object({
         .refine(
             arr => !arr || new Set(arr).size === arr.length,
             { message: "Duplicate user IDs not allowed" }
+        ),
+    usernames: z
+        .array(z.string().trim().min(1))
+        .optional()
+        .refine(
+            arr => !arr || new Set(arr).size === arr.length,
+            { message: "Duplicate usernames not allowed" }
         )
 }).refine(
-    data => data.assignees || data.assigneesTeams,
-    { message: "At least one assignee or team must be provided" }
+    data => (data.assignees && data.assignees.length > 0) ||
+        (data.assigneesTeams && data.assigneesTeams.length > 0) ||
+        (data.usernames && data.usernames.length > 0),
+    { message: "At least one assignee (ID or username) or team must be provided" }
 );
 
 const removeTaskAssigneesSchema = z.object({

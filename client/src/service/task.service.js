@@ -186,6 +186,17 @@ export const assignUsersToTask = async (taskId, assignees) => {
         };
     }
 };
+export const assignUsersToTaskByUsername = async (taskId, usernames) => {
+    try {
+        const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { usernames });
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to assign users",
+            status: error.response?.status,
+        };
+    }
+};
 
 export const removeAssignUsersFromTask = async (taskId, assignees) => {
     try {

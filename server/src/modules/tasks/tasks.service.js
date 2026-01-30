@@ -2,6 +2,7 @@ const isUserTaskAssignee = require('../../helpers/isUserTaskAssignee');
 const { canCreateTask } = require('../../middleware/resolveTaskCreatePermission');
 const Task = require('../../models/tasks')
 const Team = require('../../models/team');
+const User = require('../../models/user');
 const { touchParents } = require('../utils/updateParent');
 
 const taskService = {
@@ -69,10 +70,32 @@ const taskService = {
         }
 
         const updateQuery = {};
+        let targetAssigneeIds = [];
 
+        // 1. Collect Direct IDs
         if (assigneesData.assignees?.length) {
+            targetAssigneeIds = [...assigneesData.assignees];
+        }
+
+        // 2. Resolve Usernames to IDs (NEW LOGIC)
+        if (assigneesData.usernames?.length) {
+            // Find users matching the provided usernames
+            const usersFound = await User.find({
+                username: { $in: assigneesData.usernames }
+            }).select('_id');
+
+            if (usersFound.length === 0 && !targetAssigneeIds.length && !assigneesData.assigneesTeams?.length) {
+                throw new Error("No valid users found with provided usernames");
+            }
+
+            const userIdsFromNames = usersFound.map(u => u._id);
+            targetAssigneeIds = [...targetAssigneeIds, ...userIdsFromNames];
+        }
+
+        // 3. Prepare Update Query
+        if (targetAssigneeIds.length > 0) {
             updateQuery.assignees = {
-                $each: assigneesData.assignees
+                $each: targetAssigneeIds
             };
         }
 
@@ -83,7 +106,7 @@ const taskService = {
         }
 
         if (Object.keys(updateQuery).length === 0) {
-            throw new Error("No assignees provided");
+            throw new Error("No valid assignees or teams provided");
         }
 
         await Task.updateOne(

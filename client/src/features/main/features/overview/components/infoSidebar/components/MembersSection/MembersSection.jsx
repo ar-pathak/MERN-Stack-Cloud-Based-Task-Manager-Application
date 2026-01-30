@@ -59,7 +59,7 @@ const MembersSection = ({ item }) => {
                         <Users className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold text-slate-100">Team Members</h2>
+                        <h2 className="text-xl font-bold text-slate-100">{item.type === 'workspace' ? 'Workspace Member' : item.type === 'project' ? 'Project Assignee' : item.type === 'task' ? 'Task Assignee' : 'Subtask Assignee'}</h2>
                         <p className="text-sm text-slate-400">{members.length} members • {members.filter(m => m.online).length} online</p>
                     </div>
                 </div>
@@ -111,7 +111,7 @@ const MembersSection = ({ item }) => {
 
             {/* Modals */}
             <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
-            {item.type === 'workspace' && <AddMemberModal isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
+            {(item.type === 'workspace' || (taskData.workspace === null && taskData.project === null)) && <AddMemberModal item={item} isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
             {(item.type === 'project' || taskData.workspace !== null || taskData.project !== null) && <AssignProjectMemberModal
                 item={item}
                 isOpen={showAdd}

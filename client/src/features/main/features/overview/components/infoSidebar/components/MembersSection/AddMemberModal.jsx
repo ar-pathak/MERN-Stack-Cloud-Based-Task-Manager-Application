@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, X, Loader2 } from "lucide-react";
 
-const AddMemberModal = ({ isOpen, onClose, onAdd, isLoading }) => {
+const AddMemberModal = ({item, isOpen, onClose, onAdd, isLoading }) => {
     const [username, setUsername] = useState("");
     const [role, setRole] = useState("member");
     const inputRef = useRef(null);
@@ -96,9 +96,9 @@ const AddMemberModal = ({ isOpen, onClose, onAdd, isLoading }) => {
                             onChange={(e) => setRole(e.target.value)}
                             className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500/50 transition-all"
                         >
-                            <option value="viewer">Viewer</option>
+                           {item.type !== 'task' && <option value="viewer">Viewer</option>}
                             <option value="member">Member</option>
-                            <option value="admin">Admin</option>
+                           {item.type !== 'task' && <option value="admin">Admin</option>}
                         </select>
                     </div>
 

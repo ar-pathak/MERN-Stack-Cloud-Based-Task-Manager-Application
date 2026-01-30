@@ -6,7 +6,7 @@ import { useTask } from "../../../../hook/useTask";
 export const useMembersLogic = (item) => {
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
     const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject()
-    const { fetchTaskById, assignUsers, removeAssignUsers } = useTask();
+    const { fetchTaskById, assignUsers, assignUsersByUsername, removeAssignUsers } = useTask();
     // Core Data State
     const [members, setMembers] = useState([]);
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
@@ -79,27 +79,50 @@ export const useMembersLogic = (item) => {
         });
     }, [members, searchQuery, filterRole]);
 
-    const roleStats = useMemo(() => ({
-        all: members.length,
-        ...(item.type === 'workspace' && {
-            owner: members.filter(m => m.role === "owner").length
-        }),
-        admin: members.filter(m => m.role === "admin").length,
-        member: members.filter(m => m.role === "member").length,
-        viewer: members.filter(m => m.role === "viewer").length,
-    }), [members, item.type]);
+    const roleStats = useMemo(() => {
+        // Check: If task or subtask, return only 'all'
+        if (item.type === 'task' || item.type === 'subtask') {
+            return {
+                all: members.length
+            };
+        }
+
+        // Else: Return full stats (for workspace/project)
+        return {
+            all: members.length,
+            ...(item.type === 'workspace' && {
+                owner: members.filter(m => m.role === "owner").length
+            }),
+            admin: members.filter(m => m.role === "admin").length,
+            member: members.filter(m => m.role === "member").length,
+            viewer: members.filter(m => m.role === "viewer").length,
+        };
+    }, [members, item.type]);
 
     const handleAddMember = async (username, role) => {
         setIsGlobalLoading(true);
         try {
-            const result = await addMember({ workspaceId, username, role });
-            if (result?.success) {
-                notify("success", `${username} added successfully!`);
-                await loadMembers(false);
-                return true;
-            } else {
-                notify("error", result?.message || "Failed to add member");
-                return false;
+            if (item.type === 'workspace') {
+
+                const result = await addMember({ workspaceId, username, role });
+                if (result?.success) {
+                    notify("success", `${username} added successfully!`);
+                    await loadMembers(false);
+                    return true;
+                } else {
+                    notify("error", result?.message || "Failed to add member");
+                    return false;
+                }
+            } else if (item.type === 'task') {
+                const result = await assignUsersByUsername(item.id, [username]);
+                if (result?.success) {
+                    notify("success", `${username} added successfully!`);
+                    await loadMembers(false);
+                    return true;
+                } else {
+                    notify("error", result?.message || "Failed to add member");
+                    return false;
+                }
             }
         } catch (err) {
             notify("error", err.message);
@@ -199,7 +222,7 @@ export const useMembersLogic = (item) => {
                 }
             }
         } catch (err) {
-            notify("error", err.message);
+            notify("error", err.error);
         }
     };
 
