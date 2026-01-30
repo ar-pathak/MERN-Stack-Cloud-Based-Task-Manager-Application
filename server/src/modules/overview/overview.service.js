@@ -46,6 +46,7 @@ const overviewService = {
             if (!acc[key]) acc[key] = [];
             acc[key].push({
                 id: st._id,
+                task: st.task,
                 title: st.title,
                 type: 'subtask',
                 completed: st.completed,
@@ -53,8 +54,9 @@ const overviewService = {
                 description: st.description,
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
-                completed: st.completed,
-                dueDate: st.dueDate
+                completed: st.completed, // Note: Duplicated key in original, keeping structure
+                dueDate: st.dueDate,
+                createdBy: st.createdBy // Added createdBy for permission check
             });
             return acc;
         }, {});
@@ -68,8 +70,14 @@ const overviewService = {
 
             // Get permissions with fallback chain: task -> project -> workspace
             let taskPermissions = userPermissions.tasks[taskId] || {};
+            let canEditTask = false;
 
-            // If task has a project, inherit project permissions
+            // 1. Check Task Level Permissions
+            if (taskPermissions.role === 'creator' || taskPermissions.role === 'assignee') {
+                canEditTask = true;
+            }
+
+            // 2. If task has a project, inherit project permissions
             if (t.project && !taskPermissions.role) {
                 const projId = String(t.project);
                 const projPermissions = userPermissions.projects[projId];
@@ -78,10 +86,14 @@ const overviewService = {
                         canCreateSubtask: projPermissions.canCreateTask || false,
                         role: projPermissions.role || null
                     };
+                    // Project Owners, Admins, and Editors can usually edit tasks
+                    if (['owner', 'admin', 'editor'].includes(projPermissions.role)) {
+                        canEditTask = true;
+                    }
                 }
             }
 
-            // If task has a workspace (and no project permissions), inherit workspace permissions
+            // 3. If task has a workspace (and no project permissions), inherit workspace permissions
             if (t.workspace && !taskPermissions.role) {
                 const wsId = String(t.workspace);
                 const wsPermissions = userPermissions.workspaces[wsId];
@@ -90,8 +102,28 @@ const overviewService = {
                         canCreateSubtask: wsPermissions.canCreateTask || false,
                         role: wsPermissions.role || null
                     };
+                    // Workspace Owners and Admins can edit tasks
+                    if (['owner', 'admin'].includes(wsPermissions.role)) {
+                        canEditTask = true;
+                    }
                 }
             }
+
+            // 4. Process Subtasks with Permissions
+            const rawSubtasks = subtasksByTask[taskId] || [];
+            const processedSubtasks = rawSubtasks.map(st => {
+                const isSubtaskCreator = String(st.createdBy) === String(userId);
+                // User can edit subtask if they created it OR they have edit rights on the parent task
+                const hasEditAccess = isSubtaskCreator || canEditTask;
+
+                return {
+                    ...st,
+                    permissions: {
+                        canEdit: hasEditAccess,
+                        canDelete: hasEditAccess
+                    }
+                };
+            });
 
             const taskObj = {
                 id: t._id,
@@ -103,7 +135,7 @@ const overviewService = {
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
                 dueDate: t.dueDate,
-                subtasks: subtasksByTask[taskId] || [],
+                subtasks: processedSubtasks, // Updated to use processed subtasks
                 permissions: {
                     canCreateSubtask: taskPermissions.canCreateSubtask || false,
                     role: taskPermissions.role || null

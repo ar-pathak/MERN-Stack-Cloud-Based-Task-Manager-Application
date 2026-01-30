@@ -15,7 +15,7 @@ const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) 
             member: { icon: Users, color: "text-sky-400", bg: "bg-sky-500/10", border: "border-sky-500/20" },
             viewer: { icon: Eye, color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20" },
         };
-        if (item.type === 'task') {
+        if (item.type === 'task' || item.type == 'subtask') {
             return badges.member
         }
         return badges[role] || badges.viewer;
@@ -76,7 +76,7 @@ const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) 
                                     <>
                                         <div className="fixed inset-0 z-10" onClick={() => setIsSelected(false)} />
                                         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="absolute right-0 top-full mt-2 bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-20 w-48 overflow-hidden">
-                                            {item.type !== 'task' && ["viewer", "member", "admin"].map((role) => (
+                                            {(item.type !== 'task' && item.type !== 'subtask') && ["viewer", "member", "admin"].map((role) => (
                                                 <button key={role} disabled={member.role === role} onClick={() => handleAction(() => onUpdateRole(member.user._id, role))} className="w-full px-3 py-2 text-left text-xs text-slate-300 hover:bg-slate-800 flex justify-between capitalize">
                                                     {role} {member.role === role && <CheckCircle2 className="h-3 w-3" />}
                                                 </button>

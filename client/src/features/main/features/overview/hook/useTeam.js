@@ -15,7 +15,7 @@ export const useTeam = () => {
     const [teams, setTeams] = useState([]);
     const [currentTeam, setCurrentTeam] = useState(null);
     const [teamMembers, setTeamMembers] = useState([]);
-    
+
     // UI States
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -77,10 +77,10 @@ export const useTeam = () => {
         setError(null);
         try {
             const updatedTeam = await updateTeam(workspaceId, teamId, teamData);
-            
+
             // Update local state for list
             setTeams(prev => prev.map(t => t._id === teamId || t.id === teamId ? { ...t, ...teamData } : t));
-            
+
             // Update current team if selected
             if (currentTeam && (currentTeam._id === teamId || currentTeam.id === teamId)) {
                 setCurrentTeam(prev => ({ ...prev, ...teamData }));
@@ -103,7 +103,7 @@ export const useTeam = () => {
             await deleteTeam(workspaceId, teamId);
             // Remove from local list
             setTeams(prev => prev.filter(t => t._id !== teamId && t.id !== teamId));
-            
+
             // Clear current team if it was the one deleted
             if (currentTeam && (currentTeam._id === teamId || currentTeam.id === teamId)) {
                 setCurrentTeam(null);
@@ -166,7 +166,7 @@ export const useTeam = () => {
         try {
             await updateTeamMemberRole(workspaceId, teamId, memberId, role);
             // Optimistically update local state
-            setTeamMembers(prev => prev.map(m => 
+            setTeamMembers(prev => prev.map(m =>
                 (m.user?._id === memberId || m.memberId === memberId) ? { ...m, role } : m
             ));
             return { success: true };
@@ -193,6 +193,7 @@ export const useTeam = () => {
 
         // Member Functions
         fetchMembers,
+        fetchTeamMembers: fetchMembers,
         addMember,
         removeMember,
         updateMemberRole

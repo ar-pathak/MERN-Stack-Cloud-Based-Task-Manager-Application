@@ -112,7 +112,7 @@ const MembersSection = ({ item }) => {
             {/* Modals */}
             <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
             {(item.type === 'workspace' || (taskData.workspace === null && taskData.project === null)) && <AddMemberModal item={item} isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
-            {(item.type === 'project' || taskData.workspace !== null || taskData.project !== null) && <AssignProjectMemberModal
+            {(item.type === 'project' || item.type === 'subtask' || taskData.workspace !== null || taskData.project !== null) && <AssignProjectMemberModal
                 item={item}
                 isOpen={showAdd}
                 taskData={taskData}

@@ -217,6 +217,37 @@ class SubtaskService {
     }
 
     /**
+     *  Add specific assignees to an existing list
+     */
+    async addAssignees(subtaskId, userIds) {
+        const subtask = await Subtask.findById(subtaskId);
+        if (!subtask) throw new Error('Subtask not found');
+
+        // Add to set to prevent duplicates
+        await Subtask.updateOne(
+            { _id: subtaskId },
+            { $addToSet: { assignedTo: { $each: userIds } } }
+        );
+
+        return this.getSubtaskById(subtaskId);
+    }
+
+    /**
+     * Remove specific assignees
+     */
+    async removeAssignees(subtaskId, userIds) {
+        const subtask = await Subtask.findById(subtaskId);
+        if (!subtask) throw new Error('Subtask not found');
+
+        await Subtask.updateOne(
+            { _id: subtaskId },
+            { $pull: { assignedTo: { $in: userIds } } }
+        );
+
+        return this.getSubtaskById(subtaskId);
+    }
+
+    /**
      * Get subtask statistics for a task
      */
     async getSubtaskStats(taskId) {

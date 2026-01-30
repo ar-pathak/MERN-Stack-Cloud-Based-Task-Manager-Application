@@ -2,17 +2,27 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
 import { useProject } from "../../../../hook/useProject";
 import { useTask } from "../../../../hook/useTask";
+import { useSubtask } from "../../../../hook/useSubtask"; //
 
 export const useMembersLogic = (item) => {
+    // Hooks
     const { fetchMembers, addMember, removeMember, sendInvite, updateMemberRole } = useWorkspace();
-    const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject()
+    const { fetchProjectMembers, addProjectMembers, updateProjectMembersRole, removeProjectMembers } = useProject();
     const { fetchTaskById, assignUsers, assignUsersByUsername, removeAssignUsers } = useTask();
+
+    // NEW: Subtask Hook
+    const {
+        fetchSubtaskById,
+        addAssignees: addSubtaskAssignees,
+        removeAssignees: removeSubtaskAssignees
+    } = useSubtask();
+
     // Core Data State
     const [members, setMembers] = useState([]);
     const [initialLoadComplete, setInitialLoadComplete] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
-    const [taskData, setTaskData] = useState([])
+    const [taskData, setTaskData] = useState([]);
 
     // UI State
     const [searchQuery, setSearchQuery] = useState("");
@@ -21,7 +31,7 @@ export const useMembersLogic = (item) => {
 
     const workspaceId = item?.id;
     const currentUserRole = item?.permissions?.role;
-    const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserRole === "creator";
+    const canManageMembers = currentUserRole === 'owner' || currentUserRole === 'admin' || currentUserRole === "creator" || item?.permissions?.canEdit === true;
 
     // --- Notifications ---
     const notify = useCallback((type, message) => {
@@ -31,9 +41,10 @@ export const useMembersLogic = (item) => {
 
     // --- Data Fetching ---
     const loadMembers = useCallback(async (showLoader = true) => {
-        if (!workspaceId) return;
+        if (!item?.id) return;
         try {
             if (showLoader) setIsRefreshing(true);
+
             if (item.type === 'workspace') {
                 const memberData = await fetchMembers(workspaceId);
                 if (memberData?.data) {
@@ -41,27 +52,33 @@ export const useMembersLogic = (item) => {
                     setInitialLoadComplete(true);
                 }
             } else if (item.type === 'project') {
-                const memberData = await fetchProjectMembers(item.workspace, item.id)
+                const memberData = await fetchProjectMembers(item.workspace, item.id);
                 if (memberData?.data) {
                     setMembers(memberData.data.data);
                     setInitialLoadComplete(true);
                 }
-            } else if (item.type == 'task') {
+            } else if (item.type === 'task') {
                 const memberData = await fetchTaskById(item.id);
-                console.log('memberData', memberData)
                 if (memberData?.data) {
-                    setTaskData(memberData.data)
-                    setMembers(memberData.data.assignees);
+                    setTaskData(memberData.data);
+                    setMembers(memberData.data.assignees || []);
                     setInitialLoadComplete(true);
                 }
-
+            } else if (item.type === 'subtask') {
+                // NEW: Subtask Loading Logic
+                const subtaskRes = await fetchSubtaskById(item.id);
+                if (subtaskRes?.data) {
+                    setMembers(subtaskRes.data.data.assignedTo || []);
+                    setInitialLoadComplete(true);
+                }
             }
         } catch (error) {
             notify("error", "Failed to load members.");
+            console.error(error);
         } finally {
             if (showLoader) setIsRefreshing(false);
         }
-    }, [fetchMembers, fetchProjectMembers, item, workspaceId, notify]);
+    }, [fetchMembers, fetchProjectMembers, fetchTaskById, fetchSubtaskById, item, workspaceId, notify]);
 
     useEffect(() => {
         loadMembers(true);
@@ -70,11 +87,19 @@ export const useMembersLogic = (item) => {
     // --- Computed ---
     const filteredMembers = useMemo(() => {
         return members.filter(member => {
-            const userName = member.user?.name?.toLowerCase() || "";
-            const userEmail = member.user?.email?.toLowerCase() || "";
+            // Handle both structure types: 
+            // 1. Workspace/Project: { user: { name: ... } }
+            // 2. Task/Subtask: { name: ... } (Direct User Object)
+            const userName = (member.user?.name || member.name || "").toLowerCase();
+            const userEmail = (member.user?.email || member.email || "").toLowerCase();
+
             const query = searchQuery.toLowerCase();
             const matchesSearch = userName.includes(query) || userEmail.includes(query);
-            const matchesRole = filterRole === "all" || member.role === filterRole;
+
+            // For tasks/subtasks, roles are not usually defined in the list, so we skip role filter or assume 'all'
+            const memberRole = member.role || 'member';
+            const matchesRole = filterRole === "all" || memberRole === filterRole;
+
             return matchesSearch && matchesRole;
         });
     }, [members, searchQuery, filterRole]);
@@ -99,30 +124,29 @@ export const useMembersLogic = (item) => {
         };
     }, [members, item.type]);
 
+    // --- Handlers ---
+
     const handleAddMember = async (username, role) => {
         setIsGlobalLoading(true);
         try {
             if (item.type === 'workspace') {
-
                 const result = await addMember({ workspaceId, username, role });
                 if (result?.success) {
                     notify("success", `${username} added successfully!`);
                     await loadMembers(false);
                     return true;
-                } else {
-                    notify("error", result?.message || "Failed to add member");
-                    return false;
                 }
+                notify("error", result?.message || "Failed to add member");
+                return false;
             } else if (item.type === 'task') {
                 const result = await assignUsersByUsername(item.id, [username]);
                 if (result?.success) {
                     notify("success", `${username} added successfully!`);
                     await loadMembers(false);
                     return true;
-                } else {
-                    notify("error", result?.message || "Failed to add member");
-                    return false;
                 }
+                notify("error", result?.message || "Failed to add member");
+                return false;
             }
         } catch (err) {
             notify("error", err.message);
@@ -135,34 +159,38 @@ export const useMembersLogic = (item) => {
     const handleAssignProjectMembers = async (selectedUserIds) => {
         setIsGlobalLoading(true);
         try {
-            const membersPayload = selectedUserIds.map(userId => ({
-                user: userId,
-                role: "viewer"
-            }));
-            const taskPayload = selectedUserIds.map(userId => (
-                userId
-            ))
             if (item.type === 'project') {
+                const membersPayload = selectedUserIds.map(userId => ({
+                    user: userId,
+                    role: "viewer"
+                }));
                 const result = await addProjectMembers(item.workspace, item.id, { members: membersPayload });
                 if (result?.success) {
                     notify("success", "Members assigned successfully!");
                     await loadMembers(false);
                     return true;
-                } else {
-                    notify("error", result?.message || "Failed to assign members");
-                    return false;
                 }
+                notify("error", result?.message || "Failed to assign members");
+                return false;
             } else if (item.type === 'task') {
-                const result = await assignUsers(item.id, taskPayload);
+                const result = await assignUsers(item.id, selectedUserIds);
                 if (result?.success) {
                     notify("success", "Members assigned successfully!");
                     await loadMembers(false);
                     return true;
-                } else {
-                    notify("error", result?.message || "Failed to assign members");
-                    return false;
                 }
-
+                notify("error", result?.message || "Failed to assign members");
+                return false;
+            } else if (item.type === 'subtask') {
+                // NEW: Assign Subtask Members (Selection)
+                const result = await addSubtaskAssignees(item.id, { assignees: selectedUserIds });
+                if (result?.success) {
+                    notify("success", "Members assigned successfully!");
+                    await loadMembers(false);
+                    return true;
+                }
+                notify("error", result?.message || "Failed to assign members");
+                return false;
             }
         } catch (err) {
             notify("error", err.message);
@@ -173,6 +201,7 @@ export const useMembersLogic = (item) => {
     };
 
     const handleInvite = async (email, role) => {
+        // Invite is typically workspace only
         setIsGlobalLoading(true);
         try {
             const result = await sendInvite({ workspaceId, email, role });
@@ -195,10 +224,9 @@ export const useMembersLogic = (item) => {
         console.log("Removing member:", memberId, "Item Type:", item.type);
         try {
             if (item.type === 'workspace') {
-
                 const result = await removeMember({ workspaceId, memberId });
                 if (result?.success) {
-                    setMembers(prev => prev.filter(m => m.user._id !== memberId));
+                    setMembers(prev => prev.filter(m => m.user?._id !== memberId));
                     notify("success", "Member removed successfully");
                 } else {
                     notify("error", result?.message);
@@ -206,27 +234,36 @@ export const useMembersLogic = (item) => {
             } else if (item.type === 'project') {
                 const result = await removeProjectMembers(item.workspace, item.id, { users: [memberId] });
                 if (result?.success) {
-                    setMembers(prev => prev.filter(m => m.user._id !== memberId));
+                    setMembers(prev => prev.filter(m => m.user?._id !== memberId));
                     notify("success", "Member removed successfully");
                 } else {
                     notify("error", result?.message);
                 }
             } else if (item.type === 'task') {
                 const result = await removeAssignUsers(item.id, [memberId]);
-                console.log("Remove assign users result:", result);
                 if (result?.success) {
                     setMembers(prev => prev.filter(m => m._id !== memberId));
                     notify("success", "Member removed successfully");
                 } else {
                     notify("error", result?.error || "Failed to remove member from task");
                 }
+            } else if (item.type === 'subtask') {
+                // NEW: Remove Subtask Assignee
+                const result = await removeSubtaskAssignees(item.id, { assignees: [memberId] });
+                if (result?.success) {
+                    setMembers(prev => prev.filter(m => m._id !== memberId));
+                    notify("success", "Member removed successfully");
+                } else {
+                    notify("error", result?.message || "Failed to remove member");
+                }
             }
         } catch (err) {
-            notify("error", err.error);
+            notify("error", err.message || err.error);
         }
     };
 
     const handleUpdateRole = async (memberId, newRole) => {
+        // Roles usually only apply to Workspace/Project levels in this context
         try {
             if (item.type === 'workspace') {
                 const result = await updateMemberRole({ workspaceId, memberId, role: newRole });

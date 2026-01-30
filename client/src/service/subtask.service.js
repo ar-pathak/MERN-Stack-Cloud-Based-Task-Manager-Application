@@ -148,3 +148,46 @@ export const deleteSubtask = async (subtaskId) => {
         };
     }
 };
+
+/**
+ * Add Assignees to Subtask
+ * @param {string} subtaskId 
+ * @param {Object} data - { assignees: [], usernames: [] }
+ */
+export const addAssignees = async (subtaskId, { assignees = [], usernames = [] }) => {
+    try {
+        const response = await api.patch(`/api/subtasks/${subtaskId}/assignees/add`, {
+            assignees,
+            usernames
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add assignees",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Remove Assignees from Subtask
+ * @param {string} subtaskId 
+ * @param {Object} data - { assignees: [], usernames: [] }
+ */
+export const removeAssignees = async (subtaskId, { assignees = [], usernames = [] }) => {
+    try {
+        // IMPORTANT: Axios DELETE requires data to be wrapped in a 'data' property
+        const response = await api.delete(`/api/subtasks/${subtaskId}/assignees/remove`, {
+            data: {
+                assignees,
+                usernames
+            }
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove assignees",
+            status: error.response?.status,
+        };
+    }
+};

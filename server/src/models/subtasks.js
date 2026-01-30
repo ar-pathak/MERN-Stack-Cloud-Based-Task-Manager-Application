@@ -37,10 +37,10 @@ const subtaskSchema = new mongoose.Schema({
     },
 
     // Assignment
-    assignedTo: {
+    assignedTo: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: "User"
-    },
+    }],
 
     // Due date
     dueDate: Date,

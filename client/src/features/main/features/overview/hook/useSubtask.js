@@ -23,6 +23,19 @@ export const useSubtask = () => {
         }
     }, []);
 
+    // Helper to update local state after a modification
+    const updateLocalState = useCallback((updatedSubtask) => {
+        if (!updatedSubtask || !updatedSubtask._id) return;
+
+        setSubtasks(prev => prev.map(st =>
+            st._id === updatedSubtask._id ? updatedSubtask : st
+        ));
+
+        if (currentSubtask && currentSubtask._id === updatedSubtask._id) {
+            setCurrentSubtask(updatedSubtask);
+        }
+    }, [currentSubtask]);
+
     // --- Core Subtask Operations ---
 
     const fetchSubtasks = useCallback(async (taskId) => {
@@ -92,7 +105,29 @@ export const useSubtask = () => {
         }
         return success;
     }, [execute, currentSubtask]);
+    const addAssignees = useCallback(async (subtaskId, { assignees, usernames }) => {
+        const { success, data } = await execute(
+            subtaskService.addAssignees,
+            subtaskId,
+            { assignees, usernames }
+        );
+        if (success) {
+            updateLocalState(data);
+        }
+        return { success, data };
+    }, [execute, updateLocalState]);
 
+    const removeAssignees = useCallback(async (subtaskId, { assignees, usernames }) => {
+        const { success, data } = await execute(
+            subtaskService.removeAssignees,
+            subtaskId,
+            { assignees, usernames }
+        );
+        if (success) {
+            updateLocalState(data);
+        }
+        return { success, data };
+    }, [execute, updateLocalState]);
     return {
         // State
         subtasks,
@@ -107,6 +142,9 @@ export const useSubtask = () => {
         updateSubtask: updateSubtaskDetails,
         toggleSubtaskCompletion: toggleComplete,
         deleteSubtask: deleteSubtaskById,
+
+        addAssignees,
+        removeAssignees,
 
         // Utilities
         clearError: () => setError(null),

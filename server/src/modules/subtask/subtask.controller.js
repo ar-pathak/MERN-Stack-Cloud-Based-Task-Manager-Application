@@ -204,6 +204,54 @@ const subtaskController = {
                 message: 'Failed to fetch subtask statistics'
             });
         }
+    },
+
+    /**
+     * Add assignees
+     * PATCH /api/subtasks/:subtaskId/assignees/add
+     */
+    addAssignees: async (req, res) => {
+        try {
+            const { subtaskId } = req.params;
+            const { assignees } = req.body; // Array of IDs validated by middleware
+
+            const subtask = await subtaskService.addAssignees(subtaskId, assignees);
+
+            res.status(200).json({
+                success: true,
+                message: 'Assignees added successfully',
+                data: subtask
+            });
+        } catch (error) {
+            res.status(error.message === 'Subtask not found' ? 404 : 500).json({
+                success: false,
+                message: error.message || 'Failed to add assignees'
+            });
+        }
+    },
+
+    /**
+     * Remove assignees
+     * DELETE /api/subtasks/:subtaskId/assignees/remove
+     */
+    removeAssignees: async (req, res) => {
+        try {
+            const { subtaskId } = req.params;
+            const { assignees } = req.body;
+
+            const subtask = await subtaskService.removeAssignees(subtaskId, assignees);
+
+            res.status(200).json({
+                success: true,
+                message: 'Assignees removed successfully',
+                data: subtask
+            });
+        } catch (error) {
+            res.status(error.message === 'Subtask not found' ? 404 : 500).json({
+                success: false,
+                message: error.message || 'Failed to remove assignees'
+            });
+        }
     }
 }
 

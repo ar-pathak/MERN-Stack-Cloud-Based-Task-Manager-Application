@@ -2,7 +2,7 @@ const express = require('express');
 const authMiddleware = require('../../middleware/authMiddleware');
 const canCreateSubtask = require('../../middleware/canCreateSubtask');
 const canModifySubtask = require('../../middleware/canModifySubtask');
-const { validateCreateSubtask, validateUpdateSubtask } = require('./subtask.validation');
+const { validateCreateSubtask, validateUpdateSubtask, validateManageAssignees } = require('./subtask.validation');
 const subtaskController = require('./subtask.controller');
 
 const router = express.Router();
@@ -12,7 +12,7 @@ router.use(authMiddleware);
 
 // Create subtask
 router.post(
-    '/createSubtask', 
+    '/createSubtask',
     validateCreateSubtask,
     canCreateSubtask,
     subtaskController.createSubtask
@@ -64,5 +64,19 @@ router.delete(
     canModifySubtask,
     subtaskController.deleteSubtask
 );
+// Add assignees
+router.patch(
+    '/:subtaskId/assignees/add',
+    validateManageAssignees,
+    canModifySubtask,
+    subtaskController.addAssignees
+);
 
+// Remove assignees
+router.delete(
+    '/:subtaskId/assignees/remove',
+    validateManageAssignees,
+    canModifySubtask,
+    subtaskController.removeAssignees
+);
 module.exports = router;

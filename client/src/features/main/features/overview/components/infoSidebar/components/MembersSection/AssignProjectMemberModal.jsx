@@ -2,14 +2,19 @@ import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { UserPlus, X, Loader2, Search, CheckCircle2, Circle } from "lucide-react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
+import { useTask } from "../../../../hook/useTask";
+import { useTeam } from "../../../../hook/useTeam";
+
 
 const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, workspaceId, currentProjectMembers, isLoading }) => {
     const { fetchMembers } = useWorkspace();
+    const { fetchTaskById } = useTask()
+    const { fetchTeamMembers } = useTeam()
+
     const [workspaceMembers, setWorkspaceMembers] = useState([]);
     const [isFetchingMembers, setIsFetchingMembers] = useState(false);
     const [selectedUsers, setSelectedUsers] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
-
     // 1. Fetch Workspace Members when modal opens
     useEffect(() => {
         if (isOpen) {
@@ -49,6 +54,68 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
                     }
                 }
                 loadTaskParentMembers();
+            } else if (item.type === 'subtask') {
+                const loadSubtaskParentMembers = async () => {
+                    setIsFetchingMembers(true);
+                    try {
+                        // 1. Fetch the Parent Task
+                        const taskRes = await fetchTaskById(item.task); // item.task is the ID
+                        const parentTask = taskRes?.data;
+
+                        if (!parentTask) return;
+
+                        // Map to store unique users. Key: UserID, Value: formatted object
+                        const uniqueMembersMap = new Map();
+
+                        // 2. Add Direct Assignees (assignees array)
+                        // parentTask.assignees is usually an array of populated User objects
+                        if (parentTask.assignees?.length > 0) {
+                            parentTask.assignees.forEach(user => {
+                                if (user && user._id) {
+                                    // Normalize to { user: ... } format for UI consistency
+                                    uniqueMembersMap.set(user._id.toString(), { user: user });
+                                }
+                            });
+                        }
+
+                        // 3. Add Team Members (assigneesTeams array)
+                        if (parentTask.assigneesTeams?.length > 0) {
+                            // Use Promise.all to fetch all teams in parallel
+                            const teamPromises = parentTask.assigneesTeams.map(team => {
+                                // Handle if team is populated object or just ID string
+                                const teamId = typeof team === 'object' ? team._id : team;
+                                return fetchTeamMembers(teamId);
+                            });
+
+                            const teamResponses = await Promise.all(teamPromises);
+
+                            // Process responses
+                            teamResponses.forEach(res => {
+                                if (res?.data) {
+                                    // res.data is usually array of TeamMembers: [{ user: {...}, role: ... }]
+                                    res.data.forEach(member => {
+                                        if (member.user && member.user._id) {
+                                            const userId = member.user._id.toString();
+                                            // Only add if not already present (avoid duplicates)
+                                            if (!uniqueMembersMap.has(userId)) {
+                                                uniqueMembersMap.set(userId, { user: member.user });
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }
+
+                        // 4. Convert Map values to Array and Set State
+                        setWorkspaceMembers(Array.from(uniqueMembersMap.values()));
+
+                    } catch (error) {
+                        console.error("Failed to load subtask context members", error);
+                    } finally {
+                        setIsFetchingMembers(false);
+                    }
+                }
+                loadSubtaskParentMembers();
             }
             setSelectedUsers([]);
             setSearchQuery("");

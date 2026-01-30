@@ -56,6 +56,23 @@ const updateSubtaskSchema = z
         message: "At least one field is required for update"
     });
 
+const manageAssigneesSchema = z.object({
+    assignees: z.array(objectId).min(1, "At least one user ID is required")
+});
+const validateManageAssignees = (req, res, next) => {
+    const result = manageAssigneesSchema.safeParse(req.body);
+    if (!result.success) {
+        return res.status(400).json({
+            message: "Validation failed",
+            errors: result.error.issues.map(issue => ({
+                field: issue.path.join("."),
+                message: issue.message
+            }))
+        });
+    }
+    req.body = result.data;
+    next();
+};
 const validateCreateSubtask = (req, res, next) => {
     const result = createSubtaskSchema.safeParse(req.body);
 
@@ -92,5 +109,6 @@ const validateUpdateSubtask = (req, res, next) => {
 
 module.exports = {
     validateCreateSubtask,
-    validateUpdateSubtask
+    validateUpdateSubtask,
+    validateManageAssignees
 };
