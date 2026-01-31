@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Crown, Shield, Users, Eye, MoreVertical, Copy, CheckCircle2, UserMinus, Loader2 } from "lucide-react";
 
 const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) => {
-    console.log("Rendering MemberCard for member:", member);
     const [isSelected, setIsSelected] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const removedId = member?.user?._id || member?._id;

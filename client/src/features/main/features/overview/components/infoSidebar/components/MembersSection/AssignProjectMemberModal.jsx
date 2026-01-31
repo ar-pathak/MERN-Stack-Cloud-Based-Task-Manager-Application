@@ -18,7 +18,6 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
     // 1. Fetch Workspace Members when modal opens
     useEffect(() => {
         if (isOpen) {
-            console.log('item', item)
             if (item.type === 'project' && workspaceId) {
                 const loadWorkspaceMembers = async () => {
                     setIsFetchingMembers(true);

@@ -20,7 +20,6 @@ const TeamCard = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const [showAddMenu, setShowAddMenu] = useState(false);
     const [showActions, setShowActions] = useState(false);
-    console.log("TeamCard Render:", team);
     const teamId = team._id || team.id;
     const isWorkspace = contextType === 'workspace';
 

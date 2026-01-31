@@ -57,7 +57,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
             const loadTaskData = async () => {
                 const taskRes = await fetchTaskById(item.id);
                 setTaskData(taskRes.data);
-                console.log("Fetched task data for TeamsSection:", taskRes.data);
             }
             loadTaskData();
         }

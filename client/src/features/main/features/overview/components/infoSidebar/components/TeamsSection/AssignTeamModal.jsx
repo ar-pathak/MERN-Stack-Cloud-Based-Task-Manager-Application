@@ -22,7 +22,6 @@ const AssignTeamModal = ({
     const { fetchTeams } = useTeam();
     const { fetchProjectTeams } = useProject();
 
-    console.log("AssignTeamModal item:", item);
 
     // ========== Load Available Teams ==========
     useEffect(() => {
@@ -47,7 +46,7 @@ const AssignTeamModal = ({
                     }
                 } else if (item.type === 'task' && taskData?.project) {
                     const res = await fetchProjectTeams(taskData.workspace._id, taskData.project._id);
-                    console.log("Fetched project teams:", res?.data?.data);
+                   
                     if (res?.data?.data) {
                         // Filter out already assigned teams
                         const notAssigned = res.data.data.filter(

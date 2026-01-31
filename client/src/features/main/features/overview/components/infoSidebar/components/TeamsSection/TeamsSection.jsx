@@ -11,6 +11,7 @@ import CreateTeamModal from "./CreateTeamModal";
 import AssignTeamModal from "./AssignTeamModal";
 import TeamCard from "./TeamCard";
 import TeamsToolbar from "./TeamsToolbar";
+import ConfirmationModal from "./ConfirmationModal";
 
 const TeamsSection = ({ item, taskData, onRefresh }) => {
     // ========== UI State ==========
@@ -24,6 +25,15 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
     const [success, setSuccess] = useState(null);
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+
+    // Modal State
+    const [confirmConfig, setConfirmConfig] = useState({
+        isOpen: false,
+        type: null, // 'DELETE_TEAM' | 'REMOVE_MEMBER'
+        data: null,
+        title: "",
+        message: ""
+    });
 
     // ========== Data State ==========
     const [teams, setTeams] = useState([]);
@@ -103,7 +113,6 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                 teamsPromise = fetchTeams(item.id);
             } else if (item.type === 'project') {
                 teamsPromise = fetchProjectTeams(workspaceId, item.id);
-
             } else if (item.type === 'task') {
                 teamsPromise = fetchTaskById(item.id)
                     .then(res => ({ data: res.data?.assigneesTeams || [] }));
@@ -112,9 +121,8 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
             promises.push(teamsPromise);
 
             const results = await Promise.all(promises);
-            console.log('result', results);
             const teamsData = isWorkspace ? results[1]?.data : results?.[0]?.data?.data || results?.[0]?.data || [];
-            console.log('teamsData', teamsData);
+
             setTeams(Array.isArray(teamsData) ? teamsData : []);
 
             // 3. Load members for each team (optimized with Promise.allSettled)
@@ -125,7 +133,6 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                         const membersResult = await fetchTeamMembers(workspaceId || team.workspace, teamId);
                         return { teamId, members: membersResult.data || [] };
                     } catch (error) {
-                        console.error(`Failed to load members for team ${team._id || team.id}:`, error);
                         return { teamId: team._id || team.id, members: [] };
                     }
                 });
@@ -164,7 +171,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         }
     }, [getWorkspaceId, fetchTeamMembers]);
 
-    // ========== Primary Action Handler ==========
+    // ========== Primary Action Handler (Create/Assign) ==========
     const handlePrimaryAction = useCallback(async (payload) => {
         try {
             setSubmitting(true);
@@ -197,41 +204,83 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         }
     }, [isWorkspace, item.id, item.type, getWorkspaceId, createNewTeam, addProjectTeams, assignTeams, loadTeamsData, onRefresh, showMessage]);
 
-    // ========== Delete/Remove Handler ==========
-    const handleDeleteOrRemove = useCallback(async (teamId, teamName) => {
-        const actionText = isWorkspace ? "Delete" : "Remove";
 
-        if (!window.confirm(`${actionText} "${teamName}"? This action cannot be undone.`)) {
-            return;
-        }
+    // ========== TRIGGERS (Open Modal Only) ==========
+
+    const handleDeleteOrRemoveTrigger = useCallback((teamId, teamName) => {
+        const actionText = isWorkspace ? "Delete" : "Remove";
+        setConfirmConfig({
+            isOpen: true,
+            type: 'DELETE_TEAM',
+            data: { teamId, teamName },
+            title: `${actionText} Team?`,
+            message: `Are you sure you want to ${actionText.toLowerCase()} "${teamName}"? This action cannot be undone.`
+        });
+    }, [isWorkspace]);
+
+    const handleRemoveMemberTrigger = useCallback((teamId, userId) => {
+        setConfirmConfig({
+            isOpen: true,
+            type: 'REMOVE_MEMBER',
+            data: { teamId, userId },
+            title: "Remove Member?",
+            message: "Are you sure you want to remove this member? They will lose access to team resources."
+        });
+    }, []);
+
+
+    // ========== EXECUTOR (Runs on Modal Confirm) ==========
+
+    const handleConfirmAction = async () => {
+        const { type, data } = confirmConfig;
+        if (!type || !data) return;
+
+        setSubmitting(true);
 
         try {
-            setSubmitting(true);
             const workspaceId = getWorkspaceId();
 
-            if (isWorkspace) {
-                await removeTeam(item.id, teamId);
-                showMessage('success', "Team deleted successfully");
-            } else if (item.type === 'project') {
-                await removeProjectTeams(workspaceId, item.id, teamId);
-                showMessage('success', "Team removed from project");
-            } else if (item.type === 'task') {
-                await removeAssignTeams(item.id, teamId);
-                showMessage('success', "Team removed from task");
+            // 1. DELETE / REMOVE TEAM
+            if (type === 'DELETE_TEAM') {
+                const { teamId } = data;
+
+                if (isWorkspace) {
+                    await removeTeam(item.id, teamId);
+                    showMessage('success', "Team deleted successfully");
+                } else if (item.type === 'project') {
+                    await removeProjectTeams(workspaceId, item.id, teamId);
+                    showMessage('success', "Team removed from project");
+                } else if (item.type === 'task') {
+                    await removeAssignTeams(item.id, teamId);
+                    showMessage('success', "Team removed from task");
+                }
+
+                await loadTeamsData();
+                onRefresh?.();
             }
 
-            await loadTeamsData();
-            onRefresh?.();
+            // 2. REMOVE MEMBER
+            else if (type === 'REMOVE_MEMBER') {
+                const { teamId, userId } = data;
+                await removeMember(workspaceId, teamId, userId);
+                await refreshTeamMembers(teamId);
+                showMessage('success', "Member removed successfully");
+            }
+
+            // Close Modal on success
+            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
 
         } catch (err) {
-            console.error("Delete/Remove failed:", err);
-            showMessage('error', err.response?.data?.message || "Failed to remove team");
+            console.error("Action failed:", err);
+            showMessage('error', err.response?.data?.message || "Operation failed");
         } finally {
             setSubmitting(false);
         }
-    }, [isWorkspace, item.id, item.type, getWorkspaceId, removeTeam, removeProjectTeams, removeAssignTeams, loadTeamsData, onRefresh, showMessage]);
+    };
+
 
     // ========== Member Management Handlers ==========
+
     const handleAddMemberToTeam = useCallback(async (teamId, userId) => {
         try {
             const workspaceId = getWorkspaceId();
@@ -244,19 +293,6 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         }
     }, [getWorkspaceId, addMember, refreshTeamMembers, showMessage]);
 
-    const handleRemoveMemberFromTeam = useCallback(async (teamId, userId) => {
-        if (!window.confirm("Remove this member from the team?")) return;
-
-        try {
-            const workspaceId = getWorkspaceId();
-            await removeMember(workspaceId, teamId, userId);
-            await refreshTeamMembers(teamId);
-            showMessage('success', "Member removed successfully");
-        } catch (err) {
-            console.error("Failed to remove member:", err);
-            showMessage('error', err.response?.data?.message || "Failed to remove member");
-        }
-    }, [getWorkspaceId, removeMember, refreshTeamMembers, showMessage]);
 
     const handleChangeRole = useCallback(async (teamId, userId, currentRole) => {
         const newRole = currentRole === 'lead' ? 'member' : 'lead';
@@ -313,7 +349,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                 <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-blue-500/5 rounded-2xl blur-3xl"></div>
 
                 {/* Content */}
-                <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6  border border-slate-700/50 rounded-2xl">
+                <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-6 border border-slate-700/50 rounded-2xl">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
                             <div className="p-2.5 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
@@ -400,9 +436,9 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                                 members={allTeamMembers[team._id || team.id] || []}
                                 workspaceMembers={workspaceMembers}
                                 canManage={canManageTeams}
-                                onDelete={handleDeleteOrRemove}
+                                onDelete={handleDeleteOrRemoveTrigger}
                                 onAddMember={handleAddMemberToTeam}
-                                onRemoveMember={handleRemoveMemberFromTeam}
+                                onRemoveMember={handleRemoveMemberTrigger}
                                 onRoleChange={handleChangeRole}
                                 contextType={item.type}
                             />
@@ -460,7 +496,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                 </motion.div>
             )}
 
-            {/* Dynamic Modal */}
+            {/* Dynamic Modals (Create / Assign) */}
             <AnimatePresence>
                 {showModal && (
                     isWorkspace ? (
@@ -480,6 +516,21 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                             submitting={submitting}
                         />
                     )
+                )}
+            </AnimatePresence>
+
+            {/* Confirmation Modal */}
+            <AnimatePresence>
+                {confirmConfig.isOpen && (
+                    <ConfirmationModal
+                        isOpen={confirmConfig.isOpen}
+                        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                        onConfirm={handleConfirmAction}
+                        title={confirmConfig.title}
+                        message={confirmConfig.message}
+                        loading={submitting}
+                        type="danger"
+                    />
                 )}
             </AnimatePresence>
         </section>
