@@ -2,8 +2,11 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Users, X, Plus, Loader2, Search, CheckCircle, CheckSquare } from "lucide-react";
 import { useTeam } from "../../../../hook/useTeam";
+import { useProject } from "../../../../hook/useProject";
 
 const AssignTeamModal = ({
+    item,
+    taskData,
     onClose,
     onAssign,
     submitting,
@@ -17,11 +20,14 @@ const AssignTeamModal = ({
     const [error, setError] = useState(null);
 
     const { fetchTeams } = useTeam();
+    const { fetchProjectTeams } = useProject();
+
+    console.log("AssignTeamModal item:", item);
 
     // ========== Load Available Teams ==========
     useEffect(() => {
         const loadWorkspaceTeams = async () => {
-            if (!workspaceId) {
+            if (!workspaceId && item.type === 'project') {
                 setError("No workspace ID provided");
                 setLoading(false);
                 return;
@@ -30,15 +36,35 @@ const AssignTeamModal = ({
             try {
                 setLoading(true);
                 setError(null);
+                if (item.type === 'project') {
+                    const res = await fetchTeams(workspaceId);
+                    if (res?.data) {
+                        // Filter out already assigned teams
+                        const notAssigned = res.data.filter(
+                            t => !currentTeamIds.includes(t._id || t.id)
+                        );
+                        setAvailableTeams(notAssigned);
+                    }
+                } else if (item.type === 'task' && taskData?.project) {
+                    const res = await fetchProjectTeams(taskData.workspace._id, taskData.project._id);
+                    console.log("Fetched project teams:", res?.data?.data);
+                    if (res?.data?.data) {
+                        // Filter out already assigned teams
+                        const notAssigned = res.data.data.filter(
+                            t => !currentTeamIds.includes(t._id || t.id)
+                        );
+                        setAvailableTeams(notAssigned);
+                    }
 
-                const res = await fetchTeams(workspaceId);
-
-                if (res?.data) {
-                    // Filter out already assigned teams
-                    const notAssigned = res.data.filter(
-                        t => !currentTeamIds.includes(t._id || t.id)
-                    );
-                    setAvailableTeams(notAssigned);
+                } else if (item.type === 'task' && taskData?.workspace) {
+                    const res = await fetchTeams(taskData.workspace._id);
+                    if (res?.data) {
+                        // Filter out already assigned teams
+                        const notAssigned = res.data.filter(
+                            t => !currentTeamIds.includes(t._id || t.id)
+                        );
+                        setAvailableTeams(notAssigned);
+                    }
                 } else {
                     setAvailableTeams([]);
                 }
@@ -159,8 +185,8 @@ const AssignTeamModal = ({
                 key={teamId}
                 onClick={() => handleToggle(teamId)}
                 className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${isSelected
-                        ? "bg-purple-500/10 border-purple-500/50"
-                        : "bg-slate-800/30 border-slate-800 hover:bg-slate-800"
+                    ? "bg-purple-500/10 border-purple-500/50"
+                    : "bg-slate-800/30 border-slate-800 hover:bg-slate-800"
                     }`}
             >
                 <div className="flex-1 min-w-0">

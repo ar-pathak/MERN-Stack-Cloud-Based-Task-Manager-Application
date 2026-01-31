@@ -12,7 +12,7 @@ import AssignTeamModal from "./AssignTeamModal";
 import TeamCard from "./TeamCard";
 import TeamsToolbar from "./TeamsToolbar";
 
-const TeamsSection = ({ item, onRefresh }) => {
+const TeamsSection = ({ item, taskData, onRefresh }) => {
     // ========== UI State ==========
     const [showModal, setShowModal] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -122,7 +122,7 @@ const TeamsSection = ({ item, onRefresh }) => {
                 const memberPromises = teamsData.map(async (team) => {
                     try {
                         const teamId = team._id || team.id;
-                        const membersResult = await fetchTeamMembers(workspaceId, teamId);
+                        const membersResult = await fetchTeamMembers(workspaceId || team.workspace, teamId);
                         return { teamId, members: membersResult.data || [] };
                     } catch (error) {
                         console.error(`Failed to load members for team ${team._id || team.id}:`, error);
@@ -471,6 +471,8 @@ const TeamsSection = ({ item, onRefresh }) => {
                         />
                     ) : (
                         <AssignTeamModal
+                            item={item}
+                            taskData={taskData}
                             workspaceId={getWorkspaceId()}
                             currentTeamIds={currentTeamIds}
                             onClose={() => setShowModal(false)}

@@ -224,9 +224,19 @@ export const removeAssignUsersFromTask = async (taskId, assignees) => {
 };
 export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
     try {
-        const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
-            data: { assigneesTeams }
-        });
+        const teamsArray = Array.isArray(assigneesTeams)
+            ? assigneesTeams
+            : assigneesTeams
+                ? [assigneesTeams]
+                : undefined;
+
+        const response = await api.delete(
+            `/api/tasks/${taskId}/assignees/remove`,
+            {
+                data: { assigneesTeams: teamsArray }
+            }
+        );
+
         return response.data;
     } catch (error) {
         throw {
@@ -235,6 +245,7 @@ export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
         };
     }
 };
+
 
 /**
  * Get Tasks based on scope (Helper function)

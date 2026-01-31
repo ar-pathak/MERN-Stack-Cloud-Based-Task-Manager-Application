@@ -27,6 +27,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Local state to manage immediate UI updates
     const [item, setItem] = useState(initialItem);
     const [activeTab, setActiveTab] = useState("overview");
+    const [taskData, setTaskData] = useState(null);
 
     // Title Editing State
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -36,7 +37,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Initialize Hooks
     const { updateWorkspace } = useWorkspace();
     const { updateProject } = useProject();
-    const { updateTask } = useTask();
+    const { fetchTaskById, updateTask } = useTask();
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -50,6 +51,17 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
         setTitle(initialItem.name || initialItem.title || "");
         setIsEditingTitle(false);
     }, [initialItem]);
+
+    useEffect(() => {
+        if (item.type === 'task') {
+            const loadTaskData = async () => {
+                const taskRes = await fetchTaskById(item.id);
+                setTaskData(taskRes.data);
+                console.log("Fetched task data for TeamsSection:", taskRes.data);
+            }
+            loadTaskData();
+        }
+    }, [item, fetchTaskById]);
 
     // CHECK ROLE: Support both nested permissions (from feed) and direct role
     const userRole = item.permissions?.role || item?.role || item?.userRole;
@@ -292,7 +304,15 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             className="space-y-6 pb-6"
                         >
                             <MembersSection item={item} />
-                            {item.type !== 'subtask' && (item.workspace !== null || item.project !== null) && <TeamsSection item={item} />}
+                            {(
+                                item.type === 'workspace' ||
+                                item.type === 'project' ||
+                                (item.type === 'task' && (taskData?.workspace || taskData?.project))
+                            ) && (
+                                    <TeamsSection item={item} taskData={taskData} />
+                                )}
+
+
                         </motion.div>
                     )}
 
