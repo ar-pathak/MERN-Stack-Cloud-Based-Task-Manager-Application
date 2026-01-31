@@ -106,6 +106,15 @@ export const useProject = () => {
         return await execute(projectService.removeProjectMembers, workspaceId, projectId, data);
     }, [execute]);
 
+
+    const leaveProject = useCallback(async (workspaceId, projectId) => {
+        const { success, data } = await execute(projectService.leaveProject, workspaceId, projectId);
+        if (success) {
+            setProjects(prev => prev.filter(p => p._id !== projectId));
+            if (currentProject?._id === projectId) setCurrentProject(null);
+        }
+        return { success, data };
+    }, [execute, currentProject]);
     return {
         // State
         projects,
@@ -130,6 +139,8 @@ export const useProject = () => {
         addProjectMembers: addMembersToProject,
         updateProjectMembersRole: updateMemberRole,
         removeProjectMembers: removeMembersFromProject,
+
+        leaveProject,
 
         // Utilities
         clearError: () => setError(null),

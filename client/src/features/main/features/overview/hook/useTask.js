@@ -167,6 +167,17 @@ export const useTask = () => {
         return { success, data };
     }, [execute]);
 
+
+    const leaveTask = useCallback(async (taskId) => {
+        const { success, data } = await execute(taskService.leaveTask, taskId);
+        if (success) {
+            setTasks(prev => prev.filter(t => t._id !== taskId));
+            if (currentTask?._id === taskId) setCurrentTask(null);
+        }
+        return { success, data };
+    }, [execute, currentTask]);
+
+
     return {
         // State
         tasks,
@@ -199,6 +210,9 @@ export const useTask = () => {
         deleteTask: removeTask,           // Soft Delete
         hardDeleteTask: permanentDeleteTask, // Hard Delete
         restoreTask: restoreDeletedTask,
+
+
+        leaveTask,
 
         // Utilities
         clearError: () => setError(null),

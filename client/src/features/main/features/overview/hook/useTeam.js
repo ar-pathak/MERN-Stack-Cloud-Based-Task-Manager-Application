@@ -8,7 +8,8 @@ import {
     getTeamMembers,
     addTeamMember,
     removeTeamMember,
-    updateTeamMemberRole
+    updateTeamMemberRole,
+    leaveTeamService
 } from '../../../../../service/team.service';
 
 export const useTeam = () => {
@@ -176,6 +177,25 @@ export const useTeam = () => {
         }
     }, []);
 
+    const leaveTeam = useCallback(async (workspaceId, teamId) => {
+        setLoading(true);
+        setError(null);
+        try {
+            await leaveTeamService(workspaceId, teamId);
+            // Remove team from list if visible
+            setTeams(prev => prev.filter(t => (t._id || t.id) !== teamId));
+            if (currentTeam && (currentTeam._id || currentTeam.id) === teamId) {
+                setCurrentTeam(null);
+            }
+            return { success: true };
+        } catch (err) {
+            setError(err.message);
+            return { success: false, error: err.message };
+        } finally {
+            setLoading(false);
+        }
+    }, [currentTeam]);
+
     return {
         // Data States
         teams,
@@ -196,6 +216,9 @@ export const useTeam = () => {
         fetchTeamMembers: fetchMembers,
         addMember,
         removeMember,
-        updateMemberRole
+        updateMemberRole,
+
+
+        leaveTeam,
     };
 };

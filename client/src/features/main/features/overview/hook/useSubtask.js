@@ -128,6 +128,17 @@ export const useSubtask = () => {
         }
         return { success, data };
     }, [execute, updateLocalState]);
+
+    const leaveSubtask = useCallback(async (subtaskId) => {
+        const { success, data } = await execute(subtaskService.leaveSubtask, subtaskId);
+        if (success) {
+            setSubtasks(prev => prev.filter(st => st._id !== subtaskId));
+            if (currentSubtask?._id === subtaskId) setCurrentSubtask(null);
+        }
+        return { success, data };
+    }, [execute, currentSubtask]);
+
+
     return {
         // State
         subtasks,
@@ -145,6 +156,9 @@ export const useSubtask = () => {
 
         addAssignees,
         removeAssignees,
+
+        leaveSubtask,
+
 
         // Utilities
         clearError: () => setError(null),

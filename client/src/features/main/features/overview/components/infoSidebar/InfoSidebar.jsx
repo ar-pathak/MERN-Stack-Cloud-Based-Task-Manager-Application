@@ -21,12 +21,15 @@ import { useProject } from "../../hook/useProject";
 import { useTask } from "../../hook/useTask";
 import MembersSection from "./components/MembersSection/MembersSection";
 import TeamsSection from "./components/TeamsSection/TeamsSection";
+import { useAuth } from "../../../../../../context/AuthContext";
+import { useSubtask } from "../../hook/useSubtask";
 
 const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Local state to manage immediate UI updates
     const [item, setItem] = useState(initialItem);
     const [activeTab, setActiveTab] = useState("overview");
     const [taskData, setTaskData] = useState(null);
+    const [subTaskData, setSubTaskData] = useState(null);
 
     // Title Editing State
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -37,6 +40,8 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     const { updateWorkspace } = useWorkspace();
     const { updateProject } = useProject();
     const { fetchTaskById, updateTask } = useTask();
+    const { fetchSubtaskById } = useSubtask();
+    const { user } = useAuth();
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -58,12 +63,26 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                 setTaskData(taskRes.data);
             }
             loadTaskData();
+        } else if (item.type === 'subtask') {
+            const loadSubTaskData = async () => {
+                const subtaskData = await fetchSubtaskById(item.id);
+                setSubTaskData(subtaskData.data.data)
+            }
+            loadSubTaskData();
         }
-    }, [item, fetchTaskById]);
+    }, [item, fetchTaskById, fetchSubtaskById]);
 
     // CHECK ROLE: Support both nested permissions (from feed) and direct role
     const userRole = item.permissions?.role || item?.role || item?.userRole;
     const canEdit = userRole === 'owner' || userRole === 'creator';
+    const userId = user?._id;
+
+    const canSeeDangerZone =
+        item?.permissions?.role ||
+        subTaskData?.createdBy === userId ||
+        subTaskData?.assignedTo?.includes(userId) ||
+        canEdit;
+
 
     const getHeaderColorClass = (type) => {
         switch (type) {
@@ -320,7 +339,33 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             exit={{ opacity: 0, x: -20 }}
                             className="space-y-6 pb-6"
                         >
-                            <DangerZoneSection item={item} />
+                            {canSeeDangerZone ? (
+                                <DangerZoneSection item={item} />
+                            ) : (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                                    <div className="flex items-start gap-3">
+                                        {/* Icon */}
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                                            ⚠️
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="flex-1">
+                                            <p className="text-sm font-semibold text-amber-800">
+                                                Access restricted
+                                            </p>
+                                            <p className="mt-1 text-sm text-amber-700 leading-relaxed">
+                                                You are not assigned to this{" "}
+                                                <span className="font-medium capitalize">
+                                                    {item.type}
+                                                </span>.
+                                                Only assigned members or admins can perform destructive actions.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
                         </motion.div>
                     )}
                 </AnimatePresence>

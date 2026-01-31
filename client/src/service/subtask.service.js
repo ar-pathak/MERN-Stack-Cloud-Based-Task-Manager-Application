@@ -191,3 +191,15 @@ export const removeAssignees = async (subtaskId, { assignees = [], usernames = [
         };
     }
 };
+
+export const leaveSubtask = async (subtaskId) => {
+    try {
+        const response = await api.post(`/api/subtasks/${subtaskId}/leave`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave subtask",
+            status: error.response?.status,
+        };
+    }
+};

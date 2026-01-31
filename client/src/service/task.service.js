@@ -126,7 +126,7 @@ export const deleteTask = async (taskId) => {
  */
 export const hardDeleteTask = async (taskId) => {
     try {
-        const response = await api.delete(`/api/tasks/${taskId}`);
+        const response = await api.delete(`/api/tasks/${taskId}/permanentDelete`);
         return response.data;
     } catch (error) {
         throw {
@@ -308,6 +308,21 @@ export const getProjectTasks = async (workspaceId, projectId) => {
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch project tasks",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Leave Task (Self-Removal)
+ */
+export const leaveTask = async (taskId) => {
+    try {
+        const response = await api.post(`/api/tasks/${taskId}/leave`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave task",
             status: error.response?.status,
         };
     }

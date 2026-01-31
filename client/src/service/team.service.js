@@ -66,7 +66,7 @@ export const deleteTeam = async (workspaceId, teamId) => {
     }
 };
 
-// NEW: Get team members
+//  Get team members
 export const getTeamMembers = async (workspaceId, teamId) => {
     try {
         const response = await api.get(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members`);
@@ -79,7 +79,7 @@ export const getTeamMembers = async (workspaceId, teamId) => {
     }
 };
 
-// NEW: Add team member
+//  Add team member
 export const addTeamMember = async (workspaceId, teamId, { memberId, role = "member" }) => {
     try {
         const response = await api.post(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members`, {
@@ -95,7 +95,7 @@ export const addTeamMember = async (workspaceId, teamId, { memberId, role = "mem
     }
 };
 
-// NEW: Remove team member
+//  Remove team member
 export const removeTeamMember = async (workspaceId, teamId, memberId) => {
     try {
         const response = await api.delete(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members/${memberId}`);
@@ -108,7 +108,7 @@ export const removeTeamMember = async (workspaceId, teamId, memberId) => {
     }
 };
 
-// NEW: Update team member role
+// Update team member role
 export const updateTeamMemberRole = async (workspaceId, teamId, memberId, role) => {
     try {
         const response = await api.patch(`/api/teams/workspaces/${workspaceId}/team/${teamId}/members/${memberId}/role`, {
@@ -118,6 +118,19 @@ export const updateTeamMemberRole = async (workspaceId, teamId, memberId, role) 
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update member role",
+            status: error.response?.status,
+        };
+    }
+};
+
+
+export const leaveTeamService = async (workspaceId, teamId) => {
+    try {
+        const response = await api.post(`/api/teams/workspaces/${workspaceId}/team/${teamId}/leave`);
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave team",
             status: error.response?.status,
         };
     }

@@ -1,22 +1,25 @@
 import { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom"; // Navigation ke liye
+import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, Trash2, LogOut, Loader2 } from "lucide-react";
-import ConfirmationModal from "./ConfirmationModal";
+import ConfirmationModal from "./components/TeamsSection/ConfirmationModal";
 
-import { useWorkspace } from "../../../../hook/useWorkspace";
-import { useProject } from "../../../../hook/useProject";
-import { useTeam } from "../../../../hook/useTeam";
-import { useSubtask } from "../../../../hook/useSubtask";
+// Hooks Import
+import { useWorkspace } from "../../hook/useWorkspace";
+import { useProject } from "../../hook/useProject";
+import { useTeam } from "../../hook/useTeam";
+import { useTask } from "../../hook/useTask";
+import { useSubtask } from "../../hook/useSubtask";
 
-const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
+const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName, onClose }) => {
     const navigate = useNavigate();
-    
+
     // ========== Hooks Initialization ==========
     const { deleteWorkspace, leaveWorkspace } = useWorkspace();
-    const { deleteProject } = useProject();
-    const { removeTeam } = useTeam();
-    const { deleteSubtask } = useSubtask();
+    const { deleteProject, leaveProject } = useProject();
+    const { removeTeam, leaveTeam } = useTeam();
+    const { hardDeleteTask, leaveTask } = useTask();
+    const { deleteSubtask, leaveSubtask } = useSubtask();
 
     // ========== State ==========
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -29,19 +32,24 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
         return item?.workspace;
     }, [item]);
 
-    // ========== Role Logic ==========
+    // ========== Role & Ownership Logic ==========
     const userRole = item?.permissions?.role;
-    // Owner ya Creator ke paas Delete permission hai
-    const isOwner = ['owner', 'creator'].includes(userRole);
-    // Resource Name Fallback
-    const typeName = resourceName || item?.type || "item";
 
+    // Determine if the user is the owner/creator based on available data
+    const isOwner =
+        ['owner', 'creator'].includes(userRole) || item?.permissions?.canDelete === true ||
+        (item?.createdBy?._id && item?.createdBy?._id === item?.currentUserId) || // Fallback if currentUserId is passed in item
+        item?.isOwner; // Fallback if isOwner boolean is passed
+
+    // Fallback for resource name string
+    const typeName = resourceName || item?.type || "item";
 
     // ========== Internal Actions Handlers ==========
 
-    // 1. DELETE Handler (Internalized)
+    // 1. DELETE Handler
     const performDelete = async () => {
         const id = item._id || item.id;
+        const wsId = getWorkspaceId();
         let success = false;
 
         switch (item.type) {
@@ -49,27 +57,32 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
                 success = await deleteWorkspace(id);
                 if (success) navigate('/main');
                 break;
-            
+
             case 'project':
                 success = await deleteProject(id);
+                if (success) navigate(`/main`);
                 break;
-            
+
             case 'team':
-                const wsId = getWorkspaceId();
                 if (wsId) {
                     const res = await removeTeam(wsId, id);
                     success = res.success;
-                    // Note: Teams usually modal ke andar hote hain, isliye navigation shayad na chahiye ho, 
-                    // lekin agar dedicated page hai to navigate karein.
+                    // Only navigate if we are on the specific team page, otherwise just close modal
                     if (success && window.location.pathname.includes(id)) {
-                        navigate(`/workspace/${wsId}`);
+                        navigate(`/main`);
                     }
                 }
                 break;
 
+            case 'task':
+                success = await hardDeleteTask(id);
+                // Tasks usually displayed in a list/modal, navigation might not be needed
+                // If displayed in a full page view:
+                if (success && onClose) onClose();
+                break;
+
             case 'subtask':
                 success = await deleteSubtask(id);
-                // Subtask delete hone par parent task par navigate kar sakte hain ya sirf refresh
                 break;
 
             default:
@@ -79,31 +92,60 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
         return success;
     };
 
-    // 2. LEAVE Handler (Internalized where possible)
+    // 2. LEAVE Handler
     const performLeave = async () => {
         const id = item._id || item.id;
+        const wsId = getWorkspaceId();
         let success = false;
 
-        if (item.type === 'workspace') {
-            // Workspace ke liye hamare paas direct hook function hai
-            success = await leaveWorkspace(id);
-            if (success) navigate('/dashboard');
-        } else {
-            // Project/Team ke liye agar parent ne onLeave function diya hai to use karein
-            // (Kyunki hooks me direct leaveProject bina userId ke shayad available na ho)
-            if (parentOnLeave) {
-                await parentOnLeave();
-                success = true; // Assume success if function runs
-            } else {
-                console.error("No leave handler provided for this item type");
-            }
+        switch (item.type) {
+            case 'workspace':
+                success = await leaveWorkspace(id);
+                if (success) navigate('/dashboard');
+                break;
+
+            case 'project':
+                // Requires workspaceId and projectId
+                success = await leaveProject(wsId, id);
+                if (success) navigate(`/workspace/${wsId}`);
+                break;
+
+            case 'team':
+                // Requires workspaceId and teamId
+                if (wsId) {
+                    // Note: useTeam hook's leaveTeam returns { success: true/false } directly or via promise
+                    const res = await leaveTeam(wsId, id);
+                    success = res?.success || res === true; // Handle variation in return type
+                    if (success && window.location.pathname.includes(id)) {
+                        navigate(`/workspace/${wsId}`);
+                    }
+                }
+                break;
+
+            case 'task':
+                success = await leaveTask(id);
+                if (success && onClose) onClose();
+                break;
+
+            case 'subtask':
+                success = await leaveSubtask(id);
+                break;
+
+            default:
+                // Fallback to parent prop if provided
+                if (parentOnLeave) {
+                    await parentOnLeave();
+                    success = true;
+                } else {
+                    console.error("No leave handler defined for type:", item.type);
+                }
         }
         return success;
     };
 
 
     // ========== Dynamic Configuration ==========
-    
+
     const config = isOwner
         ? {
             // Owner Settings (Delete)
@@ -114,27 +156,29 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
             buttonIcon: Trash2,
             btnClass: "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20",
             modalTitle: `Delete ${typeName}?`,
-            modalMessage: `Are you absolutely sure you want to delete "${item?.name || 'this item'}"? This action cannot be undone.`,
+            modalMessage: `Are you absolutely sure you want to delete "${item?.name || item?.title || 'this item'}"? This action cannot be undone.`,
             handler: performDelete
         }
         : {
             // Member Settings (Leave)
             actionType: 'LEAVE',
             title: `Leave this ${typeName}`,
-            description: `Revoke your access to this ${typeName}. You will lose access to all tasks, chats, and files. You will need to be re-invited to join again.`,
+            description: `Revoke your access to this ${typeName}. You will lose access to all tasks, chats, and files.`,
             buttonText: `Leave ${typeName}`,
             buttonIcon: LogOut,
             btnClass: "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20",
             modalTitle: `Leave ${typeName}?`,
-            modalMessage: `Are you sure you want to leave "${item?.name || 'this item'}"? You will lose access immediately.`,
+            modalMessage: `Are you sure you want to leave "${item?.name || item?.title || 'this item'}"? You will lose access immediately.`,
             handler: performLeave
         };
 
     const Icon = config.buttonIcon;
 
+    // Safety check
+    if (!item) return null;
 
     // ========== Execution ==========
-    
+
     const handleConfirmAction = async () => {
         try {
             setIsProcessing(true);
@@ -165,11 +209,10 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName }) => {
             </div>
 
             {/* Content Card */}
-            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                isOwner 
-                ? 'border-rose-500/20 bg-rose-500/5' 
+            <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${isOwner
+                ? 'border-rose-500/20 bg-rose-500/5'
                 : 'border-amber-500/20 bg-amber-500/5'
-            }`}>
+                }`}>
                 <div className="space-y-1">
                     <h4 className={`text-sm font-semibold ${isOwner ? 'text-rose-200' : 'text-amber-200'}`}>
                         {config.title}

@@ -170,3 +170,16 @@ export const updateProjectMemberRole = async (workspaceId, projectId, memberId, 
         };
     }
 };
+
+
+export const leaveProject = async (workspaceId, projectId) => {
+    try {
+        const response = await api.post(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/leave`);
+        return response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave project",
+            status: error.response?.status,
+        };
+    }
+};
