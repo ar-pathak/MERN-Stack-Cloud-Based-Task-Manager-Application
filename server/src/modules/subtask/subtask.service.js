@@ -281,6 +281,31 @@ class SubtaskService {
                 : 0
         };
     }
+
+    /**
+     * Leave a subtask (Self-removal)
+     */
+    async leaveSubtask(subtaskId, userId) {
+        const subtask = await Subtask.findById(subtaskId);
+        if (!subtask) {
+            throw new Error('Subtask not found');
+        }
+
+        // 1. Check if user is assigned
+        const isAssigned = subtask.assignedTo.some(id => id.toString() === userId.toString());
+
+        if (!isAssigned) {
+            throw new Error("You are not assigned to this subtask");
+        }
+
+        // 2. Remove user from assignedTo array
+        await Subtask.updateOne(
+            { _id: subtaskId },
+            { $pull: { assignedTo: userId } }
+        );
+
+        return { message: "You have left the subtask successfully" };
+    }
 }
 
 module.exports = new SubtaskService();

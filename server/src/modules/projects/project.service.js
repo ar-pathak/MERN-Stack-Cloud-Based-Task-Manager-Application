@@ -150,7 +150,8 @@ const projectService = {
         }
 
         return { message: "Members removed from project" };
-    }, updateProjectMemberRole: async (projectId, memberId, role) => {
+    }, 
+    updateProjectMemberRole: async (projectId, memberId, role) => {
         const project = await Project.findOneAndUpdate(
             {
                 _id: projectId,
@@ -167,6 +168,37 @@ const projectService = {
         }
 
         return { message: "Member role updated successfully" };
+    },
+    leaveProject: async (projectId, userId) => {
+        const project = await Project.findById(projectId);
+
+        if (!project) {
+            throw new Error("Project not found");
+        }
+
+        // 1. Check if user is the owner
+        if (project.owner.toString() === userId.toString()) {
+            throw new Error("Project owner cannot leave the project. You must transfer ownership or delete the project.");
+        }
+
+        // 2. Check if user is actually a member
+        const isMember = project.members.some(m => m.user.toString() === userId.toString());
+        if (!isMember) {
+            throw new Error("You are not a member of this project");
+        }
+
+        // 3. Remove user from members array
+        const updatedProject = await Project.findByIdAndUpdate(
+            projectId,
+            {
+                $pull: {
+                    members: { user: userId }
+                }
+            },
+            { new: true }
+        );
+
+        return { message: "You have left the project successfully" };
     },
 }
 

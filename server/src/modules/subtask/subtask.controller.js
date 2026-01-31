@@ -252,6 +252,31 @@ const subtaskController = {
                 message: error.message || 'Failed to remove assignees'
             });
         }
+    },
+
+
+    /**
+     * Leave subtask
+     * POST /api/subtasks/:subtaskId/leave
+     */
+    leaveSubtask: async (req, res) => {
+        try {
+            const { subtaskId } = req.params;
+            const userId = req.user.id; // From Auth Middleware
+
+            await subtaskService.leaveSubtask(subtaskId, userId);
+
+            res.status(200).json({
+                success: true,
+                message: 'Left subtask successfully'
+            });
+        } catch (error) {
+            console.error('Leave subtask error:', error);
+            res.status(error.message === 'Subtask not found' ? 404 : 400).json({
+                success: false,
+                message: error.message || 'Failed to leave subtask'
+            });
+        }
     }
 }
 

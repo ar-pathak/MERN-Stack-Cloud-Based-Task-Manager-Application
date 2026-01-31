@@ -48,4 +48,7 @@ router.get('/workspaces/:workspaceId/tasks', checkWorkspaceMemberRole("owner", "
 //get all tasks by project
 router.get('/workspaces/:workspaceId/projects/:projectId/tasks', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), taskController.getTasksByProject)
 
+//leave task
+router.post('/:taskId/leave', taskController.leaveTask);
+
 module.exports = router;

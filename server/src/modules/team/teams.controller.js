@@ -250,6 +250,24 @@ const teamController = {
         } catch (error) {
             return handleError(error, res);
         }
+    },
+    leaveTeam: async (req, res) => {
+        try {
+            const { teamId } = req.params;
+            const userId = req.user._id; // Logged in user
+
+            if (!mongoose.Types.ObjectId.isValid(teamId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid team ID"
+                });
+            }
+
+            const result = await teamsService.leaveTeam(teamId, userId);
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
     }
 };
 

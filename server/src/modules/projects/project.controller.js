@@ -185,6 +185,21 @@ const projectController = {
         } catch (error) {
             return handleError(error, res);
         }
+    },
+    leaveProject: async (req, res) => {
+        try {
+            const { projectId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error("Invalid Project ID");
+            }
+
+            const result = await projectService.leaveProject(projectId, userId);
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
     }
 }
 

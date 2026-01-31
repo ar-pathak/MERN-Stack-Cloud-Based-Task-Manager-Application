@@ -280,6 +280,21 @@ const taskController = {
         } catch (error) {
             handleError(error, res);
         }
+    },
+    leaveTask: async (req, res) => {
+        try {
+            const { taskId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid Task ID");
+            }
+
+            const result = await taskService.leaveTask(taskId, userId);
+            sendSuccess(res, null, result.message);
+        } catch (error) {
+            handleError(error, res);
+        }
     }
 }
 

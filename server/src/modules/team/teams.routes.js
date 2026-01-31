@@ -21,5 +21,11 @@ router.get('/workspaces/:workspaceId/team/:teamId/members', checkWorkspaceMember
 router.delete('/workspaces/:workspaceId/team/:teamId/members/:memberId', checkWorkspaceMemberRole("owner", "admin"), teamController.removeTeamMember);
 router.patch('/workspaces/:workspaceId/team/:teamId/members/:memberId/role', checkWorkspaceMemberRole("owner", "admin"), teamController.updateTeamMemberRole);
 
+//Leave team
+router.post(
+    '/workspaces/:workspaceId/team/:teamId/leave',
+    checkWorkspaceMemberRole("owner", "admin", "member", "viewer"),
+    teamController.leaveTeam
+);
 
 module.exports = router

@@ -12,7 +12,6 @@ import StatusControl from "./StatusControl";
 import QuickActions from "./QuickActions";
 import Description from "./Description";
 import MetaDetails from "./MetaDetails";
-import { SettingsSection } from "./SettingsSection";
 import DangerZoneSection from "./DangerZoneSection";
 import AnalyticsSection from "./AnalyticsSection";
 
@@ -310,8 +309,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             ) && (
                                     <TeamsSection item={item} taskData={taskData} />
                                 )}
-
-
                         </motion.div>
                     )}
 
@@ -323,7 +320,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             exit={{ opacity: 0, x: -20 }}
                             className="space-y-6 pb-6"
                         >
-                            {item.type === 'workspace' && <SettingsSection item={item} />}
                             <DangerZoneSection item={item} />
                         </motion.div>
                     )}

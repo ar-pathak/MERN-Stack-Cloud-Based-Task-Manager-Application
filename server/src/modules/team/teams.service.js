@@ -195,7 +195,35 @@ const teamsService = {
         await team.populate('members.user', 'name email');
 
         return team;
-    }
+    },
+    leaveTeam: async (teamId, userId) => {
+        const team = await Team.findById(teamId);
+
+        if (!team) {
+            throw new Error("Team not found");
+        }
+
+        // 1. Check if user is the creator
+        // Creator cannot leave, they must delete the team
+        if (team.createdBy.toString() === userId.toString()) {
+            throw new Error("Team creator cannot leave the team. You must delete the team instead.");
+        }
+
+        // 2. Check if user is actually a member
+        const memberIndex = team.members.findIndex(
+            m => m.user.toString() === userId.toString()
+        );
+
+        if (memberIndex === -1) {
+            throw new Error("You are not a member of this team");
+        }
+
+        // 3. Remove user from members array
+        team.members.splice(memberIndex, 1);
+        await team.save();
+
+        return { message: "You have left the team successfully" };
+    },
 };
 
 module.exports = teamsService;

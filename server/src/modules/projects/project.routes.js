@@ -27,5 +27,11 @@ router.patch(
     projectController.updateProjectMemberRole
 );
 
+router.post(
+    '/workspaces/:workspaceId/projects/:projectId/leave',
+    checkWorkspaceMemberRole("owner", "admin", "member", "viewer"),
+    projectController.leaveProject
+);
+
 
 module.exports = router;

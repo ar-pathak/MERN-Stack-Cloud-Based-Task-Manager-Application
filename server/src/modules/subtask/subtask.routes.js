@@ -79,4 +79,13 @@ router.delete(
     canModifySubtask,
     subtaskController.removeAssignees
 );
+
+
+// Leave subtask
+router.post(
+    '/:subtaskId/leave',
+    subtaskController.leaveSubtask
+);
+
+
 module.exports = router;

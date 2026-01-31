@@ -333,7 +333,32 @@ const taskService = {
             .sort({ createdAt: -1 })
             .exec();
         return tasks;
-    }
+    },
+    leaveTask: async (taskId, userId) => {
+        const task = await Task.findById(taskId);
+
+        if (!task) {
+            throw new Error("Task not found");
+        }
+
+        // 1. Check if user is actually assigned directly
+        const isAssigned = task.assignees.some(id => id.toString() === userId.toString());
+        
+        if (!isAssigned) {
+            // Check if assigned via team (optional feedback)
+            // Agar team ke through assigned hai, to wo individual leave nahi kar sakta
+            throw new Error("You are not directly assigned to this task (or already left).");
+        }
+
+        // 2. Remove user from assignees
+        await Task.findByIdAndUpdate(
+            taskId,
+            { $pull: { assignees: userId } },
+            { new: true }
+        );
+
+        return { message: "You have left the task successfully" };
+    },
 
 };
 
