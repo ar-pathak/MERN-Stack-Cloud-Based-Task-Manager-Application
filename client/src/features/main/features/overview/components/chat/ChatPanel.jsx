@@ -26,7 +26,8 @@ const ChatPanel = ({
     uploadingFile,
     showEmojiPicker,
     setShowEmojiPicker,
-    overview
+    overview,
+    onUpdate
 }) => {
     // Local State
     const [searchQuery, setSearchQuery] = useState("");
@@ -92,6 +93,7 @@ const ChatPanel = ({
                             item={item}
                             overview={overview}
                             onClose={() => setShowChatInfo(false)}
+                            onUpdate={onUpdate}
                         />
                     </motion.div>
                 ) : (

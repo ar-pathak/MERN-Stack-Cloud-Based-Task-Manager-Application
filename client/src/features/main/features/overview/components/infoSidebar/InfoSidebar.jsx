@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     X, Briefcase, FolderOpen, CheckSquare,
-    Users, Settings, BarChart3, ListTodo, Edit2, Check, XCircle,
-    Activity
+    Users, Settings, Activity, ListTodo, Edit2, Check, XCircle
 } from "lucide-react";
 
 import QuickStatsSection from "./QuickStatsSection";
@@ -13,7 +12,7 @@ import QuickActions from "./QuickActions";
 import Description from "./Description";
 import MetaDetails from "./MetaDetails";
 import DangerZoneSection from "./DangerZoneSection";
-import AnalyticsSection from "./AnalyticsSection";
+// import AnalyticsSection from "./AnalyticsSection"; // Uncomment if needed
 
 // Import all necessary hooks
 import { useWorkspace } from "../../hook/useWorkspace";
@@ -24,7 +23,7 @@ import TeamsSection from "./components/TeamsSection/TeamsSection";
 import { useAuth } from "../../../../../../context/AuthContext";
 import { useMembersLogic } from "./components/MembersSection/useMembersLogic";
 
-const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
+const InfoSidebar = ({ item: initialItem, overview, onClose, onUpdate }) => {
     // Local state to manage immediate UI updates
     const [item, setItem] = useState(initialItem);
     const [activeTab, setActiveTab] = useState("overview");
@@ -42,7 +41,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     const { members, subtaskData } = useMembersLogic(item);
     const { user } = useAuth();
 
-
     // Determine if the current user is the creator of the subtask
     const isSubtaskCreator = subtaskData?.createdBy === user?._id;
 
@@ -52,6 +50,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
         { id: "members", label: "Members", icon: Users },
         { id: "settings", label: "Settings", icon: Settings }
     ];
+
     // Update local state if prop changes (e.g. user clicks a different item)
     useEffect(() => {
         setItem(initialItem);
@@ -74,15 +73,10 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     const canEdit = userRole === 'owner' || userRole === 'creator';
     const userId = user?._id;
 
-    const isMember = members.some(
-        m => m.user?._id === userId
-    );
-    const isAssignee = members.some(
-        m => m?._id === userId
-    );
+    const isMember = members.some(m => m.user?._id === userId);
+    const isAssignee = members.some(m => m?._id === userId);
 
     const canSeeDangerZone = isMember || isAssignee || canEdit;
-
 
     const getHeaderColorClass = (type) => {
         switch (type) {
@@ -108,16 +102,13 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                 case 'workspace':
                     result = await updateWorkspace(itemId, updates);
                     break;
-
                 case 'project': {
                     result = await updateProject(item?.workspace, itemId, updates);
                     break;
                 }
-
                 case 'task':
                     result = await updateTask(itemId, updates);
                     break;
-
                 default:
                     console.warn("Unknown item type:", item.type);
             }
@@ -129,6 +120,8 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                 if (updatedData.name || updatedData.title) {
                     setTitle(updatedData.name || updatedData.title);
                 }
+                // Notify parent to refresh timeline if needed
+                if (onUpdate) onUpdate();
             }
         } catch (error) {
             console.error("Failed to update item", error);
@@ -140,17 +133,20 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
         return result.success;
     };
 
-
     const handleTitleSave = () => {
         if (!title.trim() || title === (item.name || item.title)) {
             setIsEditingTitle(false);
             return;
         }
-
         // Determine field name based on type
-        // Workspaces and Projects usually use 'name', Tasks and Subtasks use 'title'
         const fieldName = (item.type === 'task' || item.type === 'subtask') ? 'title' : 'name';
         handleUpdateItem({ [fieldName]: title });
+    };
+
+    // NEW: Handle Success from Danger Zone (Refresh & Close)
+    const handleDangerZoneSuccess = () => {
+        if (onUpdate) onUpdate(); // Refresh Timeline
+        if (onClose) onClose();   // Close Sidebar
     };
 
     return (
@@ -248,7 +244,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                 <div className="flex gap-1 p-1 bg-slate-900/40 rounded-lg border border-slate-800/50">
                     {tabs
                         .filter(tab => {
-                            // Analytics only for workspace
                             if (tab.id === "analytics") {
                                 return item.type === "workspace";
                             }
@@ -290,7 +285,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
 
                             {item.type === 'workspace' && <QuickActions item={item} />}
 
-                            {/* Pass control props to Description */}
                             <Description
                                 item={item}
                                 canEdit={canEdit}
@@ -301,17 +295,6 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                         </motion.div>
                     )}
 
-                    {/* {item.type === 'workspace' && activeTab === "analytics" && (
-                        <motion.div
-                            key="analytics"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            className="space-y-6 pb-6"
-                        >
-                            <AnalyticsSection item={item} overview={overview} />
-                        </motion.div>
-                    )} */}
                     {activeTab === "members" && (
                         <motion.div
                             key="members"
@@ -340,16 +323,17 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             className="space-y-6 pb-6"
                         >
                             {canSeeDangerZone ? (
-                                <DangerZoneSection item={item} isSubtaskCreator={isSubtaskCreator} />
+                                <DangerZoneSection 
+                                    item={item} 
+                                    isSubtaskCreator={isSubtaskCreator} 
+                                    onSuccess={handleDangerZoneSuccess}
+                                />
                             ) : (
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                                     <div className="flex items-start gap-3">
-                                        {/* Icon */}
                                         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-600">
                                             ⚠️
                                         </div>
-
-                                        {/* Content */}
                                         <div className="flex-1">
                                             <p className="text-sm font-semibold text-amber-800">
                                                 Access restricted

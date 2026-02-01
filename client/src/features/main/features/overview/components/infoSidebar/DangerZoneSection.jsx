@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { AlertTriangle, Trash2, LogOut, Loader2 } from "lucide-react";
+import { AlertTriangle, Trash2, LogOut, Loader2, CheckCircle2 } from "lucide-react";
 import ConfirmationModal from "./components/TeamsSection/ConfirmationModal";
 
 // Hooks Import
@@ -11,7 +11,7 @@ import { useTeam } from "../../hook/useTeam";
 import { useTask } from "../../hook/useTask";
 import { useSubtask } from "../../hook/useSubtask";
 
-const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, resourceName, onClose }) => {
+const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, resourceName, onSuccess }) => {
     const navigate = useNavigate();
 
     // ========== Hooks Initialization ==========
@@ -24,6 +24,7 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
     // ========== State ==========
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isDone, setIsDone] = useState(false); // New state for success feedback
 
     // ========== Helper: Get Workspace ID ==========
     const getWorkspaceId = useCallback(() => {
@@ -58,6 +59,7 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
         switch (item.type) {
             case 'workspace':
                 success = await deleteWorkspace(id);
+                // For main layout items, we navigate immediately after
                 if (success) navigate('/main');
                 break;
 
@@ -70,7 +72,6 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
                 if (wsId) {
                     const res = await removeTeam(wsId, id);
                     success = res.success;
-                    // Only navigate if we are on the specific team page, otherwise just close modal
                     if (success && window.location.pathname.includes(id)) {
                         navigate(`/main`);
                     }
@@ -79,9 +80,6 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
 
             case 'task':
                 success = await hardDeleteTask(id);
-                // Tasks usually displayed in a list/modal, navigation might not be needed
-                // If displayed in a full page view:
-                if (success && onClose) onClose();
                 break;
 
             case 'subtask':
@@ -108,22 +106,18 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
                 break;
 
             case 'project':
-                // Requires workspaceId and projectId
                 success = await leaveProject(wsId, id);
                 break;
 
             case 'team':
-                // Requires workspaceId and teamId
                 if (wsId) {
-                    // Note: useTeam hook's leaveTeam returns { success: true/false } directly or via promise
                     const res = await leaveTeam(wsId, id);
-                    success = res?.success || res === true; // Handle variation in return type
+                    success = res?.success || res === true;
                 }
                 break;
 
             case 'task':
                 success = await leaveTask(id);
-                if (success && onClose) onClose();
                 break;
 
             case 'subtask':
@@ -131,12 +125,9 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
                 break;
 
             default:
-                // Fallback to parent prop if provided
                 if (parentOnLeave) {
                     await parentOnLeave();
                     success = true;
-                } else {
-                    console.error("No leave handler defined for type:", item.type);
                 }
         }
         return success;
@@ -144,52 +135,61 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
 
 
     // ========== Dynamic Configuration ==========
-
     const config = isOwner
         ? {
-            // Owner Settings (Delete)
             actionType: 'DELETE',
             title: `Delete this ${typeName}`,
-            description: `Once you delete a ${typeName}, there is no going back. Please be certain. All associated data will be permanently removed.`,
+            description: `Once you delete a ${typeName}, there is no going back. All associated data will be removed.`,
             buttonText: `Delete ${typeName}`,
             buttonIcon: Trash2,
             btnClass: "bg-rose-500 hover:bg-rose-600 shadow-rose-500/20",
+            successClass: "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20",
             modalTitle: `Delete ${typeName}?`,
-            modalMessage: `Are you absolutely sure you want to delete "${item?.name || item?.title || 'this item'}"? This action cannot be undone.`,
+            modalMessage: `Are you absolutely sure you want to delete "${item?.name || item?.title || 'this item'}"? This cannot be undone.`,
             handler: performDelete
         }
         : {
-            // Member Settings (Leave)
             actionType: 'LEAVE',
             title: `Leave this ${typeName}`,
-            description: `Revoke your access to this ${typeName}. You will lose access to all tasks, chats, and files.`,
+            description: `Revoke your access to this ${typeName}. You will lose access to all tasks and files.`,
             buttonText: `Leave ${typeName}`,
             buttonIcon: LogOut,
             btnClass: "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20",
+            successClass: "bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20",
             modalTitle: `Leave ${typeName}?`,
-            modalMessage: `Are you sure you want to leave "${item?.name || item?.title || 'this item'}"? You will lose access immediately.`,
+            modalMessage: `Are you sure you want to leave "${item?.name || item?.title || 'this item'}"?`,
             handler: performLeave
         };
 
-    const Icon = config.buttonIcon;
+    const Icon = isDone ? CheckCircle2 : config.buttonIcon;
+    const currentBtnClass = isDone ? config.successClass : config.btnClass;
+    const currentBtnText = isDone ? "Done" : config.buttonText;
 
-    // Safety check
     if (!item) return null;
 
     // ========== Execution ==========
-
     const handleConfirmAction = async () => {
         try {
             setIsProcessing(true);
-            await config.handler();
+            const success = await config.handler();
+            
+            // If the handler returned success (and didn't already navigate away)
+            if (success) {
+                setIsDone(true);
+                setIsModalOpen(false); // Close modal to show button success state
+
+                // Add a small delay so user sees the "Success" green button before sidebar closes
+                setTimeout(() => {
+                   if (onSuccess) onSuccess();
+                }, 1500);
+            }
         } catch (error) {
             console.error("Action failed", error);
         } finally {
             setIsProcessing(false);
-            setIsModalOpen(false);
+            if (!isDone) setIsModalOpen(false); // Close modal if failed or cancelled
         }
     };
-
 
     // ========== Render ==========
     return (
@@ -222,13 +222,18 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
                 </div>
 
                 <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                    disabled={isProcessing || isDone}
+                    whileHover={!isDone ? { scale: 1.02 } : {}}
+                    whileTap={!isDone ? { scale: 0.98 } : {}}
                     onClick={() => setIsModalOpen(true)}
-                    className={`flex-shrink-0 px-4 py-2.5 text-white text-xs font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${config.btnClass}`}
+                    className={`flex-shrink-0 px-4 py-2.5 text-white text-xs font-semibold rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 ${currentBtnClass}`}
                 >
-                    <Icon className="h-4 w-4" />
-                    {config.buttonText}
+                    {isProcessing ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                        <Icon className="h-4 w-4" />
+                    )}
+                    {currentBtnText}
                 </motion.button>
             </div>
 
@@ -237,7 +242,7 @@ const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, res
                 {isModalOpen && (
                     <ConfirmationModal
                         isOpen={isModalOpen}
-                        onClose={() => setIsModalOpen(false)}
+                        onClose={() => !isProcessing && setIsModalOpen(false)}
                         onConfirm={handleConfirmAction}
                         loading={isProcessing}
                         title={config.modalTitle}
