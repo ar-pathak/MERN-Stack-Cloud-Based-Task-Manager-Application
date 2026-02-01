@@ -11,7 +11,7 @@ import { useTeam } from "../../hook/useTeam";
 import { useTask } from "../../hook/useTask";
 import { useSubtask } from "../../hook/useSubtask";
 
-const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName, onClose }) => {
+const DangerZoneSection = ({ item, isSubtaskCreator, onLeave: parentOnLeave, resourceName, onClose }) => {
     const navigate = useNavigate();
 
     // ========== Hooks Initialization ==========
@@ -37,9 +37,12 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName, onClose
 
     // Determine if the user is the owner/creator based on available data
     const isOwner =
-        ['owner', 'creator'].includes(userRole) || item?.permissions?.canDelete === true ||
-        (item?.createdBy?._id && item?.createdBy?._id === item?.currentUserId) || // Fallback if currentUserId is passed in item
-        item?.isOwner; // Fallback if isOwner boolean is passed
+        item?.type === 'subtask'
+            ? isSubtaskCreator === true
+            : (
+                ['owner', 'creator'].includes(userRole) ||
+                item?.isOwner === true
+            );
 
     // Fallback for resource name string
     const typeName = resourceName || item?.type || "item";
@@ -101,13 +104,12 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName, onClose
         switch (item.type) {
             case 'workspace':
                 success = await leaveWorkspace(id);
-                if (success) navigate('/dashboard');
+                if (success) navigate('/main');
                 break;
 
             case 'project':
                 // Requires workspaceId and projectId
                 success = await leaveProject(wsId, id);
-                if (success) navigate(`/workspace/${wsId}`);
                 break;
 
             case 'team':
@@ -116,9 +118,6 @@ const DangerZoneSection = ({ item, onLeave: parentOnLeave, resourceName, onClose
                     // Note: useTeam hook's leaveTeam returns { success: true/false } directly or via promise
                     const res = await leaveTeam(wsId, id);
                     success = res?.success || res === true; // Handle variation in return type
-                    if (success && window.location.pathname.includes(id)) {
-                        navigate(`/workspace/${wsId}`);
-                    }
                 }
                 break;
 

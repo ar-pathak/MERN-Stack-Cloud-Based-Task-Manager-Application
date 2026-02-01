@@ -23,6 +23,7 @@ export const useMembersLogic = (item) => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isGlobalLoading, setIsGlobalLoading] = useState(false);
     const [taskData, setTaskData] = useState([]);
+    const [subtaskData, setSubtaskData] = useState([]); 
 
     // UI State
     const [searchQuery, setSearchQuery] = useState("");
@@ -68,6 +69,7 @@ export const useMembersLogic = (item) => {
                 // NEW: Subtask Loading Logic
                 const subtaskRes = await fetchSubtaskById(item.id);
                 if (subtaskRes?.data) {
+                    setSubtaskData(subtaskRes.data.data);
                     setMembers(subtaskRes.data.data.assignedTo || []);
                     setInitialLoadComplete(true);
                 }
@@ -291,6 +293,7 @@ export const useMembersLogic = (item) => {
         // Data
         members,
         taskData,
+        subtaskData,
         filteredMembers,
         roleStats,
         initialLoadComplete,

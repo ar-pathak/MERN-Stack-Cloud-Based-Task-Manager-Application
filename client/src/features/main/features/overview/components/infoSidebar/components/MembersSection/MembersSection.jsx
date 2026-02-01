@@ -19,6 +19,10 @@ const MembersSection = ({ item }) => {
     // 2. Local Modal UI State
     const [showInvite, setShowInvite] = useState(false);
     const [showAdd, setShowAdd] = useState(false);
+    const isWorkspaceLevel =
+        item.type === 'workspace' ||
+        (taskData.workspace === null &&
+            taskData.project === null)
 
     // 3. Handlers
     const handleExport = () => {
@@ -111,17 +115,27 @@ const MembersSection = ({ item }) => {
 
             {/* Modals */}
             <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
-            {(item.type === 'workspace' || (taskData.workspace === null && taskData.project === null)) && <AddMemberModal item={item} isOpen={showAdd} onClose={() => setShowAdd(false)} onAdd={handleAddMember} isLoading={isGlobalLoading} />}
-            {(item.type === 'project' || item.type === 'subtask' || taskData.workspace !== null || taskData.project !== null) && <AssignProjectMemberModal
-                item={item}
-                isOpen={showAdd}
-                taskData={taskData}
-                onClose={() => setShowAdd(false)}
-                onAssign={handleAssignProjectMembers}
-                workspaceId={item.workspace}
-                currentProjectMembers={members}
-                isLoading={isGlobalLoading}
-            />}
+
+            {isWorkspaceLevel ? (
+                <AddMemberModal
+                    item={item}
+                    isOpen={showAdd}
+                    onClose={() => setShowAdd(false)}
+                    onAdd={handleAddMember}
+                    isLoading={isGlobalLoading}
+                />
+            ) : (
+                <AssignProjectMemberModal
+                    item={item}
+                    isOpen={showAdd}
+                    taskData={taskData}
+                    onClose={() => setShowAdd(false)}
+                    onAssign={handleAssignProjectMembers}
+                    workspaceId={item.workspace}
+                    currentProjectMembers={members}
+                    isLoading={isGlobalLoading}
+                />
+            )}
         </section>
     );
 };

@@ -22,14 +22,13 @@ import { useTask } from "../../hook/useTask";
 import MembersSection from "./components/MembersSection/MembersSection";
 import TeamsSection from "./components/TeamsSection/TeamsSection";
 import { useAuth } from "../../../../../../context/AuthContext";
-import { useSubtask } from "../../hook/useSubtask";
+import { useMembersLogic } from "./components/MembersSection/useMembersLogic";
 
 const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     // Local state to manage immediate UI updates
     const [item, setItem] = useState(initialItem);
     const [activeTab, setActiveTab] = useState("overview");
     const [taskData, setTaskData] = useState(null);
-    const [subTaskData, setSubTaskData] = useState(null);
 
     // Title Editing State
     const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -40,8 +39,12 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
     const { updateWorkspace } = useWorkspace();
     const { updateProject } = useProject();
     const { fetchTaskById, updateTask } = useTask();
-    const { fetchSubtaskById } = useSubtask();
+    const { members, subtaskData } = useMembersLogic(item);
     const { user } = useAuth();
+
+
+    // Determine if the current user is the creator of the subtask
+    const isSubtaskCreator = subtaskData?.createdBy === user?._id;
 
     const tabs = [
         { id: "overview", label: "Overview", icon: Activity },
@@ -63,25 +66,22 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                 setTaskData(taskRes.data);
             }
             loadTaskData();
-        } else if (item.type === 'subtask') {
-            const loadSubTaskData = async () => {
-                const subtaskData = await fetchSubtaskById(item.id);
-                setSubTaskData(subtaskData.data.data)
-            }
-            loadSubTaskData();
         }
-    }, [item, fetchTaskById, fetchSubtaskById]);
+    }, [item, fetchTaskById]);
 
     // CHECK ROLE: Support both nested permissions (from feed) and direct role
     const userRole = item.permissions?.role || item?.role || item?.userRole;
     const canEdit = userRole === 'owner' || userRole === 'creator';
     const userId = user?._id;
 
-    const canSeeDangerZone =
-        item?.permissions?.role ||
-        subTaskData?.createdBy === userId ||
-        subTaskData?.assignedTo?.includes(userId) ||
-        canEdit;
+    const isMember = members.some(
+        m => m.user?._id === userId
+    );
+    const isAssignee = members.some(
+        m => m?._id === userId
+    );
+
+    const canSeeDangerZone = isMember || isAssignee || canEdit;
 
 
     const getHeaderColorClass = (type) => {
@@ -340,7 +340,7 @@ const InfoSidebar = ({ item: initialItem, overview, onClose }) => {
                             className="space-y-6 pb-6"
                         >
                             {canSeeDangerZone ? (
-                                <DangerZoneSection item={item} />
+                                <DangerZoneSection item={item} isSubtaskCreator={isSubtaskCreator} />
                             ) : (
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
                                     <div className="flex items-start gap-3">
