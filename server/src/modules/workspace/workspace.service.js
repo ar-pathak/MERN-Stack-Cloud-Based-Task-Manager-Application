@@ -2,8 +2,62 @@ const Workspace = require('../../models/workspace');
 const WorkspaceMember = require('../../models/workspaceMember.js');
 const WorkspaceInvite = require('../../models/workspaceInvite');
 const User = require('../../models/user');
+// Import necessary models for cascading operations
+const Project = require('../../models/project'); 
+const Team = require('../../models/team');
+const Task = require('../../models/tasks');
+const Subtask = require('../../models/subtasks');
 const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
+
+// Helper function to remove a user from all workspace resources
+// This is used for both leaveWorkspace and removeMember
+const cleanupUserResources = async (workspaceId, userId, session = null) => {
+    const opts = session ? { session } : {};
+
+    // 1. Remove from Project Members
+    await Project.updateMany(
+        { workspace: workspaceId },
+        { $pull: { members: { user: userId } } },
+        opts
+    );
+
+    // 2. Remove from Team Members
+    await Team.updateMany(
+        { workspace: workspaceId },
+        { $pull: { members: { user: userId } } },
+        opts
+    );
+
+    // 3. Remove from Task Assignees
+    // First, find all tasks in this workspace to ensure we only target relevant tasks
+    // (Assuming tasks have a direct workspace reference based on your schema)
+    await Task.updateMany(
+        { workspace: workspaceId },
+        { 
+            $pull: { 
+                assignees: userId, 
+                // Optional: If you also want to remove them if they are the "creator" purely for cleanup, 
+                // usually we keep createdBy for history, so we only remove assignees.
+            } 
+        },
+        opts
+    );
+
+    // 4. Remove from Subtask Assignments
+    // Subtasks don't usually have workspaceId, they are linked to Tasks.
+    // We need to find tasks in this workspace first.
+    const tasks = await Task.find({ workspace: workspaceId }).select('_id').session(session || null);
+    const taskIds = tasks.map(t => t._id);
+
+    if (taskIds.length > 0) {
+        await Subtask.updateMany(
+            { task: { $in: taskIds } },
+            { $pull: { assignedTo: userId } },
+            opts
+        );
+    }
+};
 
 const workspaceService = {
     createWorkspace: async ({ name, description, ownerId }) => {
@@ -110,8 +164,29 @@ const workspaceService = {
         session.startTransaction();
 
         try {
+            // 1. Find all Tasks to identify Subtasks
+            const tasks = await Task.find({ workspace: id }).select('_id').session(session);
+            const taskIds = tasks.map(t => t._id);
+
+            // 2. Delete Subtasks associated with these tasks
+            if (taskIds.length > 0) {
+                await Subtask.deleteMany({ task: { $in: taskIds } }, { session });
+            }
+
+            // 3. Delete Tasks
+            await Task.deleteMany({ workspace: id }, { session });
+
+            // 4. Delete Projects
+            await Project.deleteMany({ workspace: id }, { session });
+
+            // 5. Delete Teams
+            await Team.deleteMany({ workspace: id }, { session });
+
+            // 6. Delete Members and Invites
             await WorkspaceMember.deleteMany({ workspace: id }, { session });
             await WorkspaceInvite.deleteMany({ workspace: id }, { session });
+
+            // 7. Delete the Workspace itself
             const deletedWorkspace = await Workspace.findByIdAndDelete(id, { session });
 
             if (!deletedWorkspace) {
@@ -129,7 +204,6 @@ const workspaceService = {
 
     addMember: async ({ workspaceId, userId, username, email, role = 'member' }) => {
         let user = null;
-
 
         if (userId) {
             user = await User.findById(userId);
@@ -197,10 +271,27 @@ const workspaceService = {
             throw new Error("You cannot remove yourself. Please leave the workspace instead.");
         }
 
-        await WorkspaceMember.findOneAndDelete({
-            workspace: workspaceId,
-            user: memberId
-        });
+        // START TRANSACTION for cleanup consistency
+        const session = await WorkspaceMember.startSession();
+        session.startTransaction();
+
+        try {
+            // 1. Remove from WorkspaceMember collection
+            await WorkspaceMember.findOneAndDelete({
+                workspace: workspaceId,
+                user: memberId
+            }, { session });
+
+            // 2. Clean up user from Projects, Teams, Tasks within this workspace
+            await cleanupUserResources(workspaceId, memberId, session);
+
+            await session.commitTransaction();
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     },
 
     updateMemberRole: async ({ workspaceId, memberId, role, requesterId }) => {
@@ -420,11 +511,29 @@ const workspaceService = {
             }
         }
 
-        await WorkspaceMember.findOneAndDelete({
-            workspace: workspaceId,
-            user: userId
-        });
+        // START TRANSACTION
+        const session = await WorkspaceMember.startSession();
+        session.startTransaction();
+
+        try {
+            // 1. Remove the member record
+            await WorkspaceMember.findOneAndDelete({
+                workspace: workspaceId,
+                user: userId
+            }, { session });
+
+            // 2. Clean up user's presence in Projects, Teams, Tasks
+            await cleanupUserResources(workspaceId, userId, session);
+
+            await session.commitTransaction();
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     },
+    
     getQuickStatus: async (workspaceId, userId) => {
         const member = await WorkspaceMember.findOne({
             workspace: workspaceId,
@@ -441,6 +550,7 @@ const workspaceService = {
             isArchived: member.status === 'archived'
         };
     },
+    
     toggleStar: async (workspaceId, userId) => {
         const member = await WorkspaceMember.findOne({
             workspace: workspaceId,

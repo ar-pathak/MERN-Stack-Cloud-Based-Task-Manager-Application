@@ -1,8 +1,11 @@
+const mongoose = require('mongoose');
 const isUserTaskAssignee = require('../../helpers/isUserTaskAssignee');
 const { canCreateTask } = require('../../middleware/resolveTaskCreatePermission');
-const Task = require('../../models/tasks')
+const Task = require('../../models/tasks');
 const Team = require('../../models/team');
 const User = require('../../models/user');
+// Import Subtask model for cascading operations
+const Subtask = require('../../models/subtasks');
 const { touchParents } = require('../utils/updateParent');
 
 const taskService = {
@@ -29,6 +32,7 @@ const taskService = {
 
         return task;
     },
+    
     updateTask: async (userId, taskId, data) => {
         const task = await Task.findById(taskId);
 
@@ -51,6 +55,7 @@ const taskService = {
 
         return { message: "Task updated successfully" };
     },
+
     addTaskAssignees: async (userId, taskId, assigneesData) => {
         const task = await Task.findById(taskId);
 
@@ -77,9 +82,8 @@ const taskService = {
             targetAssigneeIds = [...assigneesData.assignees];
         }
 
-        // 2. Resolve Usernames to IDs (NEW LOGIC)
+        // 2. Resolve Usernames to IDs
         if (assigneesData.usernames?.length) {
-            // Find users matching the provided usernames
             const usersFound = await User.find({
                 username: { $in: assigneesData.usernames }
             }).select('_id');
@@ -119,6 +123,7 @@ const taskService = {
 
         return { message: "Added assignees to task" };
     },
+
     removeTaskAssignees: async (userId, taskId, data) => {
         const task = await Task.findById(taskId);
 
@@ -141,30 +146,50 @@ const taskService = {
             throw new Error("Task owner cannot be removed");
         }
 
-        const pullQuery = {};
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        if (data.assignees?.length) {
-            pullQuery.assignees = {
-                $in: data.assignees
-            };
-        }
+        try {
+            const pullQuery = {};
 
-        if (data.assigneesTeams?.length) {
-            pullQuery.assigneesTeams = {
-                $in: data.assigneesTeams
-            };
-        }
+            // 1. If removing specific users
+            if (data.assignees?.length) {
+                pullQuery.assignees = { $in: data.assignees };
 
-        await Task.updateOne(
-            { _id: taskId },
-            {
-                $pull: pullQuery
+                // ALSO remove these users from all Subtasks under this task
+                await Subtask.updateMany(
+                    { task: taskId },
+                    { $pull: { assignedTo: { $in: data.assignees } } },
+                    { session }
+                );
             }
-        );
-        await touchParents(task);
 
-        return { message: "Removed assignees from task" };
+            if (data.assigneesTeams?.length) {
+                pullQuery.assigneesTeams = { $in: data.assigneesTeams };
+            }
+
+            // 2. Remove from Parent Task
+            await Task.updateOne(
+                { _id: taskId },
+                { $pull: pullQuery },
+                { session }
+            );
+
+            await session.commitTransaction();
+            
+            // Touch parents after transaction
+            await touchParents(task);
+
+            return { message: "Removed assignees from task and its subtasks" };
+
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     },
+
     changeTaskStatus: async (userId, taskId, newStatus) => {
         const task = await Task.findById(taskId);
 
@@ -191,20 +216,20 @@ const taskService = {
         await touchParents(task);
         return { message: "Task status updated successfully" };
     },
+
     deleteTask: async (userId, taskId) => {
+        // Soft Delete
         const task = await Task.findById(taskId);
 
         if (!task) {
             throw new Error("Task not found");
         }
 
-        // Prevent double delete
         if (task.status === "deleted") {
             throw new Error("Task already deleted");
         }
 
-        const isCreator =
-            task.createdBy.toString() === userId.toString();
+        const isCreator = task.createdBy.toString() === userId.toString();
 
         if (!isCreator) {
             throw new Error("You are not allowed to delete this task");
@@ -220,6 +245,7 @@ const taskService = {
 
         return { message: "Task deleted successfully" };
     },
+
     restoreTask: async (userId, taskId) => {
         const task = await Task.findById(taskId);
 
@@ -231,8 +257,7 @@ const taskService = {
             throw new Error("Only deleted tasks can be restored");
         }
 
-        const isCreator =
-            task.createdBy.toString() === userId.toString();
+        const isCreator = task.createdBy.toString() === userId.toString();
 
         const isTeamLead = await Team.exists({
             _id: { $in: task.assigneesTeams },
@@ -258,6 +283,7 @@ const taskService = {
 
         return { message: "Task restored successfully" };
     },
+
     permanentDeleteTask: async (userId, taskId) => {
         const task = await Task.findById(taskId);
 
@@ -265,20 +291,44 @@ const taskService = {
             throw new Error("Task not found");
         }
 
-        const isCreator =
-            task.createdBy.toString() === userId.toString();
+        const isCreator = task.createdBy.toString() === userId.toString();
 
         if (!isCreator) {
-            throw new Error(
-                "You are not allowed to permanently delete this task"
-            );
+            throw new Error("You are not allowed to permanently delete this task");
         }
 
-        await Task.deleteOne({ _id: taskId });
-        await touchParents(task);
+        // Start Transaction for Cascading Delete
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        return { message: "Task permanently deleted" };
+        try {
+            // 1. Delete all Subtasks associated with this task
+            await Subtask.deleteMany({ task: taskId }, { session });
+
+            // 2. Delete the Task itself
+            await Task.deleteOne({ _id: taskId }, { session });
+
+            await session.commitTransaction();
+            
+            // We can try to touch parents, but since task is deleted, touchParents might need the task object.
+            // touchParents uses task properties to find project/workspace. The 'task' variable still holds the data in memory.
+            try {
+                await touchParents(task);
+            } catch (err) {
+                // If touching parent fails (e.g. parent doesn't exist), don't fail the deletion
+                console.log("Could not update parent timestamps after task deletion");
+            }
+
+            return { message: "Task and its subtasks permanently deleted" };
+
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     },
+
     getAllGlobalLevelTasks: async (userId) => {
         const globalLevelTasks = await Task.find({
             createdBy: userId,
@@ -293,13 +343,12 @@ const taskService = {
 
         return globalLevelTasks;
     },
+
     getTaskById: async (taskId) => {
         const task = await Task.findById(taskId)
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
             .populate('assigneesTeams')
-
-            // Nested Populate: Project -> Members -> User
             .populate({
                 path: 'project',
                 populate: {
@@ -307,7 +356,6 @@ const taskService = {
                     select: 'name email'
                 }
             })
-
             .populate('workspace')
             .exec();
 
@@ -316,6 +364,7 @@ const taskService = {
         }
         return task;
     },
+
     getTasksByWorkspace: async (workspaceId) => {
         const tasks = await Task.find({ workspace: workspaceId, deleted: false })
             .populate('createdBy', 'name email')
@@ -325,6 +374,7 @@ const taskService = {
             .exec();
         return tasks;
     },
+
     getTasksByProject: async (projectId) => {
         const tasks = await Task.find({ project: projectId, deleted: false })
             .populate('createdBy', 'name email')
@@ -334,6 +384,7 @@ const taskService = {
             .exec();
         return tasks;
     },
+
     leaveTask: async (taskId, userId) => {
         const task = await Task.findById(taskId);
 
@@ -345,21 +396,37 @@ const taskService = {
         const isAssigned = task.assignees.some(id => id.toString() === userId.toString());
         
         if (!isAssigned) {
-            // Check if assigned via team (optional feedback)
-            // Agar team ke through assigned hai, to wo individual leave nahi kar sakta
-            throw new Error("You are not directly assigned to this task (or already left).");
+            throw new Error("You are not directly assigned to this task.");
         }
 
-        // 2. Remove user from assignees
-        await Task.findByIdAndUpdate(
-            taskId,
-            { $pull: { assignees: userId } },
-            { new: true }
-        );
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        return { message: "You have left the task successfully" };
+        try {
+            // 2. Remove user from Task assignees
+            await Task.findByIdAndUpdate(
+                taskId,
+                { $pull: { assignees: userId } },
+                { new: true, session }
+            );
+
+            // 3. Also remove user from any Subtask assignments under this task
+            await Subtask.updateMany(
+                { task: taskId },
+                { $pull: { assignedTo: userId } },
+                { session }
+            );
+
+            await session.commitTransaction();
+            return { message: "You have left the task and its subtasks successfully" };
+
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     },
-
 };
 
 module.exports = taskService;

@@ -1,5 +1,31 @@
+const mongoose = require('mongoose');
 const Project = require('../../models/project');
+const Task = require('../../models/tasks');
+const Subtask = require('../../models/subtasks');
 const { touchWorkspace } = require('../utils/updateParent');
+
+// Helper function to remove users from task and subtask assignments within the project
+const cleanupProjectResources = async (projectId, userIds, session) => {
+    // 1. Remove users from Task Assignees in this project
+    await Task.updateMany(
+        { project: projectId },
+        { $pull: { assignees: { $in: userIds } } },
+        { session }
+    );
+
+    // 2. Remove users from Subtask Assignments
+    // Subtasks are linked to tasks, so we first find tasks in this project
+    const tasks = await Task.find({ project: projectId }).select('_id').session(session);
+    const taskIds = tasks.map(t => t._id);
+
+    if (taskIds.length > 0) {
+        await Subtask.updateMany(
+            { task: { $in: taskIds } },
+            { $pull: { assignedTo: { $in: userIds } } },
+            { session }
+        );
+    }
+};
 
 const projectService = {
     createProject: async ({ data, workspaceId, userId }) => {
@@ -48,14 +74,46 @@ const projectService = {
         await touchWorkspace(project.workspace);
         return project;
     },
+
     deleteProject: async (projectId) => {
-        const project = await Project.findByIdAndDelete(projectId);
-        if (!project) {
-            throw new Error('Project not found')
+        // Start a transaction for cascading delete
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            // 1. Find all Tasks in the project to identify Subtasks
+            const tasks = await Task.find({ project: projectId }).select('_id').session(session);
+            const taskIds = tasks.map(t => t._id);
+
+            // 2. Delete Subtasks associated with these tasks
+            if (taskIds.length > 0) {
+                await Subtask.deleteMany({ task: { $in: taskIds } }, { session });
+            }
+
+            // 3. Delete Tasks in the project
+            await Task.deleteMany({ project: projectId }, { session });
+
+            // 4. Delete the Project itself
+            const project = await Project.findByIdAndDelete(projectId).session(session);
+
+            if (!project) {
+                throw new Error('Project not found');
+            }
+
+            await session.commitTransaction();
+
+            // Update parent workspace timestamp
+            await touchWorkspace(project.workspace);
+
+            return project;
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
         }
-        await touchWorkspace(project.workspace);
-        return project;
     },
+
     getProjectTeams: async (projectId) => {
         const project = await Project.findById(projectId).populate('teams');
         if (!project) {
@@ -134,23 +192,40 @@ const projectService = {
 
         return { message: `${newMembers.length} new members added successfully` };
     },
+
     removeProjectMembers: async (projectId, { users }) => {
-        const project = await Project.findByIdAndUpdate(
-            projectId,
-            {
-                $pull: {
-                    members: { user: { $in: users } }
-                }
-            },
-            { new: true }
-        );
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        if (!project) {
-            throw new Error("Project not found");
+        try {
+            // 1. Clean up user assignments in tasks/subtasks
+            await cleanupProjectResources(projectId, users, session);
+
+            // 2. Remove users from project members list
+            const project = await Project.findByIdAndUpdate(
+                projectId,
+                {
+                    $pull: {
+                        members: { user: { $in: users } }
+                    }
+                },
+                { new: true, session }
+            );
+
+            if (!project) {
+                throw new Error("Project not found");
+            }
+
+            await session.commitTransaction();
+            return { message: "Members removed from project and unassigned from tasks" };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
         }
+    },
 
-        return { message: "Members removed from project" };
-    }, 
     updateProjectMemberRole: async (projectId, memberId, role) => {
         const project = await Project.findOneAndUpdate(
             {
@@ -169,36 +244,51 @@ const projectService = {
 
         return { message: "Member role updated successfully" };
     },
+
     leaveProject: async (projectId, userId) => {
-        const project = await Project.findById(projectId);
+        const session = await mongoose.startSession();
+        session.startTransaction();
 
-        if (!project) {
-            throw new Error("Project not found");
+        try {
+            const project = await Project.findById(projectId).session(session);
+
+            if (!project) {
+                throw new Error("Project not found");
+            }
+
+            // 1. Check if user is the owner
+            if (project.owner.toString() === userId.toString()) {
+                throw new Error("Project owner cannot leave the project. You must transfer ownership or delete the project.");
+            }
+
+            // 2. Check if user is actually a member
+            const isMember = project.members.some(m => m.user.toString() === userId.toString());
+            if (!isMember) {
+                throw new Error("You are not a member of this project");
+            }
+
+            // 3. Clean up user assignments in tasks/subtasks
+            await cleanupProjectResources(projectId, [userId], session);
+
+            // 4. Remove user from members array
+            await Project.findByIdAndUpdate(
+                projectId,
+                {
+                    $pull: {
+                        members: { user: userId }
+                    }
+                },
+                { new: true, session }
+            );
+
+            await session.commitTransaction();
+            return { message: "You have left the project successfully" };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
         }
-
-        // 1. Check if user is the owner
-        if (project.owner.toString() === userId.toString()) {
-            throw new Error("Project owner cannot leave the project. You must transfer ownership or delete the project.");
-        }
-
-        // 2. Check if user is actually a member
-        const isMember = project.members.some(m => m.user.toString() === userId.toString());
-        if (!isMember) {
-            throw new Error("You are not a member of this project");
-        }
-
-        // 3. Remove user from members array
-        const updatedProject = await Project.findByIdAndUpdate(
-            projectId,
-            {
-                $pull: {
-                    members: { user: userId }
-                }
-            },
-            { new: true }
-        );
-
-        return { message: "You have left the project successfully" };
     },
 }
 
