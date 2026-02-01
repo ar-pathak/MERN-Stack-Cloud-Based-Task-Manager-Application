@@ -12,11 +12,12 @@ const TeamCard = ({
     workspaceMembers = [],
     canManage,
     onDelete,
-    onLeave, // ADDED: Destructure this prop
+    onLeave,
     onAddMember,
     onRemoveMember,
     onRoleChange,
-    contextType = 'workspace'
+    contextType = 'workspace',
+    currentUserId //
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showAddMenu, setShowAddMenu] = useState(false);
@@ -26,21 +27,27 @@ const TeamCard = ({
 
     // ========== Memoized Computations ==========
 
-    // Count lead members efficiently
+    // Check if current user is a member of this team
+    const isMember = useMemo(() => {
+        if (!currentUserId || !members) return false;
+        return members.some(m => {
+            const mId = m.user?._id || m.memberId || m._id || m.id;
+            return mId === currentUserId;
+        });
+    }, [members, currentUserId]);
+
+    // Count lead members
     const leadCount = useMemo(() =>
         members.filter(m => (m?.role || "member") === "lead").length,
         [members]
     );
 
-    // Calculate available members (O(N) instead of O(N^2))
+    // Calculate available members
     const availableMembers = useMemo(() => {
         if (!isWorkspace) return [];
-
-        // Create a Set of current member IDs for O(1) lookup
         const currentMemberIds = new Set(
             members.map(m => m?.user?._id || m?._id || m?.id)
         );
-
         return workspaceMembers.filter(wm => {
             const wmId = wm?.user?._id || wm?._id || wm?.id;
             return wmId && !currentMemberIds.has(wmId);
@@ -85,7 +92,6 @@ const TeamCard = ({
 
     const renderCreatedDate = () => {
         if (!team.createdAt) return null;
-
         return (
             <div className="flex items-center gap-2">
                 <Calendar className="h-3.5 w-3.5" />
@@ -106,15 +112,12 @@ const TeamCard = ({
             exit={{ opacity: 0, scale: 0.9 }}
             className="group relative"
         >
-            {/* Hover Glow Effect */}
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
             <div className="relative bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden hover:border-purple-500/30 transition-all duration-300">
-                {/* Header */}
                 <div className="p-5">
                     <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0">
-                            {/* Team Name & Lead Badge */}
                             <div className="flex items-center gap-2 mb-2">
                                 <h4 className="text-base font-bold text-white truncate group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 transition-all">
                                     {team.name}
@@ -126,8 +129,6 @@ const TeamCard = ({
                                     </div>
                                 )}
                             </div>
-
-                            {/* Description */}
                             {team.description && (
                                 <p className="text-xs text-slate-400 line-clamp-2 mb-3">
                                     {team.description}
@@ -135,72 +136,73 @@ const TeamCard = ({
                             )}
                         </div>
 
-                        {/* Actions Menu */}
                         <div className="relative ml-2">
-                            <button
-                                onClick={toggleActions}
-                                className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
-                                aria-label="Team actions"
-                            >
-                                <MoreVertical className="h-4 w-4 text-slate-400" />
-                            </button>
+                            {(isMember || canManage) && (
+                                <>
+                                    <button
+                                        onClick={toggleActions}
+                                        className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                                        aria-label="Team actions"
+                                    >
+                                        <MoreVertical className="h-4 w-4 text-slate-400" />
+                                    </button>
 
-                            <AnimatePresence>
-                                {showActions && (
-                                    <>
-                                        <div className="fixed inset-0 z-10" onClick={() => setShowActions(false)} />
-                                        <motion.div
-                                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                            className="absolute right-0 top-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl z-20 min-w-[180px] p-1 backdrop-blur-xl"
-                                        >
-                                            {/* Management Actions */}
-                                            {canManage && (
-                                                <button
-                                                    onClick={handleDeleteClick}
-                                                    className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg flex items-center gap-2.5 transition-colors"
+                                    <AnimatePresence>
+                                        {showActions && (
+                                            <>
+                                                <div className="fixed inset-0 z-10" onClick={() => setShowActions(false)} />
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                                    className="absolute right-0 top-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl z-20 min-w-[180px] p-1 backdrop-blur-xl"
                                                 >
-                                                    {isWorkspace ? (
-                                                        <>
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                            Delete Team
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <UserMinus className="h-3.5 w-3.5" />
-                                                            Remove Team
-                                                        </>
+                                                    {canManage && (
+                                                        <button
+                                                            onClick={handleDeleteClick}
+                                                            className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg flex items-center gap-2.5 transition-colors"
+                                                        >
+                                                            {isWorkspace ? (
+                                                                <>
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                    Delete Team
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <UserMinus className="h-3.5 w-3.5" />
+                                                                    Remove Team
+                                                                </>
+                                                            )}
+                                                        </button>
                                                     )}
-                                                </button>
-                                            )}
 
-                                            {/* Leave Team Action */}
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShowActions(false);
-                                                    onLeave && onLeave(teamId, team.name);
-                                                }}
-                                                className="w-full px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-700/50 rounded-lg flex items-center gap-2.5 transition-colors"
-                                            >
-                                                <LogOut className="h-3.5 w-3.5" />
-                                                Leave Team
-                                            </button>
-                                        </motion.div>
-                                    </>
-                                )}
-                            </AnimatePresence>
+                                                    {isMember && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setShowActions(false);
+                                                                onLeave && onLeave(teamId, team.name);
+                                                            }}
+                                                            className="w-full px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-700/50 rounded-lg flex items-center gap-2.5 transition-colors"
+                                                        >
+                                                            <LogOut className="h-3.5 w-3.5" />
+                                                            Leave Team
+                                                        </button>
+                                                    )}
+                                                </motion.div>
+                                            </>
+                                        )}
+                                    </AnimatePresence>
+                                </>
+                            )}
                         </div>
                     </div>
 
-                    {/* Meta Information */}
                     <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
                         {renderMemberCount()}
                         {renderCreatedDate()}
                     </div>
 
-                    {/* Action Bar */}
                     <div className="flex gap-2">
                         <button
                             onClick={toggleExpanded}
@@ -213,7 +215,6 @@ const TeamCard = ({
                             />
                         </button>
 
-                        {/* Add Member Button - Workspace Only */}
                         {canManage && isWorkspace && (
                             <button
                                 onClick={toggleAddMenu}
@@ -229,7 +230,6 @@ const TeamCard = ({
                     </div>
                 </div>
 
-                {/* Add Member Area (Workspace Only) */}
                 <AnimatePresence>
                     {showAddMenu && isWorkspace && (
                         <motion.div
@@ -251,7 +251,6 @@ const TeamCard = ({
                                         <X className="h-4 w-4 text-slate-500 hover:text-white transition-colors" />
                                     </button>
                                 </div>
-
                                 <div className="space-y-2">
                                     {availableMembers.length === 0 ? (
                                         <p className="text-xs text-slate-500 text-center py-3">
@@ -288,7 +287,6 @@ const TeamCard = ({
                     )}
                 </AnimatePresence>
 
-                {/* Members List Area */}
                 <AnimatePresence>
                     {isExpanded && (
                         <motion.div
@@ -314,7 +312,6 @@ const TeamCard = ({
                                 ) : (
                                     members.map(member => {
                                         const memberId = member?.user?._id || member?._id || member?.id;
-
                                         return (
                                             <TeamMemberItem
                                                 key={memberId}

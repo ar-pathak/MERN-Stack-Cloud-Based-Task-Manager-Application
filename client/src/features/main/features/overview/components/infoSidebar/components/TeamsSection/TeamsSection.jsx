@@ -12,6 +12,7 @@ import AssignTeamModal from "./AssignTeamModal";
 import TeamCard from "./TeamCard";
 import TeamsToolbar from "./TeamsToolbar";
 import ConfirmationModal from "./ConfirmationModal";
+import { useAuth } from "../../../../../../../../context/AuthContext";
 
 const TeamsSection = ({ item, taskData, onRefresh }) => {
     // ========== UI State ==========
@@ -45,6 +46,8 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
     const canManageTeams = ['owner', 'admin', 'creator'].includes(item?.permissions?.role);
 
     // ========== Hooks ==========
+    const { user } = useAuth();
+
     const {
         fetchTeams,
         createNewTeam,
@@ -53,7 +56,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         addMember,
         removeMember,
         updateMemberRole,
-        leaveTeam
+        leaveTeam // Ensure leaveTeam is destructured
     } = useTeam();
 
     const { addProjectTeams, removeProjectTeams, fetchProjectTeams } = useProject();
@@ -96,7 +99,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
             setLoading(true);
             const workspaceId = getWorkspaceId();
 
-            // Parallel data fetching for better performance
+            // Parallel data fetching
             const promises = [];
 
             // 1. Load workspace members if needed
@@ -126,7 +129,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
 
             setTeams(Array.isArray(teamsData) ? teamsData : []);
 
-            // 3. Load members for each team (optimized with Promise.allSettled)
+            // 3. Load members for each team
             if (teamsData.length > 0) {
                 const memberPromises = teamsData.map(async (team) => {
                     try {
@@ -229,7 +232,6 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         });
     }, []);
 
-    // NEW: Handle Leave Trigger
     const handleLeaveTrigger = useCallback((teamId, teamName) => {
         setConfirmConfig({
             isOpen: true,
@@ -278,11 +280,11 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                 await refreshTeamMembers(teamId);
                 showMessage('success', "Member removed successfully");
             }
-            
+
             // 3. LEAVE TEAM
             else if (type === 'LEAVE_TEAM') {
                 const { teamId } = data;
-                await leaveTeam(workspaceId, teamId); 
+                await leaveTeam(workspaceId, teamId);
                 showMessage('success', "You have left the team");
                 await loadTeamsData();
                 onRefresh?.();
@@ -458,11 +460,12 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                                 workspaceMembers={workspaceMembers}
                                 canManage={canManageTeams}
                                 onDelete={handleDeleteOrRemoveTrigger}
-                                onLeave={handleLeaveTrigger} // Pass the leave trigger
+                                onLeave={handleLeaveTrigger}
                                 onAddMember={handleAddMemberToTeam}
                                 onRemoveMember={handleRemoveMemberTrigger}
                                 onRoleChange={handleChangeRole}
                                 contextType={item.type}
+                                currentUserId={user?._id || user?.id}
                             />
                         ))}
                     </AnimatePresence>
@@ -551,7 +554,6 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                         title={confirmConfig.title}
                         message={confirmConfig.message}
                         loading={submitting}
-                        // Use warning type for leaving, danger for deleting
                         type={confirmConfig.type === 'LEAVE_TEAM' ? 'warning' : 'danger'}
                     />
                 )}
