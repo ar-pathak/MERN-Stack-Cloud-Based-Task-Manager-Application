@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Users, MoreVertical, Trash2, Calendar, Crown, ChevronDown,
-    UserPlus, X, Plus, UserMinus
+    UserPlus, X, Plus, UserMinus, LogOut
 } from "lucide-react";
 import TeamMemberItem from "./TeamMemberItem";
 
@@ -12,6 +12,7 @@ const TeamCard = ({
     workspaceMembers = [],
     canManage,
     onDelete,
+    onLeave, // ADDED: Destructure this prop
     onAddMember,
     onRemoveMember,
     onRoleChange,
@@ -56,8 +57,6 @@ const TeamCard = ({
 
     const handleAddMemberClick = useCallback((memberId) => {
         onAddMember(teamId, memberId);
-        // Optionally close menu after adding
-        // setShowAddMenu(false);
     }, [teamId, onAddMember]);
 
     const toggleExpanded = useCallback(() => {
@@ -137,29 +136,27 @@ const TeamCard = ({
                         </div>
 
                         {/* Actions Menu */}
-                        {canManage && (
-                            <div className="relative ml-2">
-                                <button
-                                    onClick={toggleActions}
-                                    className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
-                                    aria-label="Team actions"
-                                >
-                                    <MoreVertical className="h-4 w-4 text-slate-400" />
-                                </button>
+                        <div className="relative ml-2">
+                            <button
+                                onClick={toggleActions}
+                                className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                                aria-label="Team actions"
+                            >
+                                <MoreVertical className="h-4 w-4 text-slate-400" />
+                            </button>
 
-                                <AnimatePresence>
-                                    {showActions && (
-                                        <>
-                                            <div
-                                                className="fixed inset-0 z-10"
-                                                onClick={() => setShowActions(false)}
-                                            />
-                                            <motion.div
-                                                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                                className="absolute right-0 top-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl z-20 min-w-[180px] p-1 backdrop-blur-xl"
-                                            >
+                            <AnimatePresence>
+                                {showActions && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setShowActions(false)} />
+                                        <motion.div
+                                            initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                            className="absolute right-0 top-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl z-20 min-w-[180px] p-1 backdrop-blur-xl"
+                                        >
+                                            {/* Management Actions */}
+                                            {canManage && (
                                                 <button
                                                     onClick={handleDeleteClick}
                                                     className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg flex items-center gap-2.5 transition-colors"
@@ -176,12 +173,25 @@ const TeamCard = ({
                                                         </>
                                                     )}
                                                 </button>
-                                            </motion.div>
-                                        </>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        )}
+                                            )}
+
+                                            {/* Leave Team Action */}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShowActions(false);
+                                                    onLeave && onLeave(teamId, team.name);
+                                                }}
+                                                className="w-full px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-700/50 rounded-lg flex items-center gap-2.5 transition-colors"
+                                            >
+                                                <LogOut className="h-3.5 w-3.5" />
+                                                Leave Team
+                                            </button>
+                                        </motion.div>
+                                    </>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     </div>
 
                     {/* Meta Information */}
@@ -199,12 +209,11 @@ const TeamCard = ({
                             <Users className="h-3.5 w-3.5" />
                             {isExpanded ? 'Hide' : 'View'} Members
                             <ChevronDown
-                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''
-                                    }`}
+                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                             />
                         </button>
 
-                        {/* Add Member Button - Only for Workspace Context */}
+                        {/* Add Member Button - Workspace Only */}
                         {canManage && isWorkspace && (
                             <button
                                 onClick={toggleAddMenu}

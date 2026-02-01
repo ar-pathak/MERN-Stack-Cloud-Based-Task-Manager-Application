@@ -51,7 +51,7 @@ const teamsService = {
         const team = await Team.findOne({ _id: teamId, workspace: workspaceId })
             .populate('createdBy', 'name email')
             .populate('members.user', 'name email');
-            
+
         if (!team) {
             throw new Error('Team not found');
         }
@@ -110,22 +110,31 @@ const teamsService = {
         }
     },
 
-    addTeamMember: async (teamId, workspaceId, memberId, role) => {
-        const team = await Team.findOne({ _id: teamId, workspace: workspaceId });
-        if (!team) {
-            throw new Error('Team not found');
+    addTeamMember: async (teamId, workspaceId, { memberId, role }) => {
+        if (!mongoose.Types.ObjectId.isValid(memberId)) {
+            throw new Error("Invalid member ID");
         }
 
-        // Check if user is in the workspace
+        const team = await Team.findOne({
+            _id: teamId,
+            workspace: workspaceId
+        });
+
+        if (!team) {
+            throw new Error('Team not found in this workspace');
+        }
+
+        // Verify user is a member of the workspace
         const workspaceMember = await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: memberId
         });
-        
+
         if (!workspaceMember) {
-            throw new Error('User must be a member of the workspace to join the team');
+            throw new Error('User must be a workspace member before adding to team');
         }
 
+        // Check if member already exists in team
         const existingMember = team.members.find(
             m => m.user.toString() === memberId
         );
@@ -134,10 +143,13 @@ const teamsService = {
             throw new Error('User is already a member of this team');
         }
 
-        team.members.push({ user: memberId, role });
+        team.members.push({ user: memberId, role: role || 'member' });
         await team.save();
-        
-        return await team.populate('members.user', 'name email');
+
+        // Populate the newly added member
+        await team.populate('members.user', 'name email');
+
+        return team;
     },
 
     getTeamMembers: async (teamId, workspaceId) => {
@@ -159,9 +171,9 @@ const teamsService = {
 
         // Cannot remove the creator if they are the only lead (optional logic, but safer)
         if (team.createdBy.toString() === memberId) {
-             // You might want to allow this only if there is another lead, 
-             // but usually creator removal implies complex ownership transfer.
-             // For now, we allow removal but keep the logic simple.
+            // You might want to allow this only if there is another lead, 
+            // but usually creator removal implies complex ownership transfer.
+            // For now, we allow removal but keep the logic simple.
         }
 
         team.members = team.members.filter(

@@ -29,7 +29,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
     // Modal State
     const [confirmConfig, setConfirmConfig] = useState({
         isOpen: false,
-        type: null, // 'DELETE_TEAM' | 'REMOVE_MEMBER'
+        type: null, // 'DELETE_TEAM' | 'REMOVE_MEMBER' | 'LEAVE_TEAM'
         data: null,
         title: "",
         message: ""
@@ -52,11 +52,12 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         fetchMembers: fetchTeamMembers,
         addMember,
         removeMember,
-        updateMemberRole
+        updateMemberRole,
+        leaveTeam
     } = useTeam();
 
     const { addProjectTeams, removeProjectTeams, fetchProjectTeams } = useProject();
-    const { fetchTaskById, assignTeams, removeAssignTeams } = useTask();
+    const { fetchTaskById, assignTeams, removeAssignTeams, } = useTask();
     const { fetchMembers: fetchWorkspaceMembers } = useWorkspace();
 
     // ========== Helper Functions ==========
@@ -228,6 +229,17 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
         });
     }, []);
 
+    // NEW: Handle Leave Trigger
+    const handleLeaveTrigger = useCallback((teamId, teamName) => {
+        setConfirmConfig({
+            isOpen: true,
+            type: 'LEAVE_TEAM',
+            data: { teamId, teamName },
+            title: "Leave Team?",
+            message: `Are you sure you want to leave "${teamName}"? You will lose access to this team's resources.`
+        });
+    }, []);
+
 
     // ========== EXECUTOR (Runs on Modal Confirm) ==========
 
@@ -266,13 +278,22 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                 await refreshTeamMembers(teamId);
                 showMessage('success', "Member removed successfully");
             }
+            
+            // 3. LEAVE TEAM
+            else if (type === 'LEAVE_TEAM') {
+                const { teamId } = data;
+                await leaveTeam(workspaceId, teamId); 
+                showMessage('success', "You have left the team");
+                await loadTeamsData();
+                onRefresh?.();
+            }
 
             // Close Modal on success
             setConfirmConfig(prev => ({ ...prev, isOpen: false }));
 
         } catch (err) {
             console.error("Action failed:", err);
-            showMessage('error', err.response?.data?.message || "Operation failed");
+            showMessage('error', err.response?.data?.message || err.message || "Operation failed");
         } finally {
             setSubmitting(false);
         }
@@ -437,6 +458,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                                 workspaceMembers={workspaceMembers}
                                 canManage={canManageTeams}
                                 onDelete={handleDeleteOrRemoveTrigger}
+                                onLeave={handleLeaveTrigger} // Pass the leave trigger
                                 onAddMember={handleAddMemberToTeam}
                                 onRemoveMember={handleRemoveMemberTrigger}
                                 onRoleChange={handleChangeRole}
@@ -529,7 +551,8 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
                         title={confirmConfig.title}
                         message={confirmConfig.message}
                         loading={submitting}
-                        type="danger"
+                        // Use warning type for leaving, danger for deleting
+                        type={confirmConfig.type === 'LEAVE_TEAM' ? 'warning' : 'danger'}
                     />
                 )}
             </AnimatePresence>
