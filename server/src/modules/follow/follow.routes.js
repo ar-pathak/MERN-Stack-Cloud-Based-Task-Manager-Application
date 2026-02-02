@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../../middleware/authMiddleware');
 const followController = require('./follow.controller');
-const { validate } = require('../../middlewares/validate');
+const { validate } = require('../../middleware/validate');
 const { 
     idParamSchema, 
     listSchema,

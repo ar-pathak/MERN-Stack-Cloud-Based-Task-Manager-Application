@@ -73,7 +73,7 @@ export const logout = async () => {
     try {
         // Always clear local storage first
         localStorage.removeItem("user");
-        
+
         // Try to call logout endpoint (but don't fail if it errors)
         try {
             const response = await api.post("/api/auth/logout");
@@ -89,7 +89,7 @@ export const logout = async () => {
     } catch (error) {
         // Ensure local storage is cleared
         localStorage.removeItem("user");
-        
+
         // Return success even on error to allow logout to complete
         return {
             success: true,
@@ -106,7 +106,7 @@ export const logout = async () => {
  */
 export const getUserInfo = async () => {
     try {
-        const response = await api.get("/api/user/userInfo");
+        const response = await api.get("/api/user/me");
         return response.data;
     } catch (error) {
         throw {

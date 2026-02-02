@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../../middleware/authMiddleware');
-const optionalAuthMiddleware = require('../../middleware/optionalAuthMiddleware');
 const postController = require('./post.controller');
-const { validate } = require('../../middlewares/validate');
+const { validate } = require('../../middleware/validate');
 const {
     createPostSchema,
     updatePostSchema,
@@ -22,10 +21,10 @@ const {
 
 // --- Public Routes (No Auth Required) ---
 
+
 // Explore/Public feed
 router.get(
     '/explore',
-    optionalAuthMiddleware,
     validate(paginationSchema, 'query'),
     postController.getExploreFeed
 );
@@ -55,7 +54,6 @@ router.get(
 // Get specific post (public)
 router.get(
     '/:id',
-    optionalAuthMiddleware,
     validate(postIdSchema, 'params'),
     postController.getPost
 );
@@ -63,7 +61,6 @@ router.get(
 // Get user's posts (public profile)
 router.get(
     '/user/:userId',
-    optionalAuthMiddleware,
     validate(userIdSchema, 'params'),
     validate(paginationSchema, 'query'),
     postController.getUserPosts

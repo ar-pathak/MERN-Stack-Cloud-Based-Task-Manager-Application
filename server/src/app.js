@@ -10,9 +10,11 @@ const workspaceRoutes = require('./modules/workspace/workspace.routes')
 const teamsRoutes = require('./modules/team/teams.routes')
 const projectsRoutes = require('./modules/projects/project.routes')
 const tasksRoutes = require('./modules/tasks/tasks.routes')
-const usersRoutes = require('./modules/user/user.routes')
 const overviewRoutes = require('./modules/overview/overview.routes')
 const subtaskRoutes = require('./modules/subtask/subtask.routes')
+const postRoutes = require('./modules/posts/post.routes')
+const followRoutes = require('./modules/follow/follow.routes')
+const usersRoutes = require('./modules/user/user.routes')
 
 const app = express();
 const port = process.env.PORT;
@@ -41,9 +43,12 @@ app.use('/api/workspace', workspaceRoutes)
 app.use('/api/teams', teamsRoutes)
 app.use('/api/projects', projectsRoutes)
 app.use('/api/tasks', tasksRoutes)
-app.use('/api/user', usersRoutes)
 app.use('/api/overview', overviewRoutes)
 app.use('/api/subtasks', subtaskRoutes)
+app.use('/api/posts', postRoutes)
+app.use('/api/follow', followRoutes)
+app.use('/api/user', usersRoutes)
+
 
 // 404 handler for undefined routes
 app.use((req, res) => {

@@ -19,7 +19,6 @@ const userSchema = new Schema({
         unique: true,
         lowercase: true,
         trim: true,
-        select: false,
         match: [/^\S+@\S+\.\S+$/, "Invalid email address"]
     },
     passwordHash: {
@@ -324,20 +323,20 @@ userSchema.statics.isEmailAvailable = async function (email) {
 // --- Middleware ---
 
 // Pre-save: Validate username hasn't changed after creation
-userSchema.pre('save', function (next) {
+userSchema.pre('save', async function () {
+    // 1. Validate username immutability
     if (!this.isNew && this.isModified('username')) {
-        next(new Error('Username cannot be changed after account creation'));
+        throw new Error('Username cannot be changed after account creation');
     }
-    next();
-});
 
-// Pre-save: Set default name to username if not provided
-userSchema.pre('save', function (next) {
+    // 2. Set default name if missing
     if (this.isNew && !this.name) {
         this.name = this.username;
     }
-    next();
+
 });
+
+
 
 // Post-save: Handle errors
 userSchema.post('save', function (error, doc, next) {

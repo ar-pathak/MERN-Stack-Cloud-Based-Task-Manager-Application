@@ -41,11 +41,11 @@ followSchema.index({ follower: 1, status: 1 }); // For filtering active follows
 followSchema.index({ following: 1, status: 1, isApproved: 1 }); // For approved followers query
 
 // Pre-save hook for validation
-followSchema.pre('save', function(next) {
+followSchema.pre('save', async function() {
+    // Prevent self-following
     if (this.follower.equals(this.following)) {
-        next(new Error('Users cannot follow themselves'));
+        throw new Error('Users cannot follow themselves');
     }
-    next();
 });
 
 // Static method to check if relationship exists

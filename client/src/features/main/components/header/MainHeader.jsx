@@ -1,13 +1,16 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Menu, Search, Plus, CheckSquare, Zap, Video, Send } from "lucide-react";
+import { Bell, Menu, Search, Plus, CheckSquare, Zap, Video, Send, User as UserIcon, FileText, Loader2, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useDispatch } from "react-redux";
+import { useNavigate } from "react-router";
 
 import UserMenu from "./UserMenu";
 import { useAuth } from "../../../../context/AuthContext";
 import TaskPopup from "../popup/TaskPopup";
 import WorkspacePopup from "../popup/WorkspacePopup";
 import { createWorkspace } from "../../../../service/workspace.service";
+import { searchUsers } from "../../../../service/user.service";
+import { searchPosts } from "../../../../service/post.service";
 
 // store & services
 import { setOverviewData } from "../../../../store/slice/overviewSlice";
@@ -16,13 +19,21 @@ import { getOverviewActivity } from "../../../../service/overview.service";
 const MainHeader = () => {
   const { user } = useAuth();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isTaskOpen, setIsTaskOpen] = useState(false);
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
+  // Search State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState({ users: [], posts: [] });
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+
   const dropdownRef = useRef(null);
+  const searchContainerRef = useRef(null);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -33,16 +44,52 @@ const MainHeader = () => {
 
   const userName = user?.name?.split(" ")[0] || "User";
 
+  // Handle click outside for both dropdowns
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Create Dropdown
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
         setIsCreateOpen(false);
+      }
+      // Search Dropdown
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowSearchResults(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Debounced Search Effect
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.trim().length >= 2) {
+        setIsSearching(true);
+        setShowSearchResults(true);
+        try {
+          const [usersData, postsData] = await Promise.allSettled([
+            searchUsers(searchQuery, { limit: 5 }),
+            searchPosts(searchQuery, { limit: 5 })
+          ]);
+
+          setSearchResults({
+            users: usersData.status === 'fulfilled' ? (usersData.value?.users || []) : [],
+            posts: postsData.status === 'fulfilled' ? (postsData.value?.posts || []) : []
+          });
+        } catch (error) {
+          console.error("Search failed:", error);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults({ users: [], posts: [] });
+        setShowSearchResults(false);
+      }
+    }, 500); // 500ms debounce
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   const showToast = (message) => {
     setToast(message);
@@ -144,6 +191,23 @@ const MainHeader = () => {
     setIsCreateOpen(false);
   };
 
+  // Helper to highlight match
+  const HighlightMatch = ({ text = "", highlight = "" }) => {
+    if (!highlight.trim()) return <span>{text}</span>;
+    const parts = text.split(new RegExp(`(${highlight})`, "gi"));
+    return (
+      <span>
+        {parts.map((part, i) =>
+          part.toLowerCase() === highlight.toLowerCase() ? (
+            <span key={i} className="bg-sky-500/30 text-sky-100">{part}</span>
+          ) : (
+            part
+          )
+        )}
+      </span>
+    );
+  };
+
   return (
     <>
       <header className="sticky top-0 z-20 border-b border-slate-800/70 bg-slate-950/40 backdrop-blur-xl">
@@ -165,15 +229,121 @@ const MainHeader = () => {
 
           {/* Right */}
           <div className="flex items-center gap-2 md:gap-3">
-            <div className="hidden md:flex items-center gap-2 rounded-2xl border border-slate-800/60 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-700/80 transition-colors">
-              <Search className="h-3.5 w-3.5 text-slate-500" />
-              <input
-                placeholder="Search tasks, projects…"
-                className="w-40 bg-transparent text-[11px] outline-none placeholder:text-slate-500"
-              />
+
+            {/* --- Enhanced Search Bar --- */}
+            <div ref={searchContainerRef} className="relative hidden md:block">
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-800/60 bg-slate-900/60 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-700/80 transition-colors focus-within:border-sky-500/50 focus-within:ring-1 focus-within:ring-sky-500/20">
+                {isSearching ? (
+                  <Loader2 className="h-3.5 w-3.5 text-sky-400 animate-spin" />
+                ) : (
+                  <Search className="h-3.5 w-3.5 text-slate-500" />
+                )}
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => searchQuery.length >= 2 && setShowSearchResults(true)}
+                  placeholder="Search users, posts..."
+                  className="w-48 bg-transparent text-[12px] outline-none placeholder:text-slate-500"
+                />
+                {searchQuery && (
+                  <button onClick={() => { setSearchQuery(""); setShowSearchResults(false); }}>
+                    <X className="h-3 w-3 text-slate-500 hover:text-slate-300" />
+                  </button>
+                )}
+              </div>
+
+              {/* Search Results Dropdown */}
+              <AnimatePresence>
+                {showSearchResults && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden max-h-[80vh] overflow-y-auto custom-scrollbar"
+                  >
+                    {/* Empty State */}
+                    {searchResults.users.length === 0 && searchResults.posts.length === 0 && !isSearching && (
+                      <div className="p-4 text-center text-slate-500 text-xs">
+                        No results found for "{searchQuery}"
+                      </div>
+                    )}
+
+                    {/* Users Section */}
+                    {searchResults.users.length > 0 && (
+                      <div className="py-2">
+                        <h4 className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          People
+                        </h4>
+                        {searchResults.users.map((user) => (
+                          <button
+                            key={user._id}
+                            onClick={() => {
+                              navigate(`/profile/${user._id}`);
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-800/60 transition-colors text-left"
+                          >
+                            {user.avatar ? (
+                              <img src={user.avatar} alt="" className="h-8 w-8 rounded-full object-cover border border-slate-700" />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/20 text-indigo-400">
+                                <UserIcon className="h-4 w-4" />
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-slate-200 truncate">
+                                <HighlightMatch text={user.name} highlight={searchQuery} />
+                              </p>
+                              <p className="text-xs text-slate-500 truncate">@{user.username}</p>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {searchResults.users.length > 0 && searchResults.posts.length > 0 && (
+                      <div className="h-px bg-slate-800/50 mx-4 my-1" />
+                    )}
+
+                    {/* Posts Section */}
+                    {searchResults.posts.length > 0 && (
+                      <div className="py-2">
+                        <h4 className="px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Posts
+                        </h4>
+                        {searchResults.posts.map((post) => (
+                          <button
+                            key={post._id}
+                            onClick={() => {
+                              navigate(`/post/${post._id}`);
+                              setShowSearchResults(false);
+                            }}
+                            className="w-full flex items-start gap-3 px-4 py-2 hover:bg-slate-800/60 transition-colors text-left"
+                          >
+                            <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400">
+                              <FileText className="h-3.5 w-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-slate-300 line-clamp-2 leading-relaxed">
+                                <HighlightMatch text={post.content} highlight={searchQuery} />
+                              </p>
+                              <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
+                                <span>by {post.author?.name}</span>
+                                <span>•</span>
+                                <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Create Dropdown */}
+            {/* Create Dropdown (Existing) */}
             <div className="relative" ref={dropdownRef}>
               <motion.button
                 whileTap={{ scale: 0.95 }}
@@ -228,7 +398,7 @@ const MainHeader = () => {
               </AnimatePresence>
             </div>
 
-            {/* Notifications */}
+            {/* Notifications (Existing) */}
             <motion.button
               whileTap={{ scale: 0.9 }}
               className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 hover:bg-slate-800/70 transition-colors"
@@ -245,7 +415,7 @@ const MainHeader = () => {
         </div>
       </header>
 
-      {/* Popups */}
+      {/* Popups (Existing) */}
       <TaskPopup
         isOpen={isTaskOpen}
         onClose={() => setIsTaskOpen(false)}
@@ -265,7 +435,7 @@ const MainHeader = () => {
         }}
       />
 
-      {/* Toast Notification */}
+      {/* Toast Notification (Existing) */}
       <AnimatePresence>
         {toast && (
           <motion.div

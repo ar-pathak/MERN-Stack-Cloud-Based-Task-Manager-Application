@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }) => {
 
         try {
             const res = await getUserInfo();
+            console.log("User info loaded:", res);
             if (!timedOut) {
                 setUser(res?.data?.user || null);
             }
