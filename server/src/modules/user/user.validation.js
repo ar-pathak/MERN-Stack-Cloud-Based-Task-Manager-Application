@@ -135,6 +135,5 @@ module.exports = {
     activitySchema,
     popularUsersSchema,
 
-    // Middleware
-    validate
+
 };

@@ -1,7 +1,7 @@
 /**
  * Validation Middleware Factory
  */
-validate = (schema, source = "body") => (req, res, next) => {
+const validate = (schema, source = "body") => (req, res, next) => {
     const data = source === "params"
         ? req.params
         : source === "query"
