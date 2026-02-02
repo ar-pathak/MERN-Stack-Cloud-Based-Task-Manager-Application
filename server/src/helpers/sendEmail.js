@@ -34,5 +34,23 @@ async function sendEmail({ to, subject, token, type = 'invite' }) {
         html
     });
 }
+const sendSuccess = (res, data, message = 'Success', statusCode = 200) => {
+    return res.status(statusCode).json({
+        success: true,
+        message,
+        data
+    });
+};
 
-module.exports = sendEmail;
+const handleError = (error, res) => {
+    console.error(error); // Log for server debug
+    const statusCode = error.statusCode || 500;
+    const message = error.message || 'Internal Server Error';
+
+    return res.status(statusCode).json({
+        success: false,
+        message
+    });
+};
+
+module.exports = { sendSuccess, handleError, sendEmail };
