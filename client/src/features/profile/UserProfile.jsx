@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     MapPin, Link as LinkIcon, Calendar, MoreHorizontal,
     MessageSquare, Edit3, Grid, Image as ImageIcon, Info, Loader2,
-    Share2, Ban, Flag, Copy, Check
+    Share2, Ban, Flag, Copy, Check, ArrowLeft
 } from "lucide-react";
 
 // Services
@@ -98,7 +98,7 @@ const UserProfile = () => {
 
     const handleMessage = () => {
         // Navigate to chat route with this user selected
-        navigate(`/chat/${id}`);
+        navigate(`/chat/${id}`, { state: { targetUser: profile } })
     };
 
     const handleCopyLink = () => {
@@ -137,7 +137,9 @@ const UserProfile = () => {
 
     return (
         <div className="min-h-screen bg-slate-950 pb-20">
-
+            <button onClick={() => navigate(-1)} className="fixed top-4 left-4 z-50 p-2.5 rounded-full bg-slate-900/80 backdrop-blur-md text-slate-100 border border-slate-700/50 hover:bg-slate-800 transition-all">
+                <ArrowLeft className="h-5 w-5" />
+            </button>
             {/* --- Cover Image --- */}
             <div className="relative h-48 md:h-64 w-full bg-slate-900">
                 {profile.coverImage ? (

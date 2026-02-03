@@ -38,7 +38,12 @@ const ChatPanel = ({
 
     // Derived State
     const pinnedMessages = useMemo(() => messages.filter(msg => msg.pinned), [messages]);
-    const typingMembers = useMemo(() => item.members?.filter(m => m.typing), [item.members]);
+
+    // SAFE GUARD: DMs might not have members
+    const typingMembers = useMemo(() => {
+        if (!item.members) return [];
+        return item.members.filter(m => m.typing);
+    }, [item.members]);
 
     const filteredMessages = useMemo(() => {
         let filtered = messages;
@@ -80,7 +85,7 @@ const ChatPanel = ({
             className="flex-1 flex flex-col h-full overflow-hidden"
         >
             <AnimatePresence mode="wait">
-                {showChatInfo ? (
+                {showChatInfo && item.type !== 'dm' ? (
                     <motion.div
                         key="info"
                         initial={{ x: "100%", opacity: 0 }}
@@ -88,7 +93,6 @@ const ChatPanel = ({
                         exit={{ x: "100%", opacity: 0 }}
                         className="w-full h-full flex overflow-hidden min-h-0"
                     >
-
                         <InfoSidebar
                             item={item}
                             overview={overview}

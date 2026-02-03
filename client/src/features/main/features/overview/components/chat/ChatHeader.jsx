@@ -10,6 +10,8 @@ const ChatHeader = ({
     searchQuery, setSearchQuery, messageFilter, setMessageFilter,
     showChatInfo, setShowChatInfo
 }) => {
+    const isDM = item.type === 'dm';
+
     const getItemTitle = (item) => {
         return item.name || item.title || "Untitled";
     };
@@ -24,12 +26,11 @@ const ChatHeader = ({
         }
     };
 
-
     const getItemColorClass = (type) => {
         switch (type) {
             case "workspace": return 'bg-gradient-to-br from-sky-500/20 to-blue-600/20 border-sky-500/30 group-hover:border-sky-400/50';
             case "project": return 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30 group-hover:border-purple-400/50';
-            case "subtask": return 'bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-cyan-500/30 group-hover:border-cyan-400/50'; // New Color
+            case "subtask": return 'bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-cyan-500/30 group-hover:border-cyan-400/50';
             default: return 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30 group-hover:border-emerald-400/50';
         }
     };
@@ -40,10 +41,29 @@ const ChatHeader = ({
                 {/* Title & Icon Section */}
                 <div className="flex items-center gap-4">
                     <div className="relative group">
-                        <div className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all border ${getItemColorClass(item.type)}`}>
-                            {getItemIcon(item.type)}
-                        </div>
-                        {item.members?.some(m => m.online) && (
+                        {isDM ? (
+                            // --- DM Avatar ---
+                            <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-slate-800">
+                                {item.avatar ? (
+                                    <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
+                                ) : (
+                                    <div className="h-full w-full bg-indigo-500 flex items-center justify-center text-white font-bold">
+                                        {item.name?.charAt(0)}
+                                    </div>
+                                )}
+                                {item.isOnline && (
+                                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-slate-950" />
+                                )}
+                            </div>
+                        ) : (
+                            // --- Project/Workspace Icon ---
+                            <div className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all border ${getItemColorClass(item.type)}`}>
+                                {getItemIcon(item.type)}
+                            </div>
+                        )}
+
+                        {/* Typing Indicator Bubble */}
+                        {!isDM && item.members?.some(m => m.online) && (
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
@@ -61,14 +81,13 @@ const ChatHeader = ({
                     <div>
                         <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
                             {getItemTitle(item)}
-                            {item.starred && (
+                            {!isDM && item.starred && (
                                 <motion.div whileHover={{ rotate: 72 }}>
                                     <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
                                 </motion.div>
                             )}
                             {item.muted && <BellOff className="h-4 w-4 text-slate-500" />}
                         </h2>
-
 
                         <div className="flex items-center gap-2">
                             {typingMembers?.length > 0 ? (
@@ -84,11 +103,17 @@ const ChatHeader = ({
                                 </motion.span>
                             ) : (
                                 <p className="text-xs text-slate-400">
-                                    {item.members ? `${item.members.length} members` : 'Personal task'} •
-                                    {item.members?.filter(m => m.online).length > 0 && (
-                                        <span className="text-emerald-400 ml-1">
-                                            {item.members.filter(m => m.online).length} online
-                                        </span>
+                                    {isDM ? (
+                                        item.isOnline ? <span className="text-emerald-400">Active now</span> : "Offline"
+                                    ) : (
+                                        <>
+                                            {item.members ? `${item.members.length} members` : 'Personal task'} •
+                                            {item.members?.filter(m => m.online).length > 0 && (
+                                                <span className="text-emerald-400 ml-1">
+                                                    {item.members.filter(m => m.online).length} online
+                                                </span>
+                                            )}
+                                        </>
                                     )}
                                 </p>
                             )}
@@ -101,7 +126,7 @@ const ChatHeader = ({
                     <HeaderButton icon={Search} active={showSearch} onClick={() => setShowSearch(!showSearch)} />
                     <HeaderButton icon={Phone} />
                     <HeaderButton icon={Video} />
-                    <HeaderButton icon={Info} active={showChatInfo} onClick={() => setShowChatInfo(!showChatInfo)} />
+                    {!isDM && <HeaderButton icon={Info} active={showChatInfo} onClick={() => setShowChatInfo(!showChatInfo)} />}
                 </div>
             </div>
 
