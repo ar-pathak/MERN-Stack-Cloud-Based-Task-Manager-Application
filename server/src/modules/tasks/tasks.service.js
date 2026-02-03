@@ -4,8 +4,11 @@ const { canCreateTask } = require('../../middleware/resolveTaskCreatePermission'
 const Task = require('../../models/tasks');
 const Team = require('../../models/team');
 const User = require('../../models/user');
-// Import Subtask model for cascading operations
 const Subtask = require('../../models/subtasks');
+// Import Chat models
+const Chat = require('../../models/chat');
+const Message = require('../../models/message');
+
 const { touchParents } = require('../utils/updateParent');
 
 const taskService = {
@@ -21,18 +24,34 @@ const taskService = {
             throw new Error("Task with this name already exists in this scope");
         }
 
+        // 1. Prepare initial Chat members (Creator + assigned users)
+        const initialMembers = new Set([userId]);
+        if (taskData.assignees && taskData.assignees.length) {
+            taskData.assignees.forEach(id => initialMembers.add(id));
+        }
+
+        // 2. Create Task Chat (UPDATED)
+        const chat = await Chat.create({
+            type: "group",
+            name: taskData.title, // Chat name matches Task title
+            members: Array.from(initialMembers),
+            admin: userId,
+        });
+
+        // 3. Create Task with chatId
         const task = await Task.create({
             ...taskData,
             createdBy: userId,
             workspace: scope.workspaceId || null,
             project: scope.projectId || null,
+            chatId: chat._id // Store the chat ID
         });
 
         await touchParents(task);
 
         return task;
     },
-    
+
     updateTask: async (userId, taskId, data) => {
         const task = await Task.findById(taskId);
 
@@ -50,6 +69,13 @@ const taskService = {
             { _id: taskId },
             { $set: data }
         );
+
+        // Sync Task Title with Chat Name (UPDATED)
+        if (data.title && task.chatId) {
+            await Chat.findByIdAndUpdate(task.chatId, {
+                name: data.title
+            });
+        }
 
         await touchParents(task);
 
@@ -119,6 +145,14 @@ const taskService = {
                 $addToSet: updateQuery
             }
         );
+
+        // Add new assignees to Task Chat (UPDATED)
+        if (task.chatId && targetAssigneeIds.length > 0) {
+            await Chat.findByIdAndUpdate(task.chatId, {
+                $addToSet: { members: { $each: targetAssigneeIds } }
+            });
+        }
+
         await touchParents(task);
 
         return { message: "Added assignees to task" };
@@ -156,12 +190,21 @@ const taskService = {
             if (data.assignees?.length) {
                 pullQuery.assignees = { $in: data.assignees };
 
-                // ALSO remove these users from all Subtasks under this task
+                // Remove from Subtasks
                 await Subtask.updateMany(
                     { task: taskId },
                     { $pull: { assignedTo: { $in: data.assignees } } },
                     { session }
                 );
+
+                // Remove from Task Chat (UPDATED)
+                if (task.chatId) {
+                    await Chat.findByIdAndUpdate(
+                        task.chatId,
+                        { $pull: { members: { $in: data.assignees } } },
+                        { session }
+                    );
+                }
             }
 
             if (data.assigneesTeams?.length) {
@@ -176,8 +219,7 @@ const taskService = {
             );
 
             await session.commitTransaction();
-            
-            // Touch parents after transaction
+
             await touchParents(task);
 
             return { message: "Removed assignees from task and its subtasks" };
@@ -305,17 +347,20 @@ const taskService = {
             // 1. Delete all Subtasks associated with this task
             await Subtask.deleteMany({ task: taskId }, { session });
 
-            // 2. Delete the Task itself
+            // 2. Delete Task Chat and Messages (UPDATED)
+            if (task.chatId) {
+                await Message.deleteMany({ chatId: task.chatId }, { session });
+                await Chat.findByIdAndDelete(task.chatId, { session });
+            }
+
+            // 3. Delete the Task itself
             await Task.deleteOne({ _id: taskId }, { session });
 
             await session.commitTransaction();
-            
-            // We can try to touch parents, but since task is deleted, touchParents might need the task object.
-            // touchParents uses task properties to find project/workspace. The 'task' variable still holds the data in memory.
+
             try {
                 await touchParents(task);
             } catch (err) {
-                // If touching parent fails (e.g. parent doesn't exist), don't fail the deletion
                 console.log("Could not update parent timestamps after task deletion");
             }
 
@@ -394,7 +439,7 @@ const taskService = {
 
         // 1. Check if user is actually assigned directly
         const isAssigned = task.assignees.some(id => id.toString() === userId.toString());
-        
+
         if (!isAssigned) {
             throw new Error("You are not directly assigned to this task.");
         }
@@ -410,12 +455,21 @@ const taskService = {
                 { new: true, session }
             );
 
-            // 3. Also remove user from any Subtask assignments under this task
+            // 3. Remove user from Subtasks
             await Subtask.updateMany(
                 { task: taskId },
                 { $pull: { assignedTo: userId } },
                 { session }
             );
+
+            // 4. Remove user from Task Chat (UPDATED)
+            if (task.chatId) {
+                await Chat.findByIdAndUpdate(
+                    task.chatId,
+                    { $pull: { members: userId } },
+                    { session }
+                );
+            }
 
             await session.commitTransaction();
             return { message: "You have left the task and its subtasks successfully" };

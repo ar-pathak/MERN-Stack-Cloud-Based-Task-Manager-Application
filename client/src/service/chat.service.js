@@ -1,31 +1,38 @@
-// services/chat.service.js
+// services/chat.service.js (ENHANCED VERSION)
 import api from "../config/axios";
 
-// Assumes routes are mounted at /api/chats
-const BASE_URL = "/api/chats";
+// ---------------------------------------------------------------------------
+// Base URL
+// ---------------------------------------------------------------------------
+const BASE = "/api/chat";
+
+// ---------------------------------------------------------------------------
+// CHATS
+// ---------------------------------------------------------------------------
 
 /**
- * Get all conversations for the current user
- * GET /
+ * GET /api/chat
+ * Fetch all chats for the authenticated user
  */
 export const getConversations = async () => {
     try {
-        const response = await api.get(`${BASE_URL}/`);
+        const response = await api.get(BASE);
         return response.data?.data || response.data || [];
     } catch (error) {
-        console.error("Fetch conversations error:", error);
-        return [];
+        throw {
+            message: error.response?.data?.message || "Failed to fetch conversations",
+            status: error.response?.status,
+        };
     }
 };
 
 /**
- * Get or Create a conversation with a specific user
- * POST /initiate
- * Body: { targetUserId }
+ * POST /api/chat/private
+ * Create or get existing private chat
  */
-export const initiateChat = async (targetUserId) => {
+export const initiateChat = async (userId) => {
     try {
-        const response = await api.post(`${BASE_URL}/initiate`, { targetUserId });
+        const response = await api.post(`${BASE}/private`, { userId });
         return response.data?.data || response.data;
     } catch (error) {
         throw {
@@ -36,12 +43,98 @@ export const initiateChat = async (targetUserId) => {
 };
 
 /**
- * Get messages for a specific conversation
- * GET /:conversationId/messages
+ * POST /api/chat/group
+ * Create a new group chat
  */
-export const getMessages = async (conversationId, params = {}) => {
+export const createGroupChat = async (name, members) => {
     try {
-        const response = await api.get(`${BASE_URL}/${conversationId}/messages`, { params });
+        const response = await api.post(`${BASE}/group`, { name, members });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to create group chat",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * PATCH /api/chat/:chatId
+ * Update group chat details
+ */
+export const updateGroupChat = async (chatId, updates) => {
+    try {
+        const response = await api.patch(`${BASE}/${chatId}`, updates);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to update group",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * POST /api/chat/:chatId/members
+ * Add members to group chat
+ */
+export const addMembersToGroup = async (chatId, members) => {
+    try {
+        const response = await api.post(`${BASE}/${chatId}/members`, { members });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add members",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * DELETE /api/chat/:chatId/members
+ * Remove a member from group chat
+ */
+export const removeMemberFromGroup = async (chatId, userId) => {
+    try {
+        const response = await api.delete(`${BASE}/${chatId}/members`, { 
+            data: { userId } 
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove member",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * POST /api/chat/:chatId/leave
+ * Leave a group chat
+ */
+export const leaveGroup = async (chatId) => {
+    try {
+        const response = await api.post(`${BASE}/${chatId}/leave`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to leave group",
+            status: error.response?.status,
+        };
+    }
+};
+
+// ---------------------------------------------------------------------------
+// MESSAGES
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/chat/:chatId/messages
+ * Get paginated messages for a chat
+ */
+export const getMessages = async (chatId, params = {}) => {
+    try {
+        const response = await api.get(`${BASE}/${chatId}/messages`, { params });
         return response.data?.data || response.data || [];
     } catch (error) {
         throw {
@@ -52,13 +145,20 @@ export const getMessages = async (conversationId, params = {}) => {
 };
 
 /**
- * Send a message
- * POST /:conversationId/messages
+ * POST /api/chat/message
+ * Send a new message
  */
-export const sendMessage = async (conversationId, content, media = null) => {
+export const sendMessage = async (chatId, content, attachments = [], replyTo = null) => {
     try {
-        const payload = { content, media };
-        const response = await api.post(`${BASE_URL}/${conversationId}/messages`, payload);
+        const payload = { chatId, content };
+        if (attachments && attachments.length > 0) {
+            payload.attachments = attachments;
+        }
+        if (replyTo) {
+            payload.replyTo = replyTo;
+        }
+        
+        const response = await api.post(`${BASE}/message`, payload);
         return response.data?.data || response.data;
     } catch (error) {
         throw {
@@ -69,13 +169,147 @@ export const sendMessage = async (conversationId, content, media = null) => {
 };
 
 /**
- * Mark conversation as read
- * PUT /:conversationId/read
+ * PATCH /api/chat/message/:messageId
+ * Edit a message
  */
-export const markAsRead = async (conversationId) => {
+export const editMessage = async (messageId, chatId, content) => {
     try {
-        await api.put(`${BASE_URL}/${conversationId}/read`);
+        const response = await api.patch(`${BASE}/message/${messageId}`, { 
+            chatId, 
+            content 
+        });
+        return response.data?.data || response.data;
     } catch (error) {
-        console.error("Mark read failed", error);
+        throw {
+            message: error.response?.data?.message || "Failed to edit message",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * DELETE /api/chat/message/:messageId
+ * Delete a message
+ */
+export const deleteMessage = async (messageId, chatId) => {
+    try {
+        const response = await api.delete(`${BASE}/message/${messageId}`, { 
+            data: { chatId } 
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to delete message",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * PATCH /api/chat/message/:messageId/pin
+ * Toggle pin status of a message
+ */
+export const togglePinMessage = async (messageId, chatId) => {
+    try {
+        const response = await api.patch(`${BASE}/message/${messageId}/pin`, { chatId });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to pin message",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * GET /api/chat/:chatId/messages/search
+ * Search messages in a chat
+ */
+export const searchMessages = async (chatId, query, limit = 20) => {
+    try {
+        const response = await api.get(`${BASE}/${chatId}/messages/search`, {
+            params: { q: query, limit }
+        });
+        return response.data?.data || response.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to search messages",
+            status: error.response?.status,
+        };
+    }
+};
+
+// ---------------------------------------------------------------------------
+// REACTIONS
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/chat/message/:messageId/reaction
+ * Add a reaction to a message
+ */
+export const addReaction = async (messageId, chatId, emoji) => {
+    try {
+        const response = await api.post(`${BASE}/message/${messageId}/reaction`, { 
+            chatId, 
+            emoji 
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to add reaction",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * DELETE /api/chat/message/:messageId/reaction
+ * Remove a reaction from a message
+ */
+export const removeReaction = async (messageId, chatId, emoji) => {
+    try {
+        const response = await api.delete(`${BASE}/message/${messageId}/reaction`, { 
+            data: { chatId, emoji } 
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove reaction",
+            status: error.response?.status,
+        };
+    }
+};
+
+// ---------------------------------------------------------------------------
+// FILE UPLOAD (if you add this endpoint)
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/chat/upload
+ * Upload a file and get the URL
+ */
+export const uploadFile = async (file, onProgress) => {
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await api.post(`${BASE}/upload`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+            },
+            onUploadProgress: (progressEvent) => {
+                const percentCompleted = Math.round(
+                    (progressEvent.loaded * 100) / progressEvent.total
+                );
+                onProgress?.(percentCompleted);
+            },
+        });
+
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to upload file",
+            status: error.response?.status,
+        };
     }
 };

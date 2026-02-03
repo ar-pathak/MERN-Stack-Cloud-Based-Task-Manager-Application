@@ -1,15 +1,18 @@
+// ChatHeader.jsx (ENHANCED VERSION)
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Briefcase, FolderOpen, CheckSquare, Star, BellOff,
-    Loader2, Search, Phone, Video, Info,
-    ListTodo
+    Loader2, Search, Phone, Video, Info, ListTodo,
+    MoreVertical, UserPlus, Settings, LogOut, Archive
 } from "lucide-react";
+import { useState } from "react";
 
 const ChatHeader = ({
     item, typingMembers, showSearch, setShowSearch,
     searchQuery, setSearchQuery, messageFilter, setMessageFilter,
-    showChatInfo, setShowChatInfo
+    showChatInfo, setShowChatInfo, onArchive, onMute, onLeave
 }) => {
+    const [showDropdown, setShowDropdown] = useState(false);
     const isDM = item.type === 'dm';
 
     const getItemTitle = (item) => {
@@ -35,39 +38,58 @@ const ChatHeader = ({
         }
     };
 
+    // Get online members count
+    const onlineMembersCount = item.members?.filter(m => m.online).length || 0;
+
     return (
-        <div className="flex-shrink-0 border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-xl px-6 py-4">
+        <div className="flex-shrink-0 border-b border-slate-800/50 bg-gradient-to-b from-slate-950 to-slate-950/80 backdrop-blur-xl px-6 py-4">
             <div className="flex items-center justify-between">
                 {/* Title & Icon Section */}
-                <div className="flex items-center gap-4">
-                    <div className="relative group">
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className="relative group flex-shrink-0">
                         {isDM ? (
                             // --- DM Avatar ---
-                            <div className="h-12 w-12 rounded-full overflow-hidden border-2 border-slate-800">
+                            <motion.div
+                                whileHover={{ scale: 1.05 }}
+                                className="h-12 w-12 rounded-full overflow-hidden border-2 border-slate-800 shadow-lg relative"
+                            >
                                 {item.avatar ? (
                                     <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
                                 ) : (
-                                    <div className="h-full w-full bg-indigo-500 flex items-center justify-center text-white font-bold">
+                                    <div className="h-full w-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
                                         {item.name?.charAt(0)}
                                     </div>
                                 )}
                                 {item.isOnline && (
-                                    <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-slate-950" />
+                                    <motion.span
+                                        initial={{ scale: 0 }}
+                                        animate={{ scale: 1 }}
+                                        className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-slate-950 shadow-lg"
+                                    >
+                                        <motion.span
+                                            animate={{ scale: [1, 1.3, 1], opacity: [1, 0.5, 1] }}
+                                            transition={{ repeat: Infinity, duration: 2 }}
+                                            className="absolute inset-0 rounded-full bg-emerald-400"
+                                        />
+                                    </motion.span>
                                 )}
-                            </div>
+                            </motion.div>
                         ) : (
                             // --- Project/Workspace Icon ---
-                            <div className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all border ${getItemColorClass(item.type)}`}>
+                            <motion.div
+                                whileHover={{ scale: 1.05, rotate: 5 }}
+                                className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all border shadow-lg ${getItemColorClass(item.type)}`}
+                            >
                                 {getItemIcon(item.type)}
-                            </div>
+                            </motion.div>
                         )}
 
                         {/* Typing Indicator Bubble */}
-                        {!isDM && item.members?.some(m => m.online) && (
+                        {!isDM && onlineMembersCount > 0 && (
                             <motion.div
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
-                                className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950"
+                                className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-400 border-2 border-slate-950 shadow-md"
                             >
                                 <motion.div
                                     animate={{ scale: [1, 1.2, 1] }}
@@ -78,25 +100,35 @@ const ChatHeader = ({
                         )}
                     </div>
 
-                    <div>
-                        <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                            {getItemTitle(item)}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <h2 className="text-lg font-bold text-slate-100 truncate">
+                                {getItemTitle(item)}
+                            </h2>
                             {!isDM && item.starred && (
-                                <motion.div whileHover={{ rotate: 72 }}>
-                                    <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                                <motion.div
+                                    whileHover={{ rotate: 72, scale: 1.1 }}
+                                    className="flex-shrink-0"
+                                >
+                                    <Star className="h-4 w-4 text-amber-400 fill-amber-400 drop-shadow-lg" />
                                 </motion.div>
                             )}
-                            {item.muted && <BellOff className="h-4 w-4 text-slate-500" />}
-                        </h2>
+                            {item.muted && (
+                                <BellOff className="h-4 w-4 text-slate-500 flex-shrink-0" />
+                            )}
+                        </div>
 
                         <div className="flex items-center gap-2">
                             {typingMembers?.length > 0 ? (
                                 <motion.span
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
                                     className="text-xs text-sky-400 italic flex items-center gap-1.5"
                                 >
-                                    <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }}>
+                                    <motion.div
+                                        animate={{ rotate: 360 }}
+                                        transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                                    >
                                         <Loader2 className="h-3 w-3" />
                                     </motion.div>
                                     {typingMembers[0].name.split(' ')[0]} is typing...
@@ -104,13 +136,18 @@ const ChatHeader = ({
                             ) : (
                                 <p className="text-xs text-slate-400">
                                     {isDM ? (
-                                        item.isOnline ? <span className="text-emerald-400">Active now</span> : "Offline"
+                                        item.isOnline ? (
+                                            <span className="text-emerald-400 flex items-center gap-1">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                                Active now
+                                            </span>
+                                        ) : "Offline"
                                     ) : (
                                         <>
-                                            {item.members ? `${item.members.length} members` : 'Personal task'} •
-                                            {item.members?.filter(m => m.online).length > 0 && (
-                                                <span className="text-emerald-400 ml-1">
-                                                    {item.members.filter(m => m.online).length} online
+                                            {item.members ? `${item.members.length} members` : 'Personal task'}
+                                            {onlineMembersCount > 0 && (
+                                                <span className="text-emerald-400 ml-1.5">
+                                                    • {onlineMembersCount} online
                                                 </span>
                                             )}
                                         </>
@@ -122,11 +159,106 @@ const ChatHeader = ({
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1">
-                    <HeaderButton icon={Search} active={showSearch} onClick={() => setShowSearch(!showSearch)} />
-                    <HeaderButton icon={Phone} />
-                    <HeaderButton icon={Video} />
-                    {!isDM && <HeaderButton icon={Info} active={showChatInfo} onClick={() => setShowChatInfo(!showChatInfo)} />}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <HeaderButton
+                        icon={Search}
+                        active={showSearch}
+                        onClick={() => setShowSearch(!showSearch)}
+                        tooltip="Search messages"
+                    />
+                    <HeaderButton
+                        icon={Phone}
+                        tooltip="Voice call"
+                    />
+                    <HeaderButton
+                        icon={Video}
+                        tooltip="Video call"
+                    />
+                    {!isDM && (
+                        <HeaderButton
+                            icon={Info}
+                            active={showChatInfo}
+                            onClick={() => setShowChatInfo(!showChatInfo)}
+                            tooltip="Chat info"
+                        />
+                    )}
+
+                    {/* Dropdown Menu */}
+                    <div className="relative">
+                        <HeaderButton
+                            icon={MoreVertical}
+                            active={showDropdown}
+                            onClick={() => setShowDropdown(!showDropdown)}
+                            tooltip="More options"
+                        />
+
+                        <AnimatePresence>
+                            {showDropdown && (
+                                <>
+                                    {/* Backdrop */}
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        onClick={() => setShowDropdown(false)}
+                                    />
+
+                                    {/* Dropdown */}
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                                        className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50"
+                                    >
+                                        <DropdownItem
+                                            icon={UserPlus}
+                                            label="Add members"
+                                            onClick={() => {
+                                                setShowDropdown(false);
+                                                // Handle add members
+                                            }}
+                                        />
+                                        <DropdownItem
+                                            icon={BellOff}
+                                            label={item.muted ? "Unmute" : "Mute"}
+                                            onClick={() => {
+                                                setShowDropdown(false);
+                                                onMute?.();
+                                            }}
+                                        />
+                                        <DropdownItem
+                                            icon={Archive}
+                                            label="Archive"
+                                            onClick={() => {
+                                                setShowDropdown(false);
+                                                onArchive?.();
+                                            }}
+                                        />
+                                        {!isDM && (
+                                            <>
+                                                <div className="h-px bg-slate-800 my-1" />
+                                                <DropdownItem
+                                                    icon={Settings}
+                                                    label="Group settings"
+                                                    onClick={() => {
+                                                        setShowDropdown(false);
+                                                        // Handle settings
+                                                    }}
+                                                />
+                                                <DropdownItem
+                                                    icon={LogOut}
+                                                    label="Leave group"
+                                                    onClick={() => {
+                                                        setShowDropdown(false);
+                                                        onLeave?.();
+                                                    }}
+                                                    danger
+                                                />
+                                            </>
+                                        )}
+                                    </motion.div>
+                                </>
+                            )}
+                        </AnimatePresence>
+                    </div>
                 </div>
             </div>
 
@@ -137,7 +269,7 @@ const ChatHeader = ({
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="mt-3 overflow-hidden"
+                        className="mt-4 overflow-hidden"
                     >
                         <div className="flex gap-2">
                             <div className="flex-1 relative">
@@ -147,17 +279,19 @@ const ChatHeader = ({
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     placeholder="Search messages..."
-                                    className="w-full pl-10 pr-4 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-slate-700"
+                                    autoFocus
+                                    className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all"
                                 />
                             </div>
                             <select
                                 value={messageFilter}
                                 onChange={(e) => setMessageFilter(e.target.value)}
-                                className="px-3 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-slate-700"
+                                className="px-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all cursor-pointer"
                             >
-                                <option value="all">All</option>
-                                <option value="files">Files</option>
-                                <option value="pinned">Pinned</option>
+                                <option value="all">All messages</option>
+                                <option value="files">Files only</option>
+                                <option value="pinned">Pinned only</option>
+                                <option value="media">Media only</option>
                             </select>
                         </div>
                     </motion.div>
@@ -167,14 +301,38 @@ const ChatHeader = ({
     );
 };
 
-const HeaderButton = ({ icon: Icon, onClick, active }) => (
+const HeaderButton = ({ icon: Icon, onClick, active, tooltip }) => (
+    <div className="relative group">
+        <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={onClick}
+            className={`p-2.5 rounded-xl transition-all ${active
+                    ? 'bg-sky-500/20 text-sky-400 shadow-lg shadow-sky-500/20'
+                    : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-300'
+                }`}
+        >
+            <Icon className="h-5 w-5" />
+        </motion.button>
+
+        {/* Tooltip */}
+        {tooltip && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-slate-300 text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+                {tooltip}
+            </div>
+        )}
+    </div>
+);
+
+const DropdownItem = ({ icon: Icon, label, onClick, danger }) => (
     <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.8)" }}
         onClick={onClick}
-        className={`p-2.5 rounded-xl transition-colors ${active ? 'bg-slate-800/80 text-sky-400' : 'hover:bg-slate-800/60 text-slate-400'}`}
+        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${danger ? 'text-red-400 hover:text-red-300' : 'text-slate-300 hover:text-slate-100'
+            }`}
     >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4" />
+        <span>{label}</span>
     </motion.button>
 );
 

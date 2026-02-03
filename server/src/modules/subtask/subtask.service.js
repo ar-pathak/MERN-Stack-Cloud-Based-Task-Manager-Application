@@ -1,6 +1,9 @@
 const Subtask = require('../../models/subtasks');
 const Task = require('../../models/tasks');
 const mongoose = require('mongoose');
+// Import Chat and Message models
+const Chat = require('../../models/chat');
+const Message = require('../../models/message');
 
 class SubtaskService {
     /**
@@ -16,14 +19,37 @@ class SubtaskService {
         // Get the current count of subtasks for ordering
         const subtaskCount = await Subtask.countDocuments({ task: taskId });
 
+        // 1. Prepare Initial Chat Members (Creator + Assigned User if any)
+        const chatMembers = [createdBy];
+        if (assignedTo) {
+            // Check if assignedTo is already in array (just in case) or single ID
+            if (Array.isArray(assignedTo)) {
+                chatMembers.push(...assignedTo);
+            } else {
+                chatMembers.push(assignedTo);
+            }
+        }
+        // Remove duplicates just in case
+        const uniqueMembers = [...new Set(chatMembers.map(id => id.toString()))];
+
+        // 2. Create Subtask Chat (UPDATED)
+        const chat = await Chat.create({
+            type: "group",
+            name: title, // Chat name same as Subtask title
+            members: uniqueMembers,
+            admin: createdBy,
+        });
+
+        // 3. Create Subtask with chatId
         const subtask = new Subtask({
             task: taskId,
             title,
             description,
-            assignedTo,
+            assignedTo, // Assuming schema handles single ID or array based on your validation
             dueDate,
             order: subtaskCount,
-            createdBy
+            createdBy,
+            chatId: chat._id // Store chat ID
         });
 
         await subtask.save();
@@ -109,6 +135,26 @@ class SubtaskService {
         });
 
         await subtask.save();
+
+        // Sync Subtask Title with Chat Name (UPDATED)
+        if (updates.title && subtask.chatId) {
+            await Chat.findByIdAndUpdate(subtask.chatId, {
+                name: updates.title
+            });
+        }
+
+        // If assignedTo was updated directly via updateSubtask (replacing the list), 
+        // we might need to sync chat members, but usually addAssignees/removeAssignees is preferred.
+        // However, if assignedTo is passed here, let's sync strictly.
+        if (updates.assignedTo && subtask.chatId) {
+            const newAssignees = Array.isArray(updates.assignedTo) ? updates.assignedTo : [updates.assignedTo];
+            // We generally add new people, not remove old ones indiscriminately in a simple update, 
+            // but to be safe let's just addToSet.
+            await Chat.findByIdAndUpdate(subtask.chatId, {
+                $addToSet: { members: { $each: newAssignees } }
+            });
+        }
+
         await Task.findByIdAndUpdate(subtask.task, {
             $set: { updatedAt: new Date() }
         });
@@ -161,10 +207,33 @@ class SubtaskService {
         }
 
         const taskId = subtask.task;
-        await subtask.deleteOne();
+
+        // Start Transaction for cleanup
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            // 1. Delete Chat and Messages (UPDATED)
+            if (subtask.chatId) {
+                await Message.deleteMany({ chatId: subtask.chatId }, { session });
+                await Chat.findByIdAndDelete(subtask.chatId, { session });
+            }
+
+            // 2. Delete the Subtask
+            await subtask.deleteOne({ session });
+
+            await session.commitTransaction();
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+
         await Task.findByIdAndUpdate(taskId, {
             $set: { updatedAt: new Date() }
         });
+
         // Reorder remaining subtasks
         await this.reorderSubtasks(taskId);
 
@@ -217,7 +286,7 @@ class SubtaskService {
     }
 
     /**
-     *  Add specific assignees to an existing list
+     * Add specific assignees to an existing list
      */
     async addAssignees(subtaskId, userIds) {
         const subtask = await Subtask.findById(subtaskId);
@@ -228,6 +297,13 @@ class SubtaskService {
             { _id: subtaskId },
             { $addToSet: { assignedTo: { $each: userIds } } }
         );
+
+        // Add users to Subtask Chat (UPDATED)
+        if (subtask.chatId) {
+            await Chat.findByIdAndUpdate(subtask.chatId, {
+                $addToSet: { members: { $each: userIds } }
+            });
+        }
 
         return this.getSubtaskById(subtaskId);
     }
@@ -243,6 +319,13 @@ class SubtaskService {
             { _id: subtaskId },
             { $pull: { assignedTo: { $in: userIds } } }
         );
+
+        // Remove users from Subtask Chat (UPDATED)
+        if (subtask.chatId) {
+            await Chat.findByIdAndUpdate(subtask.chatId, {
+                $pull: { members: { $in: userIds } }
+            });
+        }
 
         return this.getSubtaskById(subtaskId);
     }
@@ -303,6 +386,13 @@ class SubtaskService {
             { _id: subtaskId },
             { $pull: { assignedTo: userId } }
         );
+
+        // 3. Remove user from Subtask Chat (UPDATED)
+        if (subtask.chatId) {
+            await Chat.findByIdAndUpdate(subtask.chatId, {
+                $pull: { members: userId }
+            });
+        }
 
         return { message: "You have left the subtask successfully" };
     }

@@ -7,6 +7,7 @@ const subtaskSchema = new mongoose.Schema({
         required: true,
         index: true
     },
+    chatId: { type: mongoose.Schema.Types.ObjectId, ref: "Chat" },
     title: {
         type: String,
         required: true,

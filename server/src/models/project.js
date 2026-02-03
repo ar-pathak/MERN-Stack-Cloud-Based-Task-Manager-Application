@@ -28,6 +28,7 @@ const projectSchema = new mongoose.Schema({
     required: true
   },
 
+  chatId: { type: mongoose.Schema.Types.ObjectId, ref: "Chat" },
 
   teams: [{
     type: mongoose.Schema.Types.ObjectId,
@@ -54,7 +55,7 @@ const projectSchema = new mongoose.Schema({
     default: false,
   },
   dueDate: Date
-  
+
 }, { timestamps: true });
 
 module.exports = mongoose.model("Project", projectSchema);

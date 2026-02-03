@@ -10,6 +10,8 @@ const taskSchema = new mongoose.Schema({
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
 
+    chatId: { type: mongoose.Schema.Types.ObjectId, ref: "Chat" },
+
     status: {
         type: String,
         enum: ["active", "archived", "completed", "deleted"],

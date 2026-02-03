@@ -3,10 +3,14 @@ const WorkspaceMember = require('../../models/workspaceMember.js');
 const WorkspaceInvite = require('../../models/workspaceInvite');
 const User = require('../../models/user');
 // Import necessary models for cascading operations
-const Project = require('../../models/project'); 
+const Project = require('../../models/project');
 const Team = require('../../models/team');
 const Task = require('../../models/tasks');
 const Subtask = require('../../models/subtasks');
+// Import Chat and Message models
+const Chat = require('../../models/chat');
+const Message = require('../../models/message');
+
 const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
 
@@ -30,23 +34,17 @@ const cleanupUserResources = async (workspaceId, userId, session = null) => {
     );
 
     // 3. Remove from Task Assignees
-    // First, find all tasks in this workspace to ensure we only target relevant tasks
-    // (Assuming tasks have a direct workspace reference based on your schema)
     await Task.updateMany(
         { workspace: workspaceId },
-        { 
-            $pull: { 
-                assignees: userId, 
-                // Optional: If you also want to remove them if they are the "creator" purely for cleanup, 
-                // usually we keep createdBy for history, so we only remove assignees.
-            } 
+        {
+            $pull: {
+                assignees: userId,
+            }
         },
         opts
     );
 
     // 4. Remove from Subtask Assignments
-    // Subtasks don't usually have workspaceId, they are linked to Tasks.
-    // We need to find tasks in this workspace first.
     const tasks = await Task.find({ workspace: workspaceId }).select('_id').session(session || null);
     const taskIds = tasks.map(t => t._id);
 
@@ -57,14 +55,35 @@ const cleanupUserResources = async (workspaceId, userId, session = null) => {
             opts
         );
     }
+
+    // 5. Remove user from the Workspace Chat members list (UPDATED)
+    const workspace = await Workspace.findById(workspaceId).session(session || null);
+    if (workspace && workspace.chatId) {
+        await Chat.findByIdAndUpdate(
+            workspace.chatId,
+            { $pull: { members: userId } },
+            opts
+        );
+    }
 };
 
 const workspaceService = {
     createWorkspace: async ({ name, description, ownerId }) => {
+        // 1. Create a Group Chat for the Workspace first (UPDATED)
+        const chat = await Chat.create({
+            type: "group",
+            name: name, // Chat name same as Workspace name
+            members: [ownerId],
+            admin: ownerId,
+            // You can add a default avatar or system message here if needed
+        });
+
+        // 2. Create Workspace with chatId (UPDATED)
         const workspace = await Workspace.create({
             name,
             description,
-            createdBy: ownerId
+            createdBy: ownerId,
+            chatId: chat._id
         });
 
         // Auto-add creator as OWNER
@@ -82,7 +101,7 @@ const workspaceService = {
             .find({ user: userId })
             .populate({
                 path: 'workspace',
-                select: '_id name description createdAt'
+                select: '_id name description createdAt chatId' // Added chatId to select
             })
             .populate({
                 path: 'user',
@@ -106,7 +125,6 @@ const workspaceService = {
             throw new Error('Workspace not found');
         }
 
-        // Check if user has access to this workspace
         const member = await WorkspaceMember.findOne({
             workspace: id,
             user: userId
@@ -123,7 +141,6 @@ const workspaceService = {
     },
 
     updateWorkspace: async (id, data, userId) => {
-        // Check if user is owner or admin
         const member = await WorkspaceMember.findOne({
             workspace: id,
             user: userId,
@@ -140,6 +157,13 @@ const workspaceService = {
             { new: true, runValidators: true }
         );
 
+        // If name is updated, update the Chat name as well (UPDATED)
+        if (data.name && updatedWorkspace.chatId) {
+            await Chat.findByIdAndUpdate(updatedWorkspace.chatId, {
+                name: data.name
+            });
+        }
+
         if (!updatedWorkspace) {
             throw new Error('Workspace not found or update failed');
         }
@@ -148,7 +172,6 @@ const workspaceService = {
     },
 
     deleteWorkspace: async (id, userId) => {
-        // Only owner can delete workspace
         const member = await WorkspaceMember.findOne({
             workspace: id,
             user: userId,
@@ -159,34 +182,33 @@ const workspaceService = {
             throw new Error('Only workspace owner can delete the workspace');
         }
 
-        // Delete all related data in a transaction
+        const workspace = await Workspace.findById(id); // Fetch workspace to get chatId
+
         const session = await WorkspaceMember.startSession();
         session.startTransaction();
 
         try {
-            // 1. Find all Tasks to identify Subtasks
             const tasks = await Task.find({ workspace: id }).select('_id').session(session);
             const taskIds = tasks.map(t => t._id);
 
-            // 2. Delete Subtasks associated with these tasks
             if (taskIds.length > 0) {
                 await Subtask.deleteMany({ task: { $in: taskIds } }, { session });
             }
 
-            // 3. Delete Tasks
             await Task.deleteMany({ workspace: id }, { session });
-
-            // 4. Delete Projects
             await Project.deleteMany({ workspace: id }, { session });
-
-            // 5. Delete Teams
             await Team.deleteMany({ workspace: id }, { session });
-
-            // 6. Delete Members and Invites
             await WorkspaceMember.deleteMany({ workspace: id }, { session });
             await WorkspaceInvite.deleteMany({ workspace: id }, { session });
 
-            // 7. Delete the Workspace itself
+            // 7. Delete the Workspace Chat and its Messages (UPDATED)
+            if (workspace.chatId) {
+                // Delete all messages in this chat
+                await Message.deleteMany({ chatId: workspace.chatId }, { session });
+                // Delete the chat itself
+                await Chat.findByIdAndDelete(workspace.chatId, { session });
+            }
+
             const deletedWorkspace = await Workspace.findByIdAndDelete(id, { session });
 
             if (!deletedWorkspace) {
@@ -217,7 +239,6 @@ const workspaceService = {
             throw new Error("User not found");
         }
 
-        // Check if user is already a member
         const exists = await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: user._id
@@ -227,12 +248,19 @@ const workspaceService = {
             throw new Error("User is already a member of this workspace");
         }
 
-        // Create member with the specified role
         const member = await WorkspaceMember.create({
             workspace: workspaceId,
             user: user._id,
             role: role
         });
+
+        // Add user to Workspace Chat (UPDATED)
+        const workspace = await Workspace.findById(workspaceId);
+        if (workspace && workspace.chatId) {
+            await Chat.findByIdAndUpdate(workspace.chatId, {
+                $addToSet: { members: user._id }
+            });
+        }
 
         return await member.populate('user', 'name email');
     },
@@ -247,7 +275,6 @@ const workspaceService = {
     },
 
     removeMember: async ({ workspaceId, memberId, requesterId }) => {
-        // Check if trying to remove the owner
         const memberToRemove = await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: memberId
@@ -261,7 +288,6 @@ const workspaceService = {
             throw new Error("Cannot remove workspace owner. Transfer ownership first.");
         }
 
-        // Prevent self-removal by non-owners
         const requester = await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: requesterId
@@ -271,18 +297,16 @@ const workspaceService = {
             throw new Error("You cannot remove yourself. Please leave the workspace instead.");
         }
 
-        // START TRANSACTION for cleanup consistency
         const session = await WorkspaceMember.startSession();
         session.startTransaction();
 
         try {
-            // 1. Remove from WorkspaceMember collection
             await WorkspaceMember.findOneAndDelete({
                 workspace: workspaceId,
                 user: memberId
             }, { session });
 
-            // 2. Clean up user from Projects, Teams, Tasks within this workspace
+            // Calls cleanupUserResources which now includes Chat member removal (UPDATED)
             await cleanupUserResources(workspaceId, memberId, session);
 
             await session.commitTransaction();
@@ -295,7 +319,6 @@ const workspaceService = {
     },
 
     updateMemberRole: async ({ workspaceId, memberId, role, requesterId }) => {
-        // Cannot change owner role
         const memberToUpdate = await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: memberId
@@ -309,7 +332,6 @@ const workspaceService = {
             throw new Error("Cannot change owner role. Use transfer ownership instead.");
         }
 
-        // If promoting to owner, transfer ownership
         if (role === 'owner') {
             return await workspaceService.transferOwnership({
                 workspaceId,
@@ -335,7 +357,6 @@ const workspaceService = {
         session.startTransaction();
 
         try {
-            // Verify current owner
             const currentOwner = await WorkspaceMember.findOne({
                 workspace: workspaceId,
                 user: currentOwnerId,
@@ -346,7 +367,6 @@ const workspaceService = {
                 throw new Error("Only current owner can transfer ownership");
             }
 
-            // Verify new owner is a member
             const newOwner = await WorkspaceMember.findOne({
                 workspace: workspaceId,
                 user: newOwnerId
@@ -356,19 +376,27 @@ const workspaceService = {
                 throw new Error("New owner must be an existing workspace member");
             }
 
-            // Demote current owner to admin
             await WorkspaceMember.findOneAndUpdate(
                 { workspace: workspaceId, user: currentOwnerId },
                 { role: 'admin' },
                 { session }
             );
 
-            // Promote new owner
             await WorkspaceMember.findOneAndUpdate(
                 { workspace: workspaceId, user: newOwnerId },
                 { role: 'owner' },
                 { session }
             );
+
+            // Update Chat Admin (UPDATED)
+            const workspace = await Workspace.findById(workspaceId).session(session);
+            if (workspace && workspace.chatId) {
+                await Chat.findByIdAndUpdate(
+                    workspace.chatId,
+                    { admin: newOwnerId },
+                    { session }
+                );
+            }
 
             await session.commitTransaction();
         } catch (error) {
@@ -380,7 +408,6 @@ const workspaceService = {
     },
 
     sendInvite: async ({ workspaceId, email, role, invitedBy }) => {
-        // Check if email is already registered and is a member
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             const existingMember = await WorkspaceMember.findOne({
@@ -392,7 +419,6 @@ const workspaceService = {
             }
         }
 
-        // Check for pending invites
         const existingInvite = await WorkspaceInvite.findOne({
             workspace: workspaceId,
             email: email.toLowerCase(),
@@ -404,25 +430,22 @@ const workspaceService = {
             throw new Error("A pending invite has already been sent to this email");
         }
 
-        // Generate secure token
         const token = crypto.randomBytes(32).toString('hex');
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
         const invite = await WorkspaceInvite.create({
             workspace: workspaceId,
             email: email.toLowerCase(),
             role: role || 'member',
             invitedBy,
-            token: hashedToken, // Store hashed token
+            token: hashedToken,
             expiresAt
         });
 
-        // Get workspace name for email
         const workspace = await Workspace.findById(workspaceId);
         const inviter = await User.findById(invitedBy);
 
-        // Send email with original token (not hashed)
         await sendMail({
             to: email,
             subject: `Invitation to join ${workspace.name}`,
@@ -432,17 +455,16 @@ const workspaceService = {
                 <a href="${process.env.FRONTEND_URL}/invites/accept/${token}">Accept Invitation</a>
                 <p>This invitation expires in 7 days.</p>
             `,
-            token // Pass unhashed token for email link
+            token
         });
 
         return {
             ...invite.toObject(),
-            token: undefined // Don't return token in response
+            token: undefined
         };
     },
 
     acceptInvite: async (token, userId) => {
-        // Hash the token to compare with stored hash
         const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
         const invite = await WorkspaceInvite.findOne({
@@ -454,20 +476,17 @@ const workspaceService = {
             throw new Error('Invalid or already used invite token');
         }
 
-        // Check expiration
         if (invite.expiresAt < new Date()) {
             invite.status = "expired";
             await invite.save();
             throw new Error('Invite has expired');
         }
 
-        // Verify user email matches invite email
         const user = await User.findById(userId);
         if (user.email.toLowerCase() !== invite.email.toLowerCase()) {
             throw new Error('This invite was sent to a different email address');
         }
 
-        // Check if already a member
         const existingMember = await WorkspaceMember.findOne({
             user: userId,
             workspace: invite.workspace
@@ -477,18 +496,24 @@ const workspaceService = {
             throw new Error('You are already a member of this workspace');
         }
 
-        // Add user to workspace
         await WorkspaceMember.create({
             workspace: invite.workspace,
             user: userId,
             role: invite.role
         });
 
-        // Update invite status
+        // Add user to Workspace Chat (UPDATED)
+        const workspace = await Workspace.findById(invite.workspace);
+        if (workspace && workspace.chatId) {
+            await Chat.findByIdAndUpdate(workspace.chatId, {
+                $addToSet: { members: userId }
+            });
+        }
+
         invite.status = "accepted";
         await invite.save();
 
-        return invite.workspace;
+        return workspace;
     },
 
     leaveWorkspace: async ({ workspaceId, userId }) => {
@@ -511,18 +536,16 @@ const workspaceService = {
             }
         }
 
-        // START TRANSACTION
         const session = await WorkspaceMember.startSession();
         session.startTransaction();
 
         try {
-            // 1. Remove the member record
             await WorkspaceMember.findOneAndDelete({
                 workspace: workspaceId,
                 user: userId
             }, { session });
 
-            // 2. Clean up user's presence in Projects, Teams, Tasks
+            // Calls cleanupUserResources which now includes Chat member removal (UPDATED)
             await cleanupUserResources(workspaceId, userId, session);
 
             await session.commitTransaction();
@@ -533,7 +556,8 @@ const workspaceService = {
             session.endSession();
         }
     },
-    
+
+    // ... (baaki ke functions: getQuickStatus, toggleStar, toggleMute, toggleArchive - Inme changes ki zaroorat nahi hai)
     getQuickStatus: async (workspaceId, userId) => {
         const member = await WorkspaceMember.findOne({
             workspace: workspaceId,
@@ -550,7 +574,7 @@ const workspaceService = {
             isArchived: member.status === 'archived'
         };
     },
-    
+
     toggleStar: async (workspaceId, userId) => {
         const member = await WorkspaceMember.findOne({
             workspace: workspaceId,
@@ -591,7 +615,6 @@ const workspaceService = {
             throw new Error("You are not a member of this workspace");
         }
 
-        // Toggle between 'active' and 'archived'
         member.status = member.status === 'active' ? 'archived' : 'active';
         await member.save();
         return member;

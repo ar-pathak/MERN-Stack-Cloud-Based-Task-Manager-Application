@@ -2,9 +2,14 @@ const mongoose = require('mongoose');
 const Project = require('../../models/project');
 const Task = require('../../models/tasks');
 const Subtask = require('../../models/subtasks');
+// Import Chat models
+const Chat = require('../../models/chat');
+const Message = require('../../models/message');
+
 const { touchWorkspace } = require('../utils/updateParent');
 
 // Helper function to remove users from task and subtask assignments within the project
+// AND remove them from the Project Chat (UPDATED)
 const cleanupProjectResources = async (projectId, userIds, session) => {
     // 1. Remove users from Task Assignees in this project
     await Task.updateMany(
@@ -14,7 +19,6 @@ const cleanupProjectResources = async (projectId, userIds, session) => {
     );
 
     // 2. Remove users from Subtask Assignments
-    // Subtasks are linked to tasks, so we first find tasks in this project
     const tasks = await Task.find({ project: projectId }).select('_id').session(session);
     const taskIds = tasks.map(t => t._id);
 
@@ -22,6 +26,16 @@ const cleanupProjectResources = async (projectId, userIds, session) => {
         await Subtask.updateMany(
             { task: { $in: taskIds } },
             { $pull: { assignedTo: { $in: userIds } } },
+            { session }
+        );
+    }
+
+    // 3. Remove users from Project Chat (UPDATED)
+    const project = await Project.findById(projectId).session(session);
+    if (project && project.chatId) {
+        await Chat.findByIdAndUpdate(
+            project.chatId,
+            { $pull: { members: { $in: userIds } } },
             { session }
         );
     }
@@ -40,17 +54,40 @@ const projectService = {
             );
         }
 
+        // Prepare initial members list (Owner + added members)
+        const initialMembers = data.members?.length
+            ? data.members
+            : [{ user: userId, role: "admin" }];
+
+        // Extract just User IDs for the Chat
+        const chatMemberIds = initialMembers.map(m => m.user);
+        // Ensure owner is definitely in the chat members list
+        if (!chatMemberIds.includes(userId)) {
+            chatMemberIds.push(userId);
+        }
+
+        // 1. Create Project Chat (UPDATED)
+        const chat = await Chat.create({
+            type: "group",
+            name: data.name, // Chat name matches Project name
+            members: chatMemberIds,
+            admin: userId,
+            // You can mark this as a 'project' chat via metadata if needed, or rely on naming convention
+        });
+
+        // 2. Create Project with chatId (UPDATED)
         const project = await Project.create({
             ...data,
             workspace: workspaceId,
             owner: userId,
-            members: data.members?.length
-                ? data.members
-                : [{ user: userId, role: "admin" }]
+            members: initialMembers,
+            chatId: chat._id // Store the chat ID
         });
+
         await touchWorkspace(workspaceId);
         return project;
     },
+
     getProjectsByWorkspace: async (workspaceId) => {
         const project = await Project.find({ workspace: workspaceId });
         if (!project) {
@@ -58,6 +95,7 @@ const projectService = {
         }
         return project;
     },
+
     getProjectById: async (projectId) => {
         const project = await Project.findById(projectId);
         if (!project) {
@@ -71,6 +109,14 @@ const projectService = {
         if (!project) {
             throw new Error('Project not found')
         }
+
+        // Sync Project Name with Chat Name (UPDATED)
+        if (updateData.name && project.chatId) {
+            await Chat.findByIdAndUpdate(project.chatId, {
+                name: updateData.name
+            });
+        }
+
         await touchWorkspace(project.workspace);
         return project;
     },
@@ -81,31 +127,40 @@ const projectService = {
         session.startTransaction();
 
         try {
-            // 1. Find all Tasks in the project to identify Subtasks
+            // 1. Find the project first to get data (like chatId)
+            const projectToDelete = await Project.findById(projectId).session(session);
+
+            if (!projectToDelete) {
+                throw new Error('Project not found');
+            }
+
+            // 2. Find all Tasks in the project to identify Subtasks
             const tasks = await Task.find({ project: projectId }).select('_id').session(session);
             const taskIds = tasks.map(t => t._id);
 
-            // 2. Delete Subtasks associated with these tasks
+            // 3. Delete Subtasks associated with these tasks
             if (taskIds.length > 0) {
                 await Subtask.deleteMany({ task: { $in: taskIds } }, { session });
             }
 
-            // 3. Delete Tasks in the project
+            // 4. Delete Tasks in the project
             await Task.deleteMany({ project: projectId }, { session });
 
-            // 4. Delete the Project itself
-            const project = await Project.findByIdAndDelete(projectId).session(session);
-
-            if (!project) {
-                throw new Error('Project not found');
+            // 5. Delete Project Chat and Messages (UPDATED)
+            if (projectToDelete.chatId) {
+                await Message.deleteMany({ chatId: projectToDelete.chatId }, { session });
+                await Chat.findByIdAndDelete(projectToDelete.chatId, { session });
             }
+
+            // 6. Delete the Project itself
+            await Project.findByIdAndDelete(projectId, { session });
 
             await session.commitTransaction();
 
             // Update parent workspace timestamp
-            await touchWorkspace(project.workspace);
+            await touchWorkspace(projectToDelete.workspace);
 
-            return project;
+            return projectToDelete;
         } catch (error) {
             await session.abortTransaction();
             throw error;
@@ -121,7 +176,12 @@ const projectService = {
         }
         return project.teams;
     },
+
     addProjectTeams: async (projectId, { teams }) => {
+        // NOTE: If you want team members to be auto-added to chat, logic would be complex 
+        // because teams are dynamic. Usually, we rely on `getProjectMembers` or explicit member addition.
+        // For now, keeping this strictly for the Project model structure.
+
         const project = await Project.findByIdAndUpdate(
             projectId,
             {
@@ -138,6 +198,7 @@ const projectService = {
 
         return { message: "Teams added to project" };
     },
+
     removeProjectTeams: async (projectId, { teams }) => {
         const project = await Project.findByIdAndUpdate(
             projectId,
@@ -155,6 +216,7 @@ const projectService = {
 
         return { message: "Teams removed from project" };
     },
+
     getProjectMembers: async (projectId) => {
         const project = await Project.findById(projectId)
             .populate('members.user', 'name email');
@@ -165,21 +227,22 @@ const projectService = {
 
         return project.members;
     },
+
     addProjectMembers: async (projectId, { members }) => {
-        const project = await Project.findById(projectId).select('members');
+        const project = await Project.findById(projectId).select('members chatId');
 
         if (!project) {
             throw new Error("Project not found");
         }
 
         const existingUserIds = new Set(project.members.map(m => m.user.toString()));
-
         const newMembers = members.filter(m => !existingUserIds.has(m.user.toString()));
 
         if (newMembers.length === 0) {
             return { message: "All selected members are already in the project" };
         }
 
+        // Add to Project model
         const updatedProject = await Project.findByIdAndUpdate(
             projectId,
             {
@@ -190,6 +253,14 @@ const projectService = {
             { new: true }
         );
 
+        // Add to Project Chat (UPDATED)
+        if (project.chatId) {
+            const newUserIds = newMembers.map(m => m.user);
+            await Chat.findByIdAndUpdate(project.chatId, {
+                $addToSet: { members: { $each: newUserIds } }
+            });
+        }
+
         return { message: `${newMembers.length} new members added successfully` };
     },
 
@@ -198,7 +269,7 @@ const projectService = {
         session.startTransaction();
 
         try {
-            // 1. Clean up user assignments in tasks/subtasks
+            // 1. Clean up user assignments in tasks/subtasks AND Chat (UPDATED inside helper)
             await cleanupProjectResources(projectId, users, session);
 
             // 2. Remove users from project members list
@@ -238,6 +309,10 @@ const projectService = {
             { new: true }
         );
 
+        // Optional: If role is 'admin', you might want to update Chat admin, 
+        // but typically projects have one owner and multiple admins. 
+        // Keeping it simple for now (Project Owner = Chat Admin).
+
         if (!project) {
             throw new Error("Project not found or user is not a member of this project");
         }
@@ -267,7 +342,7 @@ const projectService = {
                 throw new Error("You are not a member of this project");
             }
 
-            // 3. Clean up user assignments in tasks/subtasks
+            // 3. Clean up user assignments in tasks/subtasks AND Chat (UPDATED inside helper)
             await cleanupProjectResources(projectId, [userId], session);
 
             // 4. Remove user from members array
