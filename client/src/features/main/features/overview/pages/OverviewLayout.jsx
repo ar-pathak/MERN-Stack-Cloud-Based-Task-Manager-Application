@@ -504,10 +504,16 @@ const OverviewLayout = () => {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+      <div className="flex-1 h-full min-h-0 flex flex-col bg-slate-950 overflow-hidden">
         <AnimatePresence mode="wait">
           {selectedItem ? (
-            <div key={selectedItem.id} className="flex-1 flex flex-col">
+            <motion.div
+              key={selectedItem.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 h-full min-h-0 flex flex-col overflow-hidden"
+            >
               <ChatPanel
                 item={selectedItem}
                 overview={overview}
@@ -521,6 +527,11 @@ const OverviewLayout = () => {
                 setSelectedMessage={chat.setSelectedMessage}
                 handleDeleteMessage={chat.handleDeleteMessage}
                 handlePinMessage={chat.handlePinMessage}
+                handleEditMessage={chat.handleEditMessage}
+                handleReaction={chat.handleReaction}
+                handleTyping={chat.handleTyping}
+                isTyping={chat.isTyping}
+                typingUsers={chat.typingUsers}
                 handleFileUpload={chat.handleFileUpload}
                 uploadingFile={chat.uploadingFile}
                 showEmojiPicker={chat.showEmojiPicker}
@@ -530,9 +541,16 @@ const OverviewLayout = () => {
                 messageInputRef={chat.refs.messageInputRef}
                 onUpdate={refreshTimeline}
               />
-            </div>
+            </motion.div>
           ) : (
-            <EmptyState key="empty" />
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex-1 h-full min-h-0 overflow-hidden"
+            >
+              <EmptyState />
+            </motion.div>
           )}
         </AnimatePresence>
       </div>

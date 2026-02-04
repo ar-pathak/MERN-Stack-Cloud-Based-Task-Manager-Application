@@ -337,8 +337,8 @@ const HeaderButton = ({ icon: Icon, onClick, active, tooltip }) => (
             whileTap={{ scale: 0.95 }}
             onClick={onClick}
             className={`p-2.5 rounded-xl transition-all ${active
-                    ? 'bg-sky-500/20 text-sky-400 shadow-lg shadow-sky-500/20'
-                    : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-300'
+                ? 'bg-sky-500/20 text-sky-400 shadow-lg shadow-sky-500/20'
+                : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-300'
                 }`}
         >
             <Icon className="h-5 w-5" />
