@@ -6,7 +6,7 @@ import { io } from "socket.io-client";
 // ---------------------------------------------------------------------------
 // Set this to your backend origin.  In most setups it comes from an env var
 // that the bundler (Vite / CRA / Next) replaces at build time.
-const SOCKET_URL = import.meta.env?.VITE_API_URL || "";
+const SOCKET_URL = import.meta.env?.VITE_API_URL || "http://localhost:3000";
 
 // ---------------------------------------------------------------------------
 // Singleton socket instance

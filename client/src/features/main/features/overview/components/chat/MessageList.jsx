@@ -1,11 +1,18 @@
 import { motion } from "framer-motion";
 import { MessageSquare } from "lucide-react";
-import ChatMessage from "./ChatMessage"; 
+import ChatMessage from "./ChatMessage";
 
 const MessageList = ({
-    messages, itemType, selectedMessage, setSelectedMessage,
-    handleDeleteMessage, handlePinMessage, onReact, onReply,
-    reactions, chatEndRef
+    messages,
+    itemType,
+    selectedMessage,
+    setSelectedMessage,
+    handleDeleteMessage,
+    handlePinMessage,
+    handleEditMessage, // NEW: Add this prop
+    onReact,
+    onReply,
+    chatEndRef
 }) => {
 
     if (messages.length === 0) {
@@ -29,29 +36,79 @@ const MessageList = ({
         );
     }
 
+    // Group messages by date
+    const groupMessagesByDate = (messages) => {
+        const groups = {};
+
+        messages.forEach(msg => {
+            const date = new Date(msg.createdAt || msg.timestamp);
+            const dateKey = date.toDateString();
+
+            if (!groups[dateKey]) {
+                groups[dateKey] = {
+                    date: dateKey,
+                    messages: []
+                };
+            }
+
+            groups[dateKey].messages.push(msg);
+        });
+
+        return Object.values(groups);
+    };
+
+    const messageGroups = groupMessagesByDate(messages);
+
+    const getDateLabel = (dateString) => {
+        const date = new Date(dateString);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        if (date.toDateString() === today.toDateString()) {
+            return 'Today';
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return 'Yesterday';
+        } else {
+            return date.toLocaleDateString('en-US', {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric'
+            });
+        }
+    };
+
     return (
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            <div className="flex items-center gap-3 my-6">
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-800/50 to-transparent" />
-                <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-900/60 rounded-full border border-slate-800/50">
-                    Today
-                </span>
-                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-800/50 to-transparent" />
-            </div>
+            {messageGroups.map((group, groupIdx) => (
+                <div key={group.date}>
+                    {/* Date Separator */}
+                    <div className="flex items-center gap-3 my-6">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-800/50 to-transparent" />
+                        <span className="text-xs text-slate-500 font-medium px-3 py-1 bg-slate-900/60 rounded-full border border-slate-800/50">
+                            {getDateLabel(group.date)}
+                        </span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-800/50 to-transparent" />
+                    </div>
 
-            {messages.map((msg) => (
-                <ChatMessage
-                    key={msg.id}
-                    message={msg}
-                    selectedMessage={selectedMessage}
-                    setSelectedMessage={setSelectedMessage}
-                    handleDeleteMessage={handleDeleteMessage}
-                    handlePinMessage={handlePinMessage}
-                    onReact={onReact}
-                    onReply={onReply}
-                    reactions={reactions[msg.id]}
-                />
+                    {/* Messages for this date */}
+                    {group.messages.map((msg) => (
+                        <ChatMessage
+                            key={msg.id || msg._id}
+                            message={msg}
+                            selectedMessage={selectedMessage}
+                            setSelectedMessage={setSelectedMessage}
+                            handleDeleteMessage={handleDeleteMessage}
+                            handlePinMessage={handlePinMessage}
+                            handleEditMessage={handleEditMessage}
+                            onReact={onReact}
+                            onReply={onReply}
+                            reactions={msg.reactions}
+                        />
+                    ))}
+                </div>
             ))}
+
             <div ref={chatEndRef} />
         </div>
     );

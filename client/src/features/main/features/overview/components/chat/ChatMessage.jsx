@@ -1,29 +1,46 @@
-// ChatMessage.jsx (ENHANCED VERSION)
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Reply, ThumbsUp, Pin, MoreHorizontal, Edit2, Trash2,
     FileText, Download, Image as ImageIcon, Check, CheckCheck,
-    Copy, Forward
+    Copy, Forward, X
 } from "lucide-react";
+import { useAuth } from "../../../../../../context/AuthContext";
 
 const ChatMessage = ({
     message,
-    currentUserId,
-    selectedMessage,
-    setSelectedMessage,
     handleDeleteMessage,
-    handleEditMessage,
     handlePinMessage,
     onReact,
     onReply,
     reactions = {}
 }) => {
-    console.log("Rendering message:", message);
+
+    const { user } = useAuth();
+    const currentUserId = user?._id;
+    // --- DATA NORMALIZATION (Fixes the Mismatches) ---
+
+    // 1. Fix ID: MongoDB uses '_id', component used 'id'
+    const messageId = message._id || message.id;
+
+    // 2. Fix Sender: Data uses 'senderId' (populated object), component used 'sender'
+    const sender = message.senderId || message.sender || {};
+
+    // 3. Fix Ownership: Calculate based on current user ID
+    // We check both sender._id (obj) and sender (string) to be safe
+    const senderIdString = typeof sender === 'object' ? sender._id : sender;
+    const isOwnMessage = message.isOwn || (currentUserId && senderIdString === currentUserId);
+
+    // 4. Content Fallback
+    const content = message.content || message.text || '';
+
+    // --------------------------------------------------
+
+    console.log("Rendering ChatMessage:", content);
     const [showActions, setShowActions] = useState(false);
     const [showReactionPicker, setShowReactionPicker] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [editContent, setEditContent] = useState(message.text || message.content || '');
+    const [editContent, setEditContent] = useState(content);
 
     const formatSize = (bytes) => {
         if (!bytes) return '0 B';
@@ -33,37 +50,43 @@ const ChatMessage = ({
         return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
     };
 
-    const isOwnMessage = message.sender?.id === currentUserId || message.senderId === currentUserId;
-
-    // Get reactions array
-    const messageReactions = reactions[message.id] || message.reactions || [];
+    // Get reactions array - support both formats
+    const messageReactions = reactions || message.reactions || [];
 
     // Group reactions by emoji
-    const groupedReactions = messageReactions.reduce((acc, reaction) => {
-        const emoji = reaction.emoji || reaction;
-        if (!acc[emoji]) {
-            acc[emoji] = { emoji, count: 0, users: [] };
-        }
-        acc[emoji].count++;
-        if (reaction.userId) acc[emoji].users.push(reaction.userId);
-        return acc;
-    }, {});
+    const groupedReactions = Array.isArray(messageReactions)
+        ? messageReactions.reduce((acc, reaction) => {
+            const emoji = typeof reaction === 'string' ? reaction : reaction.emoji || reaction;
+            if (!acc[emoji]) {
+                acc[emoji] = { emoji, count: 0, users: [] };
+            }
+            acc[emoji].count++;
+            if (reaction.userId) acc[emoji].users.push(reaction.userId);
+            return acc;
+        }, {})
+        : {};
 
     const handleSaveEdit = () => {
-        if (editContent.trim() && editContent !== message.text) {
-            handleEditMessage?.(message.id, editContent.trim());
+        if (editContent.trim() && editContent !== content) {
+            // Pass the correct ID here
+            console.log("Save edit for ID:", messageId, editContent);
         }
         setIsEditing(false);
     };
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(message.text || message.content);
-        // Show toast notification
+        navigator.clipboard.writeText(content);
+        console.log("Message copied");
+    };
+
+    const handleForward = () => {
+        console.log("Forward message:", message);
     };
 
     // Check if message is read
-    const isRead = message.readBy?.some(r => r.userId !== message.senderId);
-    const readCount = message.readBy?.filter(r => r.userId !== message.senderId).length || 0;
+    // Fix: Ensure we aren't comparing an Object to a String for the sender
+    const isRead = message.readBy?.some(r => r.userId !== senderIdString);
+    const readCount = message.readBy?.filter(r => r.userId !== senderIdString).length || 0;
 
     return (
         <motion.div
@@ -91,8 +114,8 @@ const ChatMessage = ({
                     <Reply className="h-3 w-3 text-slate-500" />
                     <span className="text-xs text-slate-400">
                         Replying to <span className="font-medium text-slate-300">
-                            @{message.replyTo.sender?.name || 'User'}
-                        </span>: {message.replyTo.content?.substring(0, 50)}...
+                            @{message.replyTo.senderId?.name || message.replyTo.sender?.name || 'User'}
+                        </span>: {(message.replyTo.content || message.replyTo.text || '').substring(0, 50)}...
                     </span>
                 </motion.div>
             )}
@@ -105,25 +128,25 @@ const ChatMessage = ({
                         whileHover={{ scale: 1.1 }}
                         className="relative"
                     >
-                        {message.sender?.avatar ? (
+                        {sender.avatar ? (
                             <img
-                                src={message.sender.avatar}
-                                alt={message.sender.name}
+                                src={sender.avatar}
+                                alt={sender.name}
                                 className="h-9 w-9 rounded-full object-cover border-2 border-slate-700 shadow-md"
                             />
                         ) : (
                             <div className={`h-9 w-9 rounded-full flex items-center justify-center text-sm font-bold text-white shadow-lg
-                                ${message.sender?.name
+                                ${sender.name
                                     ? 'bg-gradient-to-br from-violet-500 to-purple-600'
                                     : 'bg-slate-700'
                                 }
                             `}>
-                                {message.sender?.name?.substring(0, 2).toUpperCase() || 'U'}
+                                {sender.name?.substring(0, 2).toUpperCase() || 'U'}
                             </div>
                         )}
 
-                        {/* Online indicator */}
-                        {message.sender?.online && (
+                        {/* Online indicator - Check if sender object has online status */}
+                        {sender.online && (
                             <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 border-2 border-slate-950" />
                         )}
                     </motion.div>
@@ -133,7 +156,7 @@ const ChatMessage = ({
                     {/* Header: Name, Time & Read Status */}
                     <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-slate-200 text-sm hover:underline cursor-pointer">
-                            {message.sender?.name || 'Unknown User'}
+                            {sender.name || 'Unknown User'}
                         </span>
                         <span className="text-[10px] text-slate-500" title={new Date(message.timestamp || message.createdAt).toLocaleString()}>
                             {new Date(message.timestamp || message.createdAt || Date.now()).toLocaleTimeString([], {
@@ -163,36 +186,42 @@ const ChatMessage = ({
                     {/* Text Content - Editable */}
                     {isEditing ? (
                         <div className="space-y-2">
-                            <textarea
-                                value={editContent}
-                                onChange={(e) => setEditContent(e.target.value)}
-                                className="w-full px-3 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 resize-none"
-                                rows={3}
-                                autoFocus
-                            />
+                            <div className="relative">
+                                <textarea
+                                    value={editContent}
+                                    onChange={(e) => setEditContent(e.target.value)}
+                                    className="w-full px-3 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 resize-none"
+                                    rows={3}
+                                    autoFocus
+                                />
+                            </div>
                             <div className="flex gap-2">
-                                <button
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     onClick={handleSaveEdit}
                                     className="px-3 py-1.5 bg-sky-500 hover:bg-sky-600 text-white text-xs rounded-lg transition-colors"
                                 >
                                     Save
-                                </button>
-                                <button
+                                </motion.button>
+                                <motion.button
+                                    whileHover={{ scale: 1.02 }}
+                                    whileTap={{ scale: 0.98 }}
                                     onClick={() => {
                                         setIsEditing(false);
-                                        setEditContent(message.text);
+                                        setEditContent(content);
                                     }}
                                     className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors"
                                 >
                                     Cancel
-                                </button>
+                                </motion.button>
                             </div>
                         </div>
                     ) : (
                         <>
-                            {(message.text || message.content) && (
+                            {content && (
                                 <p className="text-[14px] text-slate-300 leading-relaxed whitespace-pre-wrap break-words">
-                                    {message.text || message.content}
+                                    {content}
                                 </p>
                             )}
 
@@ -220,6 +249,7 @@ const ChatMessage = ({
                                                 whileHover={{ scale: 1.1 }}
                                                 whileTap={{ scale: 0.9 }}
                                                 className="p-1.5 hover:bg-slate-700 rounded-lg text-slate-500 hover:text-slate-300 opacity-0 group-hover/file:opacity-100 transition-opacity"
+                                                onClick={() => console.log("Download file:", file)}
                                             >
                                                 <Download className="h-4 w-4" />
                                             </motion.button>
@@ -238,7 +268,8 @@ const ChatMessage = ({
                                     key={i}
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.95 }}
-                                    onClick={() => onReact?.(message.id, reaction.emoji)}
+                                    // Use messageId here
+                                    onClick={() => onReact?.(messageId, reaction.emoji)}
                                     className="flex items-center gap-1 px-2 py-0.5 bg-slate-800/40 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 rounded-full transition-all cursor-pointer"
                                 >
                                     <span className="text-sm">{reaction.emoji}</span>
@@ -281,8 +312,9 @@ const ChatMessage = ({
                                                     key={emoji}
                                                     whileHover={{ scale: 1.2 }}
                                                     whileTap={{ scale: 0.9 }}
+                                                    // Use messageId here
                                                     onClick={() => {
-                                                        onReact?.(message.id, emoji);
+                                                        onReact?.(messageId, emoji);
                                                         setShowReactionPicker(false);
                                                     }}
                                                     className="p-1.5 hover:bg-slate-800 rounded-lg text-lg"
@@ -302,7 +334,8 @@ const ChatMessage = ({
                             />
                             <ActionButton
                                 icon={Pin}
-                                onClick={() => handlePinMessage?.(message.id)}
+                                // Use messageId here
+                                onClick={() => handlePinMessage?.(messageId)}
                                 active={message.pinned}
                                 title={message.pinned ? "Unpin" : "Pin"}
                             />
@@ -324,14 +357,15 @@ const ChatMessage = ({
                             />
                             <ActionButton
                                 icon={Forward}
-                                onClick={() => {/* Handle forward */ }}
+                                onClick={handleForward}
                                 title="Forward"
                             />
 
                             {isOwnMessage && (
                                 <ActionButton
                                     icon={Trash2}
-                                    onClick={() => handleDeleteMessage?.(message.id)}
+                                    // Use messageId here
+                                    onClick={() => handleDeleteMessage?.(messageId)}
                                     title="Delete"
                                     danger
                                 />
@@ -363,7 +397,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, danger }) => (
         </motion.button>
 
         {/* Tooltip */}
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-0.5 bg-slate-950 text-slate-300 text-[10px] rounded whitespace-nowrap opacity-0 group-hover/action:opacity-100 pointer-events-none transition-opacity">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-0.5 bg-slate-950 text-slate-300 text-[10px] rounded whitespace-nowrap opacity-0 group-hover/action:opacity-100 pointer-events-none transition-opacity z-50">
             {title}
         </div>
     </div>

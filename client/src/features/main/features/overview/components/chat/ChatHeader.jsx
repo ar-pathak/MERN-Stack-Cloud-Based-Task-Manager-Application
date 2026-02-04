@@ -1,19 +1,57 @@
-// ChatHeader.jsx (ENHANCED VERSION)
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Briefcase, FolderOpen, CheckSquare, Star, BellOff,
     Loader2, Search, Phone, Video, Info, ListTodo,
-    MoreVertical, UserPlus, Settings, LogOut, Archive
+    MoreVertical, UserPlus, Settings, LogOut, Archive,
+    Users, Hash
 } from "lucide-react";
 import { useState } from "react";
 
 const ChatHeader = ({
-    item, typingMembers, showSearch, setShowSearch,
-    searchQuery, setSearchQuery, messageFilter, setMessageFilter,
-    showChatInfo, setShowChatInfo, onArchive, onMute, onLeave
+    item,
+    typingMembers,
+    showSearch,
+    setShowSearch,
+    searchQuery,
+    setSearchQuery,
+    messageFilter,
+    setMessageFilter,
+    showChatInfo,
+    setShowChatInfo
 }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const isDM = item.type === 'dm';
+
+    // Handlers for dropdown actions
+    const handleArchive = () => {
+        console.log("Archive chat:", item);
+        // Implement archive logic
+        setShowDropdown(false);
+    };
+
+    const handleMute = () => {
+        console.log("Toggle mute:", item);
+        // Implement mute logic
+        setShowDropdown(false);
+    };
+
+    const handleLeave = () => {
+        console.log("Leave group:", item);
+        // Implement leave logic
+        setShowDropdown(false);
+    };
+
+    const handleAddMembers = () => {
+        console.log("Add members to:", item);
+        // Implement add members logic
+        setShowDropdown(false);
+    };
+
+    const handleSettings = () => {
+        console.log("Open settings for:", item);
+        // Implement settings logic
+        setShowDropdown(false);
+    };
 
     const getItemTitle = (item) => {
         return item.name || item.title || "Untitled";
@@ -25,7 +63,8 @@ const ChatHeader = ({
             case "project": return <FolderOpen className="h-5 w-5 text-purple-400" />;
             case "task": return <CheckSquare className="h-5 w-5 text-emerald-400" />;
             case "subtask": return <ListTodo className="h-5 w-5 text-cyan-400" />;
-            default: return <Briefcase className="h-5 w-5 text-sky-400" />;
+            case "dm": return <Users className="h-5 w-5 text-indigo-400" />;
+            default: return <Hash className="h-5 w-5 text-slate-400" />;
         }
     };
 
@@ -34,6 +73,7 @@ const ChatHeader = ({
             case "workspace": return 'bg-gradient-to-br from-sky-500/20 to-blue-600/20 border-sky-500/30 group-hover:border-sky-400/50';
             case "project": return 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 border-purple-500/30 group-hover:border-purple-400/50';
             case "subtask": return 'bg-gradient-to-br from-cyan-500/20 to-teal-500/20 border-cyan-500/30 group-hover:border-cyan-400/50';
+            case "dm": return 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border-indigo-500/30 group-hover:border-indigo-400/50';
             default: return 'bg-gradient-to-br from-emerald-500/20 to-green-600/20 border-emerald-500/30 group-hover:border-emerald-400/50';
         }
     };
@@ -57,7 +97,7 @@ const ChatHeader = ({
                                     <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
                                 ) : (
                                     <div className="h-full w-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                                        {item.name?.charAt(0)}
+                                        {item.name?.charAt(0)?.toUpperCase() || 'U'}
                                     </div>
                                 )}
                                 {item.isOnline && (
@@ -84,7 +124,7 @@ const ChatHeader = ({
                             </motion.div>
                         )}
 
-                        {/* Typing Indicator Bubble */}
+                        {/* Online Indicator for Groups */}
                         {!isDM && onlineMembersCount > 0 && (
                             <motion.div
                                 initial={{ scale: 0 }}
@@ -169,10 +209,12 @@ const ChatHeader = ({
                     <HeaderButton
                         icon={Phone}
                         tooltip="Voice call"
+                        onClick={() => console.log("Voice call")}
                     />
                     <HeaderButton
                         icon={Video}
                         tooltip="Video call"
+                        onClick={() => console.log("Video call")}
                     />
                     {!isDM && (
                         <HeaderButton
@@ -208,29 +250,22 @@ const ChatHeader = ({
                                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
                                         className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50"
                                     >
-                                        <DropdownItem
-                                            icon={UserPlus}
-                                            label="Add members"
-                                            onClick={() => {
-                                                setShowDropdown(false);
-                                                // Handle add members
-                                            }}
-                                        />
+                                        {!isDM && (
+                                            <DropdownItem
+                                                icon={UserPlus}
+                                                label="Add members"
+                                                onClick={handleAddMembers}
+                                            />
+                                        )}
                                         <DropdownItem
                                             icon={BellOff}
                                             label={item.muted ? "Unmute" : "Mute"}
-                                            onClick={() => {
-                                                setShowDropdown(false);
-                                                onMute?.();
-                                            }}
+                                            onClick={handleMute}
                                         />
                                         <DropdownItem
                                             icon={Archive}
                                             label="Archive"
-                                            onClick={() => {
-                                                setShowDropdown(false);
-                                                onArchive?.();
-                                            }}
+                                            onClick={handleArchive}
                                         />
                                         {!isDM && (
                                             <>
@@ -238,18 +273,12 @@ const ChatHeader = ({
                                                 <DropdownItem
                                                     icon={Settings}
                                                     label="Group settings"
-                                                    onClick={() => {
-                                                        setShowDropdown(false);
-                                                        // Handle settings
-                                                    }}
+                                                    onClick={handleSettings}
                                                 />
                                                 <DropdownItem
                                                     icon={LogOut}
                                                     label="Leave group"
-                                                    onClick={() => {
-                                                        setShowDropdown(false);
-                                                        onLeave?.();
-                                                    }}
+                                                    onClick={handleLeave}
                                                     danger
                                                 />
                                             </>
@@ -317,7 +346,7 @@ const HeaderButton = ({ icon: Icon, onClick, active, tooltip }) => (
 
         {/* Tooltip */}
         {tooltip && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-slate-300 text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-slate-300 text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                 {tooltip}
             </div>
         )}
