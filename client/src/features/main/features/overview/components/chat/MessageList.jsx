@@ -34,6 +34,26 @@ const MessageList = ({
     }
   }, [chatEndRef]);
 
+  // ---- NEW: Jump to specific message (for reply clicks) ----
+  const handleJumpToMessage = useCallback((messageId) => {
+    const element = document.getElementById(`message-${messageId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      
+      // Optional: Add a flash highlight effect
+      const bubble = element.querySelector('.group\\/bubble'); // Targets the bubble inside
+      if (bubble) {
+        bubble.animate([
+            { filter: 'brightness(1)' },
+            { filter: 'brightness(1.5)' },
+            { filter: 'brightness(1)' }
+        ], { duration: 600 });
+      }
+    } else {
+        console.warn(`Message ${messageId} not found in DOM`);
+    }
+  }, []);
+
   const handleScroll = useCallback(() => {
     setShowScrollBottom(!isNearBottom());
   }, [isNearBottom]);
@@ -51,7 +71,6 @@ const MessageList = ({
 
     if (nextCount === 0) return;
 
-    // If new messages arrived
     if (nextCount > prevCount) {
       if (isNearBottom() || prevCount === 0) {
         scrollToBottom("smooth");
@@ -61,7 +80,7 @@ const MessageList = ({
     }
   }, [messages.length, isNearBottom, scrollToBottom]);
 
-  // ---- Group messages by date + sequence ----
+  // ---- Group messages by date + Improved Sequence Logic ----
   const messageGroups = useMemo(() => {
     const groups = [];
     let currentGroup = null;
@@ -76,13 +95,16 @@ const MessageList = ({
       }
 
       const prevMsg = messages[index - 1];
-      const isSequence =
-        prevMsg &&
-        (prevMsg.senderId?._id || prevMsg.senderId) ===
-          (msg.senderId?._id || msg.senderId) &&
-        prevMsg.type !== "system";
+      
+      // LOGIC IMPROVEMENT: 
+      // Check if sender is same AND time difference is less than 60 seconds
+      const isSameSender = prevMsg && (prevMsg.senderId?._id || prevMsg.senderId) === (msg.senderId?._id || msg.senderId);
+      const isWithinTimeWindow = prevMsg && (new Date(msg.createdAt) - new Date(prevMsg.createdAt) < 60000); // 1 minute
+      const isNotSystem = prevMsg?.type !== "system";
 
-      currentGroup.messages.push({ ...msg, isSequence });
+      const isConsecutive = isSameSender && isWithinTimeWindow && isNotSystem;
+
+      currentGroup.messages.push({ ...msg, isConsecutive });
     });
 
     return groups;
@@ -145,20 +167,23 @@ const MessageList = ({
                 </span>
               </div>
 
-              <div className="space-y-0.5">
+              {/* Messages Container - Removed space-y-0.5 to let ChatMessage handle its own spacing */}
+              <div>
                 {group.messages.map((msg) => (
-                  <ChatMessage
-                    key={msg.id || msg._id}
-                    message={msg}
-                    isSequence={msg.isSequence}
-                    selectedMessage={selectedMessage}
-                    setSelectedMessage={setSelectedMessage}
-                    handleDeleteMessage={handleDeleteMessage}
-                    handlePinMessage={handlePinMessage}
-                    handleEditMessage={handleEditMessage}
-                    onReact={onReact}
-                    onReply={onReply}
-                  />
+                  <div key={msg.id || msg._id} id={`message-${msg.id || msg._id}`}>
+                    <ChatMessage
+                      message={msg}
+                      isConsecutive={msg.isConsecutive}
+                      selectedMessage={selectedMessage}
+                      setSelectedMessage={setSelectedMessage}
+                      handleDeleteMessage={handleDeleteMessage}
+                      handlePinMessage={handlePinMessage}
+                      handleEditMessage={handleEditMessage}
+                      onReact={onReact}
+                      onReply={onReply}
+                      onJumpToMessage={handleJumpToMessage}
+                    />
+                  </div>
                 ))}
               </div>
             </div>

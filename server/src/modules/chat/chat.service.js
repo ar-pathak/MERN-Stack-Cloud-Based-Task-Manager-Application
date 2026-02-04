@@ -171,7 +171,7 @@ class ChatService {
             throw new Error("You are not a member of this chat");
         }
 
-        const messages = await Message.find({ chatId, status: "active" })
+        const messages = await Message.find({ chatId, status: { $in: ["active", "edited"] } })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(safeLimit)
