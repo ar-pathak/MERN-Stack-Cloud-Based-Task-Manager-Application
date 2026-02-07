@@ -20,7 +20,7 @@ const ChatHeader = ({
     setShowChatInfo
 }) => {
     const [showDropdown, setShowDropdown] = useState(false);
-    const isDM = item.type === 'dm';
+    const isDM = item.type === 'chat';
 
     // Handlers for dropdown actions
     const handleArchive = () => {
