@@ -1,4 +1,4 @@
-// modules/chat/chat.routes.js (ENHANCED VERSION)
+
 const router = require("express").Router();
 const auth = require("../../middleware/authMiddleware");
 const { validate } = require("../../middleware/validate");
@@ -14,6 +14,10 @@ router.use(auth);
 router.post("/private", validate(v.privateChatSchema), controller.createPrivateChat);
 router.post("/group", validate(v.groupChatSchema), controller.createGroupChat);
 router.get("/", controller.getChats);
+router.get(
+    "/exists/:targetUserId",
+    controller.checkPrivateChat
+);
 
 // Group management
 router.patch(

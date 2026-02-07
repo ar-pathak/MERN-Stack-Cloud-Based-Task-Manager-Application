@@ -6,13 +6,22 @@ const mongoose = require("mongoose");
 class ChatService {
 
     // -----------------------------------------------------------------------
+    //  Check Private Chat Exists
+    // -----------------------------------------------------------------------
+
+    async checkPrivateChatExists(userA, userB) {
+        const chat = await Chat.findOne({
+            type: "private",
+            members: { $all: [userA, userB], $size: 2 }
+        }).select("_id");
+
+        return chat ? chat._id : null;
+    }
+
+    // -----------------------------------------------------------------------
     // 1. Create / Get — Private Chat
     // -----------------------------------------------------------------------
-    /**
-     * Returns an existing private chat between the two users, or creates one.
-     * The $size: 2 constraint prevents accidentally matching a group chat that
-     * happens to contain both users.
-     */
+
     async getOrCreatePrivateChat(userA, userB) {
         // Guard: a user cannot open a private chat with themselves
         if (String(userA) === String(userB)) {

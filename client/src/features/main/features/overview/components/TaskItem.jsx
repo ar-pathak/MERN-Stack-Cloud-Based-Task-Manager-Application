@@ -42,7 +42,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                             )}
                         </button>
                     ) : (
-                        <div className="w-4" />
+                        <div className="w-3.5" />
                     )}
 
                     <div className={`ml-2 h-9 w-9 rounded-lg border flex items-center justify-center ${isTaskCompleted

@@ -96,8 +96,8 @@ export const addMembersToGroup = async (chatId, members) => {
  */
 export const removeMemberFromGroup = async (chatId, userId) => {
     try {
-        const response = await api.delete(`${BASE}/${chatId}/members`, { 
-            data: { userId } 
+        const response = await api.delete(`${BASE}/${chatId}/members`, {
+            data: { userId }
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -157,7 +157,7 @@ export const sendMessage = async (chatId, content, attachments = [], replyTo = n
         if (replyTo) {
             payload.replyTo = replyTo;
         }
-        
+
         const response = await api.post(`${BASE}/message`, payload);
         return response.data?.data || response.data;
     } catch (error) {
@@ -174,9 +174,9 @@ export const sendMessage = async (chatId, content, attachments = [], replyTo = n
  */
 export const editMessage = async (messageId, chatId, content) => {
     try {
-        const response = await api.patch(`${BASE}/message/${messageId}`, { 
-            chatId, 
-            content 
+        const response = await api.patch(`${BASE}/message/${messageId}`, {
+            chatId,
+            content
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -193,8 +193,8 @@ export const editMessage = async (messageId, chatId, content) => {
  */
 export const deleteMessage = async (messageId, chatId) => {
     try {
-        const response = await api.delete(`${BASE}/message/${messageId}`, { 
-            data: { chatId } 
+        const response = await api.delete(`${BASE}/message/${messageId}`, {
+            data: { chatId }
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -249,9 +249,9 @@ export const searchMessages = async (chatId, query, limit = 20) => {
  */
 export const addReaction = async (messageId, chatId, emoji) => {
     try {
-        const response = await api.post(`${BASE}/message/${messageId}/reaction`, { 
-            chatId, 
-            emoji 
+        const response = await api.post(`${BASE}/message/${messageId}/reaction`, {
+            chatId,
+            emoji
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -268,8 +268,8 @@ export const addReaction = async (messageId, chatId, emoji) => {
  */
 export const removeReaction = async (messageId, chatId, emoji) => {
     try {
-        const response = await api.delete(`${BASE}/message/${messageId}/reaction`, { 
-            data: { chatId, emoji } 
+        const response = await api.delete(`${BASE}/message/${messageId}/reaction`, {
+            data: { chatId, emoji }
         });
         return response.data?.data || response.data;
     } catch (error) {
@@ -309,6 +309,23 @@ export const uploadFile = async (file, onProgress) => {
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to upload file",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * GET /api/chat/exists/:targetUserId
+ * Check if a private chat exists with another user
+ * Returns { exists: boolean, chatId: string | null }
+ */
+export const checkPrivateChatExists = async (targetUserId) => {
+    try {
+        const response = await api.get(`${BASE}/exists/${targetUserId}`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to check chat existence",
             status: error.response?.status,
         };
     }

@@ -18,6 +18,7 @@ import {
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
 import TaskItem from "../components/TaskItem";
+import UserChatItem from "../components/UserChatItem"; // <-- NEW IMPORT
 import ChatPanel from "../components/chat/ChatPanel";
 import EmptyState from "../components/EmptyState";
 import SidebarHeader from "../components/SidebarHeader";
@@ -199,6 +200,7 @@ const OverviewLayout = () => {
       };
     }
 
+    // Chats and Tasks come here
     const subtasks = (item.subtasks || []).map(sub => ({
       ...sub,
       type: 'subtask',
@@ -439,6 +441,7 @@ const OverviewLayout = () => {
             <div className="p-2">
               <AnimatePresence mode="popLayout">
                 {filteredItems.map((item, index) => {
+                  // --- CASE 1: TASK ---
                   if (item.type === "task") {
                     return (
                       <motion.div
@@ -461,6 +464,26 @@ const OverviewLayout = () => {
                     );
                   }
 
+                  // --- CASE 2: CHAT  ---
+                  if (item.type === "chat") {
+                    return (
+                        <motion.div
+                            key={item.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            transition={{ delay: index * 0.03 }}
+                        >
+                            <UserChatItem 
+                                chat={item}
+                                selectedItem={selectedItem}
+                                setSelectedItem={setSelectedItem}
+                            />
+                        </motion.div>
+                    );
+                  }
+
+                  // --- CASE 3: WORKSPACE (Default) ---
                   return (
                     <motion.div
                       key={item.id}

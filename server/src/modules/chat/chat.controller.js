@@ -4,6 +4,23 @@ const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 
 module.exports = {
 
+    checkPrivateChat: async (req, res) => {
+        try {
+            const chatId = await chatService.checkPrivateChatExists(
+                req.user._id,
+                req.params.targetUserId
+            );
+
+            if (chatId) {
+                return sendSuccess(res, { exists: true, chatId });
+            } else {
+                return sendSuccess(res, { exists: false, chatId: null });
+            }
+        } catch (e) {
+            handleError(e, res);
+        }
+    },
+
     // ── Private chat ──────────────────────────────────────────────────────
     createPrivateChat: async (req, res) => {
         try {

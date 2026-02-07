@@ -1,7 +1,9 @@
+// modules/overview/overview.service.js
 const Workspace = require("../../models/workspace");
 const Project = require("../../models/project");
 const Task = require("../../models/tasks");
 const Subtask = require("../../models/subtasks");
+const Chat = require("../../models/chat");
 const permissionService = require("./permission.service");
 const WorkspaceMember = require("../../models/workspaceMember");
 
@@ -22,7 +24,7 @@ const overviewService = {
         const createdWorkspaceIds = createdWorkspaces.map(w => w._id);
         const allWorkspaceIds = [...new Set([...workspaceIds, ...createdWorkspaceIds])];
 
-        const [workspaces, projects, tasks, subtasks] = await Promise.all([
+        const [workspaces, projects, tasks, subtasks, chats] = await Promise.all([
             Workspace.find({ _id: { $in: allWorkspaceIds } }).lean(),
             Project.find({
                 $or: [
@@ -38,7 +40,16 @@ const overviewService = {
                     { workspace: { $in: allWorkspaceIds } }
                 ]
             }).lean(),
-            Subtask.find({}).lean()
+            Subtask.find({}).lean(),
+            // Fetch chats where user is a member and there is at least one message
+            Chat.find({
+                members: userId,
+                type: 'private',
+                lastMessage: { $exists: true, $ne: null }
+            })
+                .populate({ path: 'members', select: 'name avatar email' })
+                .populate({ path: 'lastMessage', select: 'content sender createdAt type' })
+                .lean()
         ]);
 
         const subtasksByTask = subtasks.reduce((acc, st) => {
@@ -55,9 +66,9 @@ const overviewService = {
                 description: st.description,
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
-                completed: st.completed, // Note: Duplicated key in original, keeping structure
+                completed: st.completed,
                 dueDate: st.dueDate,
-                createdBy: st.createdBy // Added createdBy for permission check
+                createdBy: st.createdBy
             });
             return acc;
         }, {});
@@ -87,7 +98,6 @@ const overviewService = {
                         canCreateSubtask: projPermissions.canCreateTask || false,
                         role: projPermissions.role || null
                     };
-                    // Project Owners, Admins, and Editors can usually edit tasks
                     if (['owner', 'admin', 'editor'].includes(projPermissions.role)) {
                         canEditTask = true;
                     }
@@ -103,7 +113,6 @@ const overviewService = {
                         canCreateSubtask: wsPermissions.canCreateTask || false,
                         role: wsPermissions.role || null
                     };
-                    // Workspace Owners and Admins can edit tasks
                     if (['owner', 'admin'].includes(wsPermissions.role)) {
                         canEditTask = true;
                     }
@@ -114,7 +123,6 @@ const overviewService = {
             const rawSubtasks = subtasksByTask[taskId] || [];
             const processedSubtasks = rawSubtasks.map(st => {
                 const isSubtaskCreator = String(st.createdBy) === String(userId);
-                // User can edit subtask if they created it OR they have edit rights on the parent task
                 const hasEditAccess = isSubtaskCreator || canEditTask;
 
                 return {
@@ -137,7 +145,7 @@ const overviewService = {
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
                 dueDate: t.dueDate,
-                subtasks: processedSubtasks, // Updated to use processed subtasks
+                subtasks: processedSubtasks,
                 permissions: {
                     canCreateSubtask: taskPermissions.canCreateSubtask || false,
                     role: taskPermissions.role || null
@@ -165,7 +173,6 @@ const overviewService = {
                 .filter(p => String(p.workspace) === wsId)
                 .map(p => {
                     const projId = String(p._id);
-                    // Get project permissions, fallback to workspace permissions
                     const projPermissions = userPermissions.projects[projId] || wsPermissions;
 
                     return {
@@ -208,7 +215,47 @@ const overviewService = {
             };
         });
 
-        const feed = [...workspaceNodes, ...globalTasks]
+        // Process Chats into Feed Nodes
+        const chatNodes = chats.map(chat => {
+            let name = chat.name;
+            let avatar = chat.avatar;
+
+            // Determine display name for Private chats (the other user)
+            if (chat.type === 'private') {
+                // *** UPDATED CHECK: Ensure specifically 2 members for private chat ***
+                if (chat.members && chat.members.length === 2) {
+                    const otherMember = chat.members.find(m => String(m._id) !== String(userId));
+                    if (otherMember) {
+                        name = otherMember.name;
+                        avatar = otherMember.avatar;
+                    }
+                }
+
+                // Fallback: If name is still missing (e.g., data issue), label appropriately
+                if (!name) {
+                    name = "Unknown User";
+                }
+            }
+
+            return {
+                id: chat._id,
+                type: "chat",
+                title: name,
+                description: chat.lastMessage?.content || "Sent an attachment",
+                avatar: avatar,
+                chatType: chat.type,
+                createdAt: chat.createdAt,
+                updatedAt: chat.updatedAt,
+                lastMessage: chat.lastMessage,
+                permissions: {
+                    canView: true,
+                    canEdit: false
+                }
+            };
+        });
+
+        // Merge Workspaces, Global Tasks, and Chats into one timeline
+        const feed = [...workspaceNodes, ...globalTasks, ...chatNodes]
             .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
         return feed;
