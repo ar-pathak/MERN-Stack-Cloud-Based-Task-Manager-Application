@@ -171,7 +171,11 @@ const ChatHeader = ({
                                     >
                                         <Loader2 className="h-3 w-3" />
                                     </motion.div>
-                                    {typingMembers[0].name.split(' ')[0]} is typing...
+                                    {item.chatType === 'private'
+                                        ? "typing..."
+                                        : `${typingMembers[0]?.name.split(' ')[0]} is typing...`
+                                    }
+
                                 </motion.span>
                             ) : (
                                 <p className="text-xs text-slate-400">
