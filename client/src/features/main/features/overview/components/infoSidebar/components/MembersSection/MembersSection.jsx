@@ -64,7 +64,7 @@ const MembersSection = ({ item }) => {
                     </div>
                     <div>
                         <h2 className="text-xl font-bold text-slate-100">{item.type === 'workspace' ? 'Workspace Member' : item.type === 'project' ? 'Project Assignee' : item.type === 'task' ? 'Task Assignee' : 'Subtask Assignee'}</h2>
-                        <p className="text-sm text-slate-400">{members.length} members • {members.filter(m => m.online).length} online</p>
+                        <p className="text-sm text-slate-400">{members.length} members • {members.filter(m => m.user.isOnline).length} online</p>
                     </div>
                 </div>
 

@@ -268,7 +268,7 @@ const workspaceService = {
     getMembers: async (workspaceId) => {
         const members = await WorkspaceMember
             .find({ workspace: workspaceId })
-            .populate('user', 'name email')
+            .populate('user', 'name email isOnline')
             .sort({ role: 1, joinedAt: 1 });
 
         return members;

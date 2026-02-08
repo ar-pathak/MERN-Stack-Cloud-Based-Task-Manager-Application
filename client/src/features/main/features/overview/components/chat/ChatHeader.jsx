@@ -19,6 +19,7 @@ const ChatHeader = ({
     showChatInfo,
     setShowChatInfo
 }) => {
+    console.log("item", item);
     const [showDropdown, setShowDropdown] = useState(false);
     const isDM = item.type === 'chat';
 
