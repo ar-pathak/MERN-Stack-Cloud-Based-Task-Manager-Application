@@ -1,4 +1,3 @@
-// services/Chat.socket.service.js
 import { io } from "socket.io-client";
 
 const SOCKET_URL = import.meta.env?.VITE_API_URL || "http://localhost:3000";
@@ -32,40 +31,50 @@ export const disconnectSocket = () => {
     }
 };
 
-// --- EMITTERS ---
+// ---------------- EMITTERS ----------------
 
 export const emitSendMessage = (chatId, message) => {
-    if (socket) socket.emit("send-message", { chatId, message });
+    if (socket) socket.emit("chat:send", { chatId, message });
 };
 
 export const emitTyping = (chatId) => {
-    if (socket) socket.emit("typing", { chatId });
+    if (socket) socket.emit("chat:typing", { chatId });
 };
 
 export const emitStopTyping = (chatId) => {
-    if (socket) socket.emit("stop-typing", { chatId });
+    if (socket) socket.emit("chat:stop_typing", { chatId });
 };
 
 export const emitMessageRead = (chatId, lastReadMessageId) => {
-    if (socket) socket.emit("message-read", { chatId, lastReadMessageId });
+    if (socket) socket.emit("chat:read", { chatId, lastReadMessageId });
 };
 
-// --- LISTENERS ---
+// ---------------- LISTENERS ----------------
 
-// Helper to safely attach listeners
 const attachListener = (eventName, callback) => {
-    if (!socket) {
-        // console.warn(`[socket] Attempted to listen to '${eventName}' before connection established.`);
-        return () => { };
-    }
+    if (!socket) return () => { };
     socket.on(eventName, callback);
     return () => socket.off(eventName, callback);
 };
 
-export const onReceiveMessage = (callback) => attachListener("receive-message", callback);
-export const onTyping = (callback) => attachListener("typing", callback);
-export const onStopTyping = (callback) => attachListener("stop-typing", callback);
-export const onMessageRead = (callback) => attachListener("message-read", callback);
+export const onReceiveMessage = (callback) =>
+    attachListener("chat:receive", callback);
 
-// ✅ NEW: Listener for Online/Offline updates
-export const onUserStatus = (callback) => attachListener("user-status", callback);
+export const onTyping = (callback) =>
+    attachListener("chat:typing", callback);
+
+export const onStopTyping = (callback) =>
+    attachListener("chat:stop_typing", callback);
+
+export const onMessageRead = (callback) =>
+    attachListener("chat:read_update", callback);
+
+export const onUserStatus = (callback) =>
+    attachListener("user:status", callback);
+
+// 🔥 NEW – Left Sidebar Realtime
+export const onOverviewUpdate = (callback) =>
+    attachListener("overview:update", callback);
+
+export const onOverviewUnread = (callback) =>
+    attachListener("overview:unread", callback);

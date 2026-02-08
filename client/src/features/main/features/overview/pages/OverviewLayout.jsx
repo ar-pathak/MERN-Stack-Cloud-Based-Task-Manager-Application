@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 // Services & Store
@@ -15,10 +15,17 @@ import {
   setIsSubtaskPopupOpen
 } from "../../../../../store/slice/overviewSlice";
 
+// Socket Services
+import {
+  onReceiveMessage,
+  onMessageRead,
+  onOverviewUpdate
+} from "../../../../../service/Chat.socket.service";
+
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
 import TaskItem from "../components/TaskItem";
-import UserChatItem from "../components/UserChatItem"; // <-- NEW IMPORT
+import UserChatItem from "../components/UserChatItem";
 import ChatPanel from "../components/chat/ChatPanel";
 import EmptyState from "../components/EmptyState";
 import SidebarHeader from "../components/SidebarHeader";
@@ -31,6 +38,7 @@ import ProjectPopup from "../../../components/popup/ProjectPopup";
 
 // Hooks
 import { useChatLogic } from "../hook/useChatLogic";
+import { useAuth } from "../../../../../context/AuthContext";
 
 // Skeleton Loader Component
 const SkeletonLoader = () => {
@@ -155,6 +163,8 @@ const OverviewLayout = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
 
+  const { user } = useAuth();
+
   // NEW: Task creation context
   const [taskCreationContext, setTaskCreationContext] = useState({
     level: 'global',
@@ -173,6 +183,23 @@ const OverviewLayout = () => {
 
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
+
+  // UseRef for timeline to access current state inside socket callbacks without dependency cycles
+  const timelineRef = useRef(timeline);
+  const selectedItemRef = useRef(selectedItem);
+
+  useEffect(() => {
+    timelineRef.current = timeline;
+  }, [timeline]);
+
+  useEffect(() => {
+    selectedItemRef.current = selectedItem;
+  }, [selectedItem]);
+
+  const showToast = (message) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 2500);
+  };
 
   // Normalize data helper
   const normalizeNode = useCallback((item) => {
@@ -215,63 +242,184 @@ const OverviewLayout = () => {
     };
   }, []);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoadingTimeline(true);
-        const res = await getOverviewActivity();
-        const payload = res?.data?.data || res?.data || res;
+  // ---------------- MOVED HERE: Refresh Timeline ----------------
+  const refreshTimeline = useCallback(async () => {
+    try {
+      const res = await getOverviewActivity();
+      const payload = res?.data?.data || res?.data || res;
 
-        if (!Array.isArray(payload)) {
-          console.error("Overview API did not return array:", payload);
-          dispatch(setOverviewData({ timeline: [] }));
-          return;
-        }
-
-        const normalized = payload.map(normalizeNode);
-        dispatch(setOverviewData({ timeline: normalized }));
-      } catch (err) {
-        console.error("Failed to load overview data:", err);
-        dispatch(setOverviewData({ timeline: [] }));
-      } finally {
-        setLoadingTimeline(false);
+      if (!Array.isArray(payload)) {
+        console.error("Timeline refresh: expected array, got:", payload);
+        return;
       }
-    };
 
-    fetchData();
+      const normalized = payload.map(normalizeNode);
+      dispatch(setOverviewData({ timeline: normalized }));
+    } catch (err) {
+      console.error("Failed to refresh timeline", err);
+      showToast("Something went wrong while refreshing");
+    }
   }, [dispatch, normalizeNode]);
 
-  // FIX: Sync selectedItem with timeline updates
-  useEffect(() => {
-    if (!selectedItem || !timeline) return;
 
-    const findUpdatedItem = (items, targetId) => {
-      for (const item of items) {
-        if ((item.id || item._id) === targetId) return item;
+  // ---------------- HELPER: DEEP UPDATE & REORDER ----------------
+  const handleSidebarActivity = useCallback((chatId, messageData) => {
+    const currentTimeline = timelineRef.current;
+    const currentSelected = selectedItemRef.current;
+    const currentSelectedId = currentSelected?.id || currentSelected?._id;
+
+    // Helper to deeply update the tree
+    const updateTreeItem = (items, targetId, updateFn) => {
+      let found = false;
+      const newItems = items.map(item => {
+        if (String(item.id || item._id) === String(targetId)) {
+          found = true;
+          return updateFn(item);
+        }
+        // Recursively update children
+        let updatedItem = { ...item };
+        let childUpdated = false;
+
         if (item.projects) {
-          const found = findUpdatedItem(item.projects, targetId);
-          if (found) return found;
+          const updatedProjects = updateTreeItem(item.projects, targetId, updateFn);
+          if (updatedProjects.found) {
+            updatedItem.projects = updatedProjects.items;
+            childUpdated = true;
+          }
         }
         if (item.tasks) {
-          const found = findUpdatedItem(item.tasks, targetId);
-          if (found) return found;
+          const updatedTasks = updateTreeItem(item.tasks, targetId, updateFn);
+          if (updatedTasks.found) {
+            updatedItem.tasks = updatedTasks.items;
+            childUpdated = true;
+          }
         }
         if (item.subtasks) {
-          const found = findUpdatedItem(item.subtasks, targetId);
-          if (found) return found;
+          const updatedSubtasks = updateTreeItem(item.subtasks, targetId, updateFn);
+          if (updatedSubtasks.found) {
+            updatedItem.subtasks = updatedSubtasks.items;
+            childUpdated = true;
+          }
         }
-      }
-      return null;
+
+        if (childUpdated) found = true;
+        return updatedItem;
+      });
+
+      return { items: newItems, found };
     };
 
-    const targetId = selectedItem.id || selectedItem._id;
-    const updatedItem = findUpdatedItem(timeline, targetId);
+    // Is the message for the currently open chat?
+    const isOpen = String(chatId) === String(currentSelectedId);
 
-    // If we found the item and it is a different reference/version than the current selectedItem, update it.
-    if (updatedItem && updatedItem !== selectedItem) {
-      setSelectedItem(updatedItem);
+    const senderId = messageData.sender?._id || messageData.sender?.id;
+    const currentUserId = user?._id || user?.id;
+    const isOwn = String(senderId) === String(currentUserId);
+
+    // Update function for the node
+    const updateNode = (node) => ({
+      ...node,
+      lastMessage: messageData,
+      unreadCount: (isOpen || isOwn) ? 0 : (node.unreadCount || 0) + 1
+    });
+
+    // Attempt to find and update in tree
+    const result = updateTreeItem(currentTimeline, chatId, updateNode);
+
+    if (result.found) {
+      let newTimeline = result.items;
+
+      // REORDER LOGIC:
+      const rootIndex = newTimeline.findIndex(item => String(item.id || item._id) === String(chatId));
+
+      if (rootIndex > 0) {
+        const [movedItem] = newTimeline.splice(rootIndex, 1);
+        newTimeline.unshift(movedItem);
+      }
+
+      dispatch(setOverviewData({ timeline: newTimeline }));
     }
-  }, [timeline, selectedItem]);
+  }, [dispatch, user]);
+
+  // ---------------- WRAPPER: HANDLE SEND MESSAGE ----------------
+  const handleSendMessageWrapper = async (options) => {
+    // 1. Capture content before it is cleared
+    const contentToSend = chat.chatMessage;
+    const currentChatId = selectedItem?.id || selectedItem?._id;
+
+    // 2. Call the actual send logic
+    await chat.handleSendMessage(options);
+
+    // 3. Manually trigger sidebar update (Optimistic)
+    if (currentChatId && (contentToSend.trim() || options?.attachments)) {
+      const optimisticMsg = {
+        _id: `temp-${Date.now()}`,
+        content: options?.attachments ? 'Sent an attachment' : contentToSend,
+        sender: user,
+        createdAt: new Date().toISOString()
+      };
+
+      handleSidebarActivity(currentChatId, optimisticMsg);
+    }
+  };
+
+  // Fetch Initial Data
+  useEffect(() => {
+    setLoadingTimeline(true);
+    refreshTimeline().finally(() => setLoadingTimeline(false));
+  }, [refreshTimeline]);
+
+  // ---------------- SOCKET EVENT HANDLERS ----------------
+  useEffect(() => {
+    // 1. Receive Message
+    const handleReceiveMessage = ({ chatId, message }) => {
+      handleSidebarActivity(chatId, message);
+    };
+
+    // 2. Read Update (Clear unread count)
+    const handleReadUpdate = ({ chatId }) => {
+      const currentTimeline = timelineRef.current;
+
+      const updateTreeItem = (items) => {
+        return items.map(item => {
+          if (String(item.id || item._id) === String(chatId)) {
+            return { ...item, unreadCount: 0 };
+          }
+          // Recursion
+          let newItem = { ...item };
+          if (item.projects) newItem.projects = updateTreeItem(item.projects);
+          if (item.tasks) newItem.tasks = updateTreeItem(item.tasks);
+          if (item.subtasks) newItem.subtasks = updateTreeItem(item.subtasks);
+          return newItem;
+        });
+      };
+
+      const newTimeline = updateTreeItem(currentTimeline);
+      dispatch(setOverviewData({ timeline: newTimeline }));
+    };
+
+    // 3. Overview Refresh
+    const handleOverviewUpdate = (data) => {
+      if (data && Array.isArray(data)) {
+        const normalized = data.map(normalizeNode);
+        dispatch(setOverviewData({ timeline: normalized }));
+      } else {
+        refreshTimeline();
+      }
+    };
+
+    // Attach Listeners
+    const unsubReceive = onReceiveMessage(handleReceiveMessage);
+    const unsubRead = onMessageRead(handleReadUpdate);
+    const unsubOverview = onOverviewUpdate(handleOverviewUpdate);
+
+    return () => {
+      unsubReceive();
+      unsubRead();
+      unsubOverview();
+    };
+  }, [dispatch, normalizeNode, handleSidebarActivity, refreshTimeline]);
+
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
@@ -294,29 +442,6 @@ const OverviewLayout = () => {
       return true;
     });
   }, [timeline, searchQuery, filterType]);
-
-  const showToast = (message) => {
-    setToast(message);
-    setTimeout(() => setToast(null), 2500);
-  };
-
-  const refreshTimeline = useCallback(async () => {
-    try {
-      const res = await getOverviewActivity();
-      const payload = res?.data?.data || res?.data || res;
-
-      if (!Array.isArray(payload)) {
-        console.error("Timeline refresh: expected array, got:", payload);
-        return;
-      }
-
-      const normalized = payload.map(normalizeNode);
-      dispatch(setOverviewData({ timeline: normalized }));
-    } catch (err) {
-      console.error("Failed to refresh timeline", err);
-      showToast("Something went wrong while refreshing");
-    }
-  }, [dispatch, normalizeNode]);
 
   // NEW: Enhanced task creation handlers
   const handleCreateGlobalTask = () => {
@@ -446,6 +571,7 @@ const OverviewLayout = () => {
                     return (
                       <motion.div
                         key={item.id}
+                        layout="position"
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95 }}
@@ -467,19 +593,20 @@ const OverviewLayout = () => {
                   // --- CASE 2: CHAT  ---
                   if (item.type === "chat") {
                     return (
-                        <motion.div
-                            key={item.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ delay: index * 0.03 }}
-                        >
-                            <UserChatItem 
-                                chat={item}
-                                selectedItem={selectedItem}
-                                setSelectedItem={setSelectedItem}
-                            />
-                        </motion.div>
+                      <motion.div
+                        key={item.id}
+                        layout="position"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ delay: index * 0.03 }}
+                      >
+                        <UserChatItem
+                          chat={item}
+                          selectedItem={selectedItem}
+                          setSelectedItem={setSelectedItem}
+                        />
+                      </motion.div>
                     );
                   }
 
@@ -487,6 +614,7 @@ const OverviewLayout = () => {
                   return (
                     <motion.div
                       key={item.id}
+                      layout="position"
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95 }}
@@ -543,7 +671,7 @@ const OverviewLayout = () => {
                 messages={chat.messages}
                 chatMessage={chat.chatMessage}
                 setChatMessage={chat.setChatMessage}
-                handleSendMessage={chat.handleSendMessage}
+                handleSendMessage={handleSendMessageWrapper} // <-- WRAPPER PASSED HERE
                 showChatInfo={chat.showChatInfo}
                 setShowChatInfo={chat.setShowChatInfo}
                 selectedMessage={chat.selectedMessage}
