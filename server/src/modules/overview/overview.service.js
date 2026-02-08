@@ -9,7 +9,7 @@ const WorkspaceMember = require("../../models/workspaceMember");
 
 const overviewService = {
     activity: async (userId) => {
-        // Get user's permissions
+        // 1. Get user's permissions and workspace memberships
         const userPermissions = await permissionService.getUserPermissionsForTimeline(userId);
 
         const memberships = await WorkspaceMember
@@ -24,37 +24,100 @@ const overviewService = {
         const createdWorkspaceIds = createdWorkspaces.map(w => w._id);
         const allWorkspaceIds = [...new Set([...workspaceIds, ...createdWorkspaceIds])];
 
+        // --- DEFINING POPULATION LOGIC ---
+        // We use 'senderId' because that is the field name in your Message model
+        const commonChatPopulate = {
+            path: 'chatId',
+            select: 'lastMessage',
+            populate: {
+                path: 'lastMessage',
+                select: 'content senderId createdAt type',
+                populate: {
+                    path: 'senderId', // <--- Corrected to match Message Model
+                    select: 'username avatar email'
+                }
+            }
+        };
+
+        // 2. Fetch all necessary data
         const [workspaces, projects, tasks, subtasks, chats] = await Promise.all([
-            Workspace.find({ _id: { $in: allWorkspaceIds } }).lean(),
+            Workspace.find({ _id: { $in: allWorkspaceIds } })
+                .populate(commonChatPopulate)
+                .lean(),
             Project.find({
                 $or: [
                     { workspace: { $in: allWorkspaceIds } },
                     { owner: userId },
                     { 'members.user': userId }
                 ]
-            }).lean(),
+            })
+                .populate(commonChatPopulate)
+                .lean(),
             Task.find({
                 $or: [
                     { assignees: userId },
                     { createdBy: userId },
                     { workspace: { $in: allWorkspaceIds } }
                 ]
-            }).lean(),
+            })
+                .populate(commonChatPopulate)
+                .lean(),
             Subtask.find({}).lean(),
-            // Fetch chats where user is a member and there is at least one message
             Chat.find({
                 members: userId,
                 type: 'private',
                 lastMessage: { $exists: true, $ne: null }
             })
                 .populate({ path: 'members', select: 'name avatar email' })
-                .populate({ path: 'lastMessage', select: 'content sender createdAt type' })
+                .populate({
+                    path: 'lastMessage',
+                    select: 'content senderId createdAt type',
+                    populate: { path: 'senderId', select: 'username avatar' } // <--- Corrected here too
+                })
                 .lean()
         ]);
 
+        /**
+         * HELPER: Calculates activity time for a single entity.
+         * Checks: lastMessage.createdAt vs updatedAt vs createdAt
+         */
+        const getOwnActivityTime = (entity) => {
+            let lastMsgTime = 0;
+
+            // Handle direct Chat objects or populated chatIds
+            if (entity.lastMessage && entity.lastMessage.createdAt) {
+                lastMsgTime = new Date(entity.lastMessage.createdAt).getTime();
+            } else if (entity.chatId && entity.chatId.lastMessage && entity.chatId.lastMessage.createdAt) {
+                lastMsgTime = new Date(entity.chatId.lastMessage.createdAt).getTime();
+            }
+
+            const updateTime = entity.updatedAt ? new Date(entity.updatedAt).getTime() : 0;
+            const createTime = entity.createdAt ? new Date(entity.createdAt).getTime() : 0;
+
+            return Math.max(lastMsgTime, updateTime, createTime);
+        };
+
+        /**
+         * HELPER: Formats the last message object for the frontend
+         */
+        const formatLastMessage = (chatObj) => {
+            if (!chatObj || !chatObj.lastMessage) return null;
+            const msg = chatObj.lastMessage;
+            return {
+                content: msg.content,
+                createdAt: msg.createdAt,
+                type: msg.type,
+                sender: msg.senderId // This contains the populated User object (name, avatar)
+            };
+        };
+
+        // ---------------------------------------------------------
+        // LEVEL 1: Process Subtasks
+        // ---------------------------------------------------------
         const subtasksByTask = subtasks.reduce((acc, st) => {
             const key = String(st.task);
             if (!acc[key]) acc[key] = [];
+
             acc[key].push({
                 id: st._id,
                 task: st.task,
@@ -66,13 +129,14 @@ const overviewService = {
                 description: st.description,
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
-                completed: st.completed,
-                dueDate: st.dueDate,
-                createdBy: st.createdBy
+                latestActivity: getOwnActivityTime(st) // Store to bubble up
             });
             return acc;
         }, {});
 
+        // ---------------------------------------------------------
+        // LEVEL 2: Process Tasks (Bubble up Subtask Activity)
+        // ---------------------------------------------------------
         const tasksByProject = {};
         const tasksByWorkspace = {};
         const globalTasks = [];
@@ -80,70 +144,58 @@ const overviewService = {
         for (const t of tasks) {
             const taskId = String(t._id);
 
-            // Get permissions with fallback chain: task -> project -> workspace
+            // --- Permission Logic ---
             let taskPermissions = userPermissions.tasks[taskId] || {};
             let canEditTask = false;
 
-            // 1. Check Task Level Permissions
-            if (taskPermissions.role === 'creator' || taskPermissions.role === 'assignee') {
-                canEditTask = true;
-            }
+            if (taskPermissions.role === 'creator' || taskPermissions.role === 'assignee') canEditTask = true;
 
-            // 2. If task has a project, inherit project permissions
+            // Inherit Project/Workspace permissions logic...
             if (t.project && !taskPermissions.role) {
                 const projId = String(t.project);
                 const projPermissions = userPermissions.projects[projId];
                 if (projPermissions) {
-                    taskPermissions = {
-                        canCreateSubtask: projPermissions.canCreateTask || false,
-                        role: projPermissions.role || null
-                    };
-                    if (['owner', 'admin', 'editor'].includes(projPermissions.role)) {
-                        canEditTask = true;
-                    }
+                    taskPermissions = { canCreateSubtask: projPermissions.canCreateTask || false, role: projPermissions.role || null };
+                    if (['owner', 'admin', 'editor'].includes(projPermissions.role)) canEditTask = true;
                 }
             }
-
-            // 3. If task has a workspace (and no project permissions), inherit workspace permissions
             if (t.workspace && !taskPermissions.role) {
                 const wsId = String(t.workspace);
                 const wsPermissions = userPermissions.workspaces[wsId];
                 if (wsPermissions) {
-                    taskPermissions = {
-                        canCreateSubtask: wsPermissions.canCreateTask || false,
-                        role: wsPermissions.role || null
-                    };
-                    if (['owner', 'admin'].includes(wsPermissions.role)) {
-                        canEditTask = true;
-                    }
+                    taskPermissions = { canCreateSubtask: wsPermissions.canCreateTask || false, role: wsPermissions.role || null };
+                    if (['owner', 'admin'].includes(wsPermissions.role)) canEditTask = true;
                 }
             }
 
-            // 4. Process Subtasks with Permissions
             const rawSubtasks = subtasksByTask[taskId] || [];
+
+            // Bubbling: Max activity among subtasks
+            const maxSubtaskActivity = rawSubtasks.length > 0
+                ? Math.max(...rawSubtasks.map(s => s.latestActivity))
+                : 0;
+
             const processedSubtasks = rawSubtasks.map(st => {
                 const isSubtaskCreator = String(st.createdBy) === String(userId);
                 const hasEditAccess = isSubtaskCreator || canEditTask;
-
-                return {
-                    ...st,
-                    permissions: {
-                        canEdit: hasEditAccess,
-                        canDelete: hasEditAccess
-                    }
-                };
+                return { ...st, permissions: { canEdit: hasEditAccess, canDelete: hasEditAccess } };
             });
+
+            // Task Final Time = Max(Own, Subtasks)
+            const taskFinalActivity = Math.max(getOwnActivityTime(t), maxSubtaskActivity);
 
             const taskObj = {
                 id: t._id,
                 type: "task",
                 title: t.title,
-                chatId: t.chatId,
+                chatId: t.chatId?._id || t.chatId,
+                lastMessage: formatLastMessage(t.chatId), // <--- Format Message with Sender
                 description: t.description,
                 status: t.status,
                 isHighPriority: t.isHighPriority,
                 createdAt: t.createdAt,
                 updatedAt: t.updatedAt,
+                latestActivity: taskFinalActivity, // Bubbled up
                 dueDate: t.dueDate,
                 subtasks: processedSubtasks,
                 permissions: {
@@ -165,6 +217,9 @@ const overviewService = {
             }
         }
 
+        // ---------------------------------------------------------
+        // LEVEL 3 & 4: Process Projects & Workspaces (Bubble up)
+        // ---------------------------------------------------------
         const workspaceNodes = workspaces.map(ws => {
             const wsId = String(ws._id);
             const wsPermissions = userPermissions.workspaces[wsId] || {};
@@ -174,6 +229,14 @@ const overviewService = {
                 .map(p => {
                     const projId = String(p._id);
                     const projPermissions = userPermissions.projects[projId] || wsPermissions;
+                    const projectTasks = tasksByProject[projId] || [];
+
+                    // Bubbling: Max activity among tasks
+                    const maxTaskActivity = projectTasks.length > 0
+                        ? Math.max(...projectTasks.map(tk => tk.latestActivity))
+                        : 0;
+
+                    const projectFinalActivity = Math.max(getOwnActivityTime(p), maxTaskActivity);
 
                     return {
                         id: p._id,
@@ -181,14 +244,15 @@ const overviewService = {
                         name: p.name,
                         workspace: p.workspace,
                         description: p.description,
-                        chatId: p.chatId,
+                        chatId: p.chatId?._id || p.chatId,
+                        lastMessage: formatLastMessage(p.chatId), // <--- Format Message with Sender
                         status: p.status,
                         isHighPriority: p.isHighPriority,
                         createdAt: p.createdAt,
                         updatedAt: p.updatedAt,
+                        latestActivity: projectFinalActivity,
                         dueDate: p.dueDate,
-                        tasks: (tasksByProject[projId] || [])
-                            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+                        tasks: projectTasks.sort((a, b) => b.latestActivity - a.latestActivity),
                         permissions: {
                             canCreateTask: projPermissions.canCreateTask || false,
                             role: projPermissions.role || null
@@ -196,17 +260,30 @@ const overviewService = {
                     };
                 });
 
+            const directWsTasks = tasksByWorkspace[wsId] || [];
+
+            // Bubbling: Max activity among projects and direct tasks
+            const maxProjectActivity = wsProjects.length > 0
+                ? Math.max(...wsProjects.map(p => p.latestActivity))
+                : 0;
+            const maxDirectTaskActivity = directWsTasks.length > 0
+                ? Math.max(...directWsTasks.map(t => t.latestActivity))
+                : 0;
+
+            const wsFinalActivity = Math.max(getOwnActivityTime(ws), maxProjectActivity, maxDirectTaskActivity);
+
             return {
                 id: ws._id,
                 type: "workspace",
                 name: ws.name,
                 description: ws.description,
-                chatId: ws.chatId,
+                chatId: ws.chatId?._id || ws.chatId,
+                lastMessage: formatLastMessage(ws.chatId), // <--- Format Message with Sender
                 createdAt: ws.createdAt,
                 updatedAt: ws.updatedAt,
-                projects: wsProjects,
-                tasks: (tasksByWorkspace[wsId] || [])
-                    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)),
+                latestActivity: wsFinalActivity,
+                projects: wsProjects.sort((a, b) => b.latestActivity - a.latestActivity),
+                tasks: directWsTasks.sort((a, b) => b.latestActivity - a.latestActivity),
                 permissions: {
                     canCreateProject: wsPermissions.canCreateProject || false,
                     canCreateTask: wsPermissions.canCreateTask || false,
@@ -215,14 +292,14 @@ const overviewService = {
             };
         });
 
-        // Process Chats into Feed Nodes
+        // ---------------------------------------------------------
+        // LEVEL 5: Process Chats
+        // ---------------------------------------------------------
         const chatNodes = chats.map(chat => {
             let name = chat.name;
             let avatar = chat.avatar;
 
-            // Determine display name for Private chats (the other user)
             if (chat.type === 'private') {
-                // *** UPDATED CHECK: Ensure specifically 2 members for private chat ***
                 if (chat.members && chat.members.length === 2) {
                     const otherMember = chat.members.find(m => String(m._id) !== String(userId));
                     if (otherMember) {
@@ -230,11 +307,7 @@ const overviewService = {
                         avatar = otherMember.avatar;
                     }
                 }
-
-                // Fallback: If name is still missing (e.g., data issue), label appropriately
-                if (!name) {
-                    name = "Unknown User";
-                }
+                if (!name) name = "Unknown User";
             }
 
             return {
@@ -246,17 +319,25 @@ const overviewService = {
                 chatType: chat.type,
                 createdAt: chat.createdAt,
                 updatedAt: chat.updatedAt,
-                lastMessage: chat.lastMessage,
-                permissions: {
-                    canView: true,
-                    canEdit: false
-                }
+                latestActivity: getOwnActivityTime(chat),
+                // Map senderId to sender for consistency
+                lastMessage: chat.lastMessage ? {
+                    content: chat.lastMessage.content,
+                    createdAt: chat.lastMessage.createdAt,
+                    type: chat.lastMessage.type,
+                    sender: chat.lastMessage.senderId // This is the populated User object
+                } : null,
+                permissions: { canView: true, canEdit: false }
             };
         });
 
-        // Merge Workspaces, Global Tasks, and Chats into one timeline
+        // ---------------------------------------------------------
+        // Final Merge & Sort
+        // ---------------------------------------------------------
+        globalTasks.sort((a, b) => b.latestActivity - a.latestActivity);
+
         const feed = [...workspaceNodes, ...globalTasks, ...chatNodes]
-            .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+            .sort((a, b) => b.latestActivity - a.latestActivity);
 
         return feed;
     }

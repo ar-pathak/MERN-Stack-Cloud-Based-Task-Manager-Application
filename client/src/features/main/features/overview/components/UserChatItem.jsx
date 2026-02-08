@@ -1,25 +1,30 @@
 import React from 'react';
 import { MessageSquare, Users } from 'lucide-react';
-
+import { useAuth } from "../../../../../context/AuthContext";
 const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
     const isSelected = selectedItem?.id === chat.id;
     const isGroup = chat.chatType === 'group';
-
-    // Helper to format time (e.g., 10:30 PM)
-    const formatTime = (dateString) => {
+    const { user } = useAuth();
+    const formatActivityTime = (dateString) => {
         if (!dateString) return '';
         const date = new Date(dateString);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const now = new Date();
+        const isToday = date.toDateString() === now.toDateString();
+
+        if (isToday) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
     };
 
     return (
         <div
-            className={`group flex items-center gap-3 px-3 py-3 mb-2 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-sky-500' : 'border-l-2 border-transparent'
+            className={`group flex items-start gap-3 px-3 py-3 mb-1 rounded-xl cursor-pointer transition-all ${isSelected
+                ? 'bg-slate-800/80 border-l-2 border-sky-500'
+                : 'hover:bg-slate-800/40 border-l-2 border-transparent'
                 }`}
             onClick={() => setSelectedItem(chat)}
         >
-            {/* Avatar Section */}
-            <div className="relative flex-shrink-0 px-1.5 ml-4.5">
+            {/* 1. LEADING: Fixed Size 40px (h-10 w-10) for perfect alignment */}
+            <div className="relative flex-shrink-0 h-10 w-10 ml-4.5">
                 <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center overflow-hidden">
                     {chat.avatar ? (
                         <img src={chat.avatar} alt={chat.title} className="h-full w-full object-cover" />
@@ -29,7 +34,7 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                         </span>
                     )}
                 </div>
-                {/* Type Badge (Group vs Private) */}
+                {/* Type Badge */}
                 <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
                     {isGroup ? (
                         <Users className="h-2.5 w-2.5 text-indigo-400" />
@@ -39,26 +44,25 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                 </div>
             </div>
 
-            {/* Content Section */}
-            <div className="flex-1 min-w-0">
+            {/* 2. CONTENT */}
+            <div className="flex-1 min-w-0 pt-0.5">
                 <div className="flex items-center justify-between mb-0.5">
                     <span className={`text-sm font-semibold truncate ${isSelected ? 'text-sky-400' : 'text-slate-200'}`}>
                         {chat.title}
                     </span>
-                    <span className="text-[10px] text-slate-500 flex-shrink-0">
-                        {formatTime(chat.updatedAt)}
+                    <span className="text-[10px] text-slate-500 flex-shrink-0 ml-2">
+                        {formatActivityTime(chat.updatedAt)}
                     </span>
                 </div>
 
                 <div className="flex items-center">
                     <p className="text-xs text-slate-500 truncate group-hover:text-slate-400 transition-colors">
-                        {/* Show sender name if it's a group chat */}
-                        {isGroup && chat.lastMessage?.sender && (
-                            <span className="text-slate-400 mr-1 font-medium">
-                                {chat.lastMessage.sender.name?.split(' ')[0]}:
+                        {chat.lastMessage?.sender && (
+                            <span className={`${isSelected ? 'text-sky-500/80' : 'text-slate-400'} mr-1 font-medium`}>
+                                {user.username === chat.lastMessage?.sender?.username ? 'You' : chat.lastMessage?.sender?.username?.split(' ')[0] || 'User'}
                             </span>
                         )}
-                        {chat.description || "Start a conversation"}
+                        {chat.description || chat.lastMessage?.content || "Start a conversation"}
                     </p>
                 </div>
             </div>
