@@ -45,7 +45,7 @@ const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole }) 
                     <div className={`h-12 w-12 rounded-xl bg-gradient-to-br ${getAvatarGradient(member._id)} flex items-center justify-center text-sm font-bold text-white shadow-lg`}>
                         {member.user?.name ? member.user.name.substring(0, 2).toUpperCase() : member?.name ? member.name.substring(0, 2).toUpperCase() : "??"}
                     </div>
-                    {member?.user?.isOnline && <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center"><div className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" /></div>}
+                    {(member?.user?.isOnline || member?.isOnline) && <div className="absolute -bottom-1 -right-1 h-4 w-4 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center"><div className="h-2 w-2 bg-emerald-400 rounded-full animate-pulse" /></div>}
                 </div>
 
                 {/* Details */}

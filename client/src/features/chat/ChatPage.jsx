@@ -23,7 +23,6 @@ import {
 } from "../../service/Chat.socket.service";
 
 const ChatPage = () => {
-    const { userId: targetUserId } = useParams();
     const { user: currentUser, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();

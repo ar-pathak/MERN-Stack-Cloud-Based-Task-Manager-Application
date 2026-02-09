@@ -53,7 +53,7 @@ const WorkspaceItem = ({
             >
                 {/* 1. Leading Section: Chevron + Icon */}
                 <div className="flex items-start gap-1">
-                    <div className="mt-3"> {/* Aligned vertically with the center of the 40px icon */}
+                    <div className="mt-3">
                         {(workspace.tasks?.length > 0 || workspace.projects?.length > 0) ? (
                             <button
                                 onClick={(e) => {
@@ -74,15 +74,21 @@ const WorkspaceItem = ({
                     </div>
 
                     <div className="relative flex-shrink-0">
-                        {/* Standardized to h-10 w-10 to match Chat Item */}
+                        {/* Workspace Icon */}
                         <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500/20 to-blue-600/20 border border-sky-500/30 flex items-center justify-center">
                             <Briefcase className="h-5 w-5 text-sky-400" />
                         </div>
-                        {workspace.unreadCount > 0 && (
+
+                        {/* UNREAD INDICATORS */}
+                        {workspace.unreadCount > 0 ? (
+                            // Main Badge (Count)
                             <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-sky-500 border-2 border-slate-900 flex items-center justify-center">
                                 <span className="text-[9px] font-bold text-white">{workspace.unreadCount}</span>
                             </div>
-                        )}
+                        ) : workspace.hasChildUnread ? (
+                            // Child Indicator (Dot)
+                            <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-sky-500 border-2 border-slate-900"></div>
+                        ) : null}
                     </div>
                 </div>
 
@@ -102,7 +108,6 @@ const WorkspaceItem = ({
                         )}
                     </div>
 
-                    {/* Workspace Last Message */}
                     {wsLastMsg && (
                         <p className="text-xs text-slate-500 truncate">
                             <span className="text-sky-500/80 font-medium">
@@ -112,7 +117,7 @@ const WorkspaceItem = ({
                     )}
                 </div>
 
-                {/* 3. Actions (Hover) */}
+                {/* 3. Actions */}
                 <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity mt-0.5">
                     {canCreateProject && (
                         <button
@@ -182,15 +187,27 @@ const WorkspaceItem = ({
                                         )}
                                     </div>
 
-                                    <div className={`flex-shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center ${isProjectCompleted
-                                        ? 'bg-purple-500/20 border-purple-500/30'
-                                        : 'bg-purple-500/10 border-purple-500/20'
-                                        }`}>
-                                        {isProjectCompleted ? (
-                                            <Check className="h-4 w-4 text-purple-400" />
-                                        ) : (
-                                            <FolderOpen className="h-4 w-4 text-purple-400" />
-                                        )}
+                                    {/* PROJECT ICON WITH INDICATORS */}
+                                    <div className="relative flex-shrink-0">
+                                        <div className={`h-8 w-8 rounded-lg border flex items-center justify-center ${isProjectCompleted
+                                            ? 'bg-purple-500/20 border-purple-500/30'
+                                            : 'bg-purple-500/10 border-purple-500/20'
+                                            }`}>
+                                            {isProjectCompleted ? (
+                                                <Check className="h-4 w-4 text-purple-400" />
+                                            ) : (
+                                                <FolderOpen className="h-4 w-4 text-purple-400" />
+                                            )}
+                                        </div>
+
+                                        {/* Indicators */}
+                                        {project.unreadCount > 0 ? (
+                                            <div className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-sky-500 border-2 border-slate-900 flex items-center justify-center">
+                                                <span className="text-[8px] font-bold text-white">{project.unreadCount}</span>
+                                            </div>
+                                        ) : project.hasChildUnread ? (
+                                            <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-sky-500 border-2 border-slate-900"></div>
+                                        ) : null}
                                     </div>
 
                                     <div className="flex-1 min-w-0 ml-1.5 pt-0.5">
@@ -206,7 +223,6 @@ const WorkspaceItem = ({
                                             )}
                                         </div>
 
-                                        {/* Project Last Message */}
                                         {projLastMsg && (
                                             <p className="text-xs text-slate-500 truncate mt-0.5">
                                                 <span className="text-purple-400/80">

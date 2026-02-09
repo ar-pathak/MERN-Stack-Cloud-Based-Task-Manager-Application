@@ -392,7 +392,7 @@ const taskService = {
     getTaskById: async (taskId) => {
         const task = await Task.findById(taskId)
             .populate('createdBy', 'name email')
-            .populate('assignees', 'name email')
+            .populate('assignees', 'name email isOnline')
             .populate('assigneesTeams')
             .populate({
                 path: 'project',

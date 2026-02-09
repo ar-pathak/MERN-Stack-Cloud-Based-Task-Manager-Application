@@ -20,7 +20,7 @@ import {
   onReceiveMessage,
   onMessageRead,
   onOverviewUpdate,
-  onOverviewUnread // [ADDED] Import the unread listener
+  onOverviewUnread
 } from "../../../../../service/Chat.socket.service";
 
 // Components
@@ -57,7 +57,7 @@ const SkeletonLoader = () => {
             <div className="w-16 h-6 bg-slate-700/30 rounded" />
           </div>
 
-          {/* Nested items skeleton (for some items) */}
+          {/* Nested items skeleton */}
           {i % 2 === 0 && (
             <div className="ml-8 space-y-2">
               <div className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-800/20">
@@ -166,7 +166,6 @@ const OverviewLayout = () => {
 
   const { user } = useAuth();
 
-  // NEW: Task creation context
   const [taskCreationContext, setTaskCreationContext] = useState({
     level: 'global',
     workspaceId: null,
@@ -185,7 +184,6 @@ const OverviewLayout = () => {
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
 
-  // UseRef for timeline to access current state inside socket callbacks without dependency cycles
   const timelineRef = useRef(timeline);
   const selectedItemRef = useRef(selectedItem);
 
@@ -193,18 +191,11 @@ const OverviewLayout = () => {
     timelineRef.current = timeline;
   }, [timeline]);
 
-  // [FIX] Update Unread Count when Selected Item Changes
   useEffect(() => {
     selectedItemRef.current = selectedItem;
-
-    // Explicitly reset unread count if we selected a chat
     if (selectedItem) {
       const chatId = selectedItem.id || selectedItem._id;
-      // Ensure handleUnreadUpdate is defined or accessible here
-      // We can call the logic directly since we have the function definition below
-      // But since 'handleUnreadUpdate' is defined via useCallback below, we need to ensure dependency order.
-      // The safest way is to do it in the render or trigger it. 
-      // We will call the logic from handleUnreadUpdate here directly or ensure the function is available.
+      // We rely on the socket listener logic to reset, but we can double check here later
     }
   }, [selectedItem]);
 
@@ -214,7 +205,6 @@ const OverviewLayout = () => {
     setTimeout(() => setToast(null), 2500);
   };
 
-  // Normalize data helper
   const normalizeNode = useCallback((item) => {
     if (item.type === "workspace") {
       const projects = (item.projects || []).map(normalizeNode);
@@ -240,7 +230,7 @@ const OverviewLayout = () => {
       };
     }
 
-    // Chats and Tasks come here
+    // Chats and Tasks
     const subtasks = (item.subtasks || []).map(sub => ({
       ...sub,
       type: 'subtask',
@@ -255,7 +245,6 @@ const OverviewLayout = () => {
     };
   }, []);
 
-  // ---------------- Refresh Timeline ----------------
   const refreshTimeline = useCallback(async () => {
     try {
       const res = await getOverviewActivity();
@@ -274,11 +263,9 @@ const OverviewLayout = () => {
     }
   }, [dispatch, normalizeNode]);
 
-  // ---------------- HELPER: DEEP UPDATE & REORDER ----------------
   const handleSidebarActivity = useCallback((chatId, messageData) => {
     const currentTimeline = timelineRef.current;
 
-    // Helper to deeply update the tree
     const updateTreeItem = (items, targetId, updateFn) => {
       let found = false;
       const newItems = items.map(item => {
@@ -286,7 +273,6 @@ const OverviewLayout = () => {
           found = true;
           return updateFn(item);
         }
-        // Recursively update children
         let updatedItem = { ...item };
         let childUpdated = false;
 
@@ -319,8 +305,6 @@ const OverviewLayout = () => {
       return { items: newItems, found };
     };
 
-    // Update function for the node (Preview & Time only)
-    // NOTE: Unread counts are handled by 'overview:unread' event
     const updateNode = (node) => ({
       ...node,
       lastMessage: messageData,
@@ -331,15 +315,12 @@ const OverviewLayout = () => {
 
     if (result.found) {
       let newTimeline = result.items;
-
-      // REORDER LOGIC: Move to top
       const rootIndex = newTimeline.findIndex(item => String(item.id || item._id) === String(chatId));
 
       if (rootIndex > 0) {
         const [movedItem] = newTimeline.splice(rootIndex, 1);
         newTimeline.unshift(movedItem);
       } else if (rootIndex === -1) {
-        // If it's a nested item, strictly we might want to resort the whole list
         newTimeline.sort((a, b) => {
           const timeA = new Date(a.latestActivity || 0).getTime();
           const timeB = new Date(b.latestActivity || 0).getTime();
@@ -351,27 +332,22 @@ const OverviewLayout = () => {
     }
   }, [dispatch]);
 
-  // ---------------- [NEW] HANDLE UNREAD COUNTS ----------------
   const handleUnreadUpdate = useCallback((data) => {
     const { chatId, incrementBy, reset } = data;
     const currentTimeline = timelineRef.current;
 
     const updateRecursive = (items) => {
       return items.map(item => {
-        // Check match
         if (String(item.id || item._id) === String(chatId)) {
           let newCount = item.unreadCount || 0;
-
           if (reset) {
             newCount = 0;
           } else if (incrementBy) {
             newCount += incrementBy;
           }
-
           return { ...item, unreadCount: newCount };
         }
 
-        // Recurse
         let newItem = { ...item };
         if (item.projects) newItem.projects = updateRecursive(item.projects);
         if (item.tasks) newItem.tasks = updateRecursive(item.tasks);
@@ -385,27 +361,18 @@ const OverviewLayout = () => {
     dispatch(setOverviewData({ timeline: newTimeline }));
   }, [dispatch]);
 
-  // [FIX] Listener to reset count when item is selected
   useEffect(() => {
     if (selectedItem) {
       const chatId = selectedItem.id || selectedItem._id;
-      // Trigger local update immediately
       handleUnreadUpdate({ chatId, reset: true });
     }
   }, [selectedItem, handleUnreadUpdate]);
 
-  // ---------------- WRAPPER: HANDLE SEND MESSAGE ----------------
   const handleSendMessageWrapper = async (options) => {
-    // 1. Capture content before it is cleared
     const contentToSend = chat.chatMessage;
     const currentChatId = selectedItem?.id || selectedItem?._id;
-
-    // 2. Call the actual send logic
     await chat.handleSendMessage(options);
 
-    // 3. Manually trigger sidebar update (Optimistic)
-    // NOTE: This updates sidebar preview only, it does not duplicate chat messages
-    // because useChatLogic handles the chat message list.
     if (currentChatId && (contentToSend.trim() || options?.attachments)) {
       const optimisticMsg = {
         _id: `temp-${Date.now()}`,
@@ -413,31 +380,22 @@ const OverviewLayout = () => {
         sender: user,
         createdAt: new Date().toISOString()
       };
-
       handleSidebarActivity(currentChatId, optimisticMsg);
     }
   };
 
-  // Fetch Initial Data
   useEffect(() => {
     setLoadingTimeline(true);
     refreshTimeline().finally(() => setLoadingTimeline(false));
   }, [refreshTimeline]);
 
-  // ---------------- SOCKET EVENT HANDLERS ----------------
   useEffect(() => {
-    // 1. Receive Message
     const handleReceiveMessage = ({ chatId, message }) => {
       handleSidebarActivity(chatId, message);
     };
-
-    // 2. Read Update (Safety fallbacks)
     const handleReadUpdate = ({ chatId }) => {
-      // Also reset count here to be safe
       handleUnreadUpdate({ chatId, reset: true });
     };
-
-    // 3. Overview Refresh
     const handleOverviewUpdate = (data) => {
       if (data && Array.isArray(data)) {
         const normalized = data.map(normalizeNode);
@@ -446,13 +404,10 @@ const OverviewLayout = () => {
         refreshTimeline();
       }
     };
-
-    // 4. [NEW] Overview Unread
     const handleOverviewUnreadEvent = (data) => {
       handleUnreadUpdate(data);
     };
 
-    // Attach Listeners
     const unsubReceive = onReceiveMessage(handleReceiveMessage);
     const unsubRead = onMessageRead(handleReadUpdate);
     const unsubOverview = onOverviewUpdate(handleOverviewUpdate);
@@ -476,19 +431,57 @@ const OverviewLayout = () => {
     setExpandedItems(next);
   };
 
+  // ---------------- ENHANCED UNREAD LOGIC ----------------
+  // This memoized calculation traverses the entire tree and adds 'hasChildUnread'
+  // and 'deepUnreadCount' to every node (Workspace, Project, Task).
+  // This allows parents to show indicators even if they themselves have 0 unread.
+  const enrichedTimeline = useMemo(() => {
+    const recurseEnrich = (items) => {
+      return items.map(item => {
+        const newItem = { ...item };
+        let deepUnreadSum = 0;
+
+        // Recurse Projects
+        if (newItem.projects) {
+          newItem.projects = recurseEnrich(newItem.projects);
+          deepUnreadSum += newItem.projects.reduce((acc, p) => acc + (p.unreadCount || 0) + (p.deepUnreadCount || 0), 0);
+        }
+
+        // Recurse Tasks
+        if (newItem.tasks) {
+          newItem.tasks = recurseEnrich(newItem.tasks);
+          deepUnreadSum += newItem.tasks.reduce((acc, t) => acc + (t.unreadCount || 0) + (t.deepUnreadCount || 0), 0);
+        }
+
+        // Recurse Subtasks
+        if (newItem.subtasks) {
+          newItem.subtasks = recurseEnrich(newItem.subtasks);
+          deepUnreadSum += newItem.subtasks.reduce((acc, s) => acc + (s.unreadCount || 0) + (s.deepUnreadCount || 0), 0);
+        }
+
+        newItem.deepUnreadCount = deepUnreadSum;
+        newItem.hasChildUnread = deepUnreadSum > 0;
+
+        return newItem;
+      });
+    };
+
+    return recurseEnrich(timeline);
+  }, [timeline]);
+
   const filteredItems = useMemo(() => {
-    return (timeline || []).filter((item) => {
+    return (enrichedTimeline || []).filter((item) => {
       const label = item.name || item.title || "";
       if (searchQuery) {
         return label.toLowerCase().includes(searchQuery.toLowerCase());
       }
-      if (filterType === "unread") return item.unreadCount > 0;
+      if (filterType === "unread") return item.unreadCount > 0 || item.hasChildUnread; // Include parents with unread children
       if (filterType === "starred") return item.starred || item.isStarred;
       return true;
     });
-  }, [timeline, searchQuery, filterType]);
+  }, [enrichedTimeline, searchQuery, filterType]);
+  // --------------------------------------------------------
 
-  // Enhanced task creation handlers
   const handleCreateGlobalTask = () => {
     setTaskCreationContext({
       level: 'global',
@@ -526,7 +519,6 @@ const OverviewLayout = () => {
     dispatch(setIsProjectPopupOpen(true));
   };
 
-  // Get workspaces and projects for dropdowns
   const workspaces = useMemo(() => {
     return timeline
       .filter(item => item.type === "workspace")
@@ -550,7 +542,6 @@ const OverviewLayout = () => {
   }, [timeline]);
 
   const teams = [];
-
   const isTimelineEmpty = !loadingTimeline && timeline.length === 0;
   const hasFilteredResults = filteredItems.length > 0;
 
@@ -573,10 +564,8 @@ const OverviewLayout = () => {
         )}
 
         <div className="flex-1 overflow-y-auto">
-          {/* Show skeleton while loading */}
           {loadingTimeline && <SkeletonLoader />}
 
-          {/* Show empty state when no data */}
           {!loadingTimeline && isTimelineEmpty && (
             <EmptyTimeline
               onCreateTask={handleCreateGlobalTask}
@@ -584,7 +573,6 @@ const OverviewLayout = () => {
             />
           )}
 
-          {/* Show "no results" when search/filter returns empty */}
           {!loadingTimeline && !isTimelineEmpty && !hasFilteredResults && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -605,12 +593,10 @@ const OverviewLayout = () => {
             </motion.div>
           )}
 
-          {/* Show actual content */}
           {!loadingTimeline && hasFilteredResults && (
             <div className="p-2">
               <AnimatePresence mode="popLayout">
                 {filteredItems.map((item, index) => {
-                  // --- CASE 1: TASK ---
                   if (item.type === "task") {
                     return (
                       <motion.div
@@ -634,7 +620,6 @@ const OverviewLayout = () => {
                     );
                   }
 
-                  // --- CASE 2: CHAT  ---
                   if (item.type === "chat") {
                     return (
                       <motion.div
@@ -654,7 +639,6 @@ const OverviewLayout = () => {
                     );
                   }
 
-                  // --- CASE 3: WORKSPACE (Default) ---
                   return (
                     <motion.div
                       key={item.id}
@@ -698,7 +682,6 @@ const OverviewLayout = () => {
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
       <div className="flex-1 h-full min-h-0 flex flex-col bg-slate-950 overflow-hidden">
         <AnimatePresence mode="wait">
           {selectedItem ? (
@@ -750,7 +733,6 @@ const OverviewLayout = () => {
         </AnimatePresence>
       </div>
 
-      {/* Popups */}
       <TaskPopup
         isOpen={taskPopupOpen}
         onClose={() => dispatch(setTaskPopupOpen(false))}
@@ -805,7 +787,6 @@ const OverviewLayout = () => {
         taskTitle={selectedTask?.title}
       />
 
-      {/* Toast Notification */}
       <AnimatePresence>
         {toast && (
           <motion.div
