@@ -1,10 +1,10 @@
-const express      = require("express");
-const http         = require("http");
-const { Server }   = require("socket.io");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const cookieParser = require("cookie-parser");
-const cors         = require("cors");
-const helmet       = require("helmet");
-const rateLimit    = require("express-rate-limit");
+const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const connectDB = require("./config/database");
@@ -12,26 +12,27 @@ const connectDB = require("./config/database");
 // ---------------------------------------------------------------------------
 // Route imports
 // ---------------------------------------------------------------------------
-const authRoutes      = require("./modules/auth/auth.routes");
+const authRoutes = require("./modules/auth/auth.routes");
 const workspaceRoutes = require("./modules/workspace/workspace.routes");
-const teamsRoutes     = require("./modules/team/teams.routes");
-const projectsRoutes  = require("./modules/projects/project.routes");
-const tasksRoutes     = require("./modules/tasks/tasks.routes");
-const overviewRoutes  = require("./modules/overview/overview.routes");
-const subtaskRoutes   = require("./modules/subtask/subtask.routes");
-const postRoutes      = require("./modules/posts/post.routes");
-const followRoutes    = require("./modules/follow/follow.routes");
-const usersRoutes     = require("./modules/user/user.routes");
-const chatRoutes      = require("./modules/chat/chat.routes");       // ← was missing
+const teamsRoutes = require("./modules/team/teams.routes");
+const projectsRoutes = require("./modules/projects/project.routes");
+const tasksRoutes = require("./modules/tasks/tasks.routes");
+const overviewRoutes = require("./modules/overview/overview.routes");
+const subtaskRoutes = require("./modules/subtask/subtask.routes");
+const postRoutes = require("./modules/posts/post.routes");
+const followRoutes = require("./modules/follow/follow.routes");
+const usersRoutes = require("./modules/user/user.routes");
+const chatRoutes = require("./modules/chat/chat.routes");
+const uploadRoutes = require("./modules/upload/upload.routes");
 
 // Socket handler + auth middleware for Socket.IO
-const chatSocketHandler  = require("./modules/chat/chat.socket");
+const chatSocketHandler = require("./modules/chat/chat.socket");
 const socketAuthMiddleware = require("./middleware/socketAuthMiddleware"); // ← see note below
 
 // ---------------------------------------------------------------------------
 // Express app
 // ---------------------------------------------------------------------------
-const app  = express();
+const app = express();
 const port = process.env.PORT || 3000;   // fallback so listen() never gets undefined
 
 // ── Security ──────────────────────────────────────────────────────────────
@@ -39,29 +40,29 @@ app.use(helmet());
 
 // ── CORS ──────────────────────────────────────────────────────────────────
 app.use(cors({
-    origin:         process.env.FRONTEND_URL,
-    credentials:    true,
-    methods:        ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    origin: process.env.FRONTEND_URL,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
 // ── Rate limiting ─────────────────────────────────────────────────────────
 // Global limiter – tightened; auth routes get their own tighter limiter below.
 const globalLimiter = rateLimit({
-    windowMs:       15 * 60 * 1000,   // 15 min
-    max:            200,              // 200 requests per window
+    windowMs: 15 * 60 * 1000,   // 15 min
+    max: 200,              // 200 requests per window
     standardHeaders: true,
-    legacyHeaders:  false,
-    message:        { success: false, message: "Too many requests, please try again later." }
+    legacyHeaders: false,
+    message: { success: false, message: "Too many requests, please try again later." }
 });
 app.use(globalLimiter);
 
 const authLimiter = rateLimit({
-    windowMs:       15 * 60 * 1000,
-    max:            20,               // 20 login/register attempts per 15 min
+    windowMs: 15 * 60 * 1000,
+    max: 20,               // 20 login/register attempts per 15 min
     standardHeaders: true,
-    legacyHeaders:  false,
-    message:        { success: false, message: "Too many auth attempts, please try again later." }
+    legacyHeaders: false,
+    message: { success: false, message: "Too many auth attempts, please try again later." }
 });
 
 // ── Body parsing ──────────────────────────────────────────────────────────
@@ -79,17 +80,18 @@ app.get("/health", (req, res) => {
 // ---------------------------------------------------------------------------
 // API Routes
 // ---------------------------------------------------------------------------
-app.use("/api/auth",       authLimiter, authRoutes);   // auth gets its own limiter
-app.use("/api/workspace",  workspaceRoutes);
-app.use("/api/teams",      teamsRoutes);
-app.use("/api/projects",   projectsRoutes);
-app.use("/api/tasks",      tasksRoutes);
-app.use("/api/overview",   overviewRoutes);
-app.use("/api/subtasks",   subtaskRoutes);
-app.use("/api/posts",      postRoutes);
-app.use("/api/follow",     followRoutes);
-app.use("/api/user",       usersRoutes);
-app.use("/api/chat",       chatRoutes);                // ← was missing
+app.use("/api/auth", authLimiter, authRoutes);   // auth gets its own limiter
+app.use("/api/workspace", workspaceRoutes);
+app.use("/api/teams", teamsRoutes);
+app.use("/api/projects", projectsRoutes);
+app.use("/api/tasks", tasksRoutes);
+app.use("/api/overview", overviewRoutes);
+app.use("/api/subtasks", subtaskRoutes);
+app.use("/api/posts", postRoutes);
+app.use("/api/follow", followRoutes);
+app.use("/api/user", usersRoutes);
+app.use("/api/chat", chatRoutes);
+app.use("/api/upload", uploadRoutes);
 
 // ---------------------------------------------------------------------------
 // 404 handler  –  must come after all routes, before the error handler
@@ -110,7 +112,7 @@ app.use((err, req, res, next) => {                     // eslint-disable-line no
         return res.status(400).json({
             success: false,
             message: "Validation error",
-            errors:  err.errors
+            errors: err.errors
         });
     }
 
@@ -145,12 +147,12 @@ const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
     cors: {
-        origin:      process.env.FRONTEND_URL,
-        methods:     ["GET", "POST"],
+        origin: process.env.FRONTEND_URL,
+        methods: ["GET", "POST"],
         credentials: true
     },
     // Prevent clients from reconnecting with stale tokens indefinitely
-    pingTimeout:  60000,
+    pingTimeout: 60000,
     pingInterval: 25000
 });
 

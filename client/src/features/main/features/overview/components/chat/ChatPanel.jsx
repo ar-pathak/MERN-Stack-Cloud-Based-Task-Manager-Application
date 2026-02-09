@@ -40,6 +40,9 @@ const ChatPanel = ({
     const [messageFilter, setMessageFilter] = useState("all");
     const [replyingTo, setReplyingTo] = useState(null);
 
+    // NEW: State for the selected file (before sending)
+    const [selectedFile, setSelectedFile] = useState(null);
+
     // Derived State
     const pinnedMessages = useMemo(
         () => messages.filter((msg) => msg?.pinned),
@@ -85,10 +88,25 @@ const ChatPanel = ({
         handleReaction?.(messageId, emoji);
     };
 
-    const handleSendWithContext = () => {
-        if (chatMessage?.trim() || replyingTo) {
-            handleSendMessage({ replyTo: replyingTo });
+    // UPDATED: Handle Send to include file logic
+    const handleSendWithContext = (fileFromInput) => {
+        // Use file passed from input or current state
+        const fileToSend = fileFromInput || selectedFile;
+
+        if (chatMessage?.trim() || fileToSend || replyingTo) {
+            // Pass the file to the parent's handleSendMessage
+            // The parent (ChatWindow/Container) must now handle the upload logic
+            handleSendMessage({
+                replyTo: replyingTo,
+                file: fileToSend
+            });
+
+            // Clear local states
             setReplyingTo(null);
+            setSelectedFile(null);
+
+            // Note: We don't clear chatMessage here as it's a prop (setChatMessage), 
+            // usually cleared by the parent after successful send.
         }
     };
 
@@ -172,7 +190,7 @@ const ChatPanel = ({
                                 setChatMessage={handleMessageChange}
                                 handleSend={handleSendWithContext}
                                 fileInputRef={fileInputRef}
-                                handleFileUpload={handleFileUpload}
+                                // handleFileUpload removed (handled locally in ChatInput via selectedFile)
                                 uploadingFile={uploadingFile}
                                 replyingTo={replyingTo}
                                 setReplyingTo={setReplyingTo}
@@ -180,6 +198,9 @@ const ChatPanel = ({
                                 setShowEmojiPicker={setShowEmojiPicker}
                                 isTyping={isTyping}
                                 typingUsers={typingUsers}
+                                // NEW PROPS
+                                selectedFile={selectedFile}
+                                setSelectedFile={setSelectedFile}
                             />
                         </div>
                     </motion.div>

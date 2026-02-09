@@ -1,22 +1,24 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Reply, Loader2, Paperclip, Smile, Send } from "lucide-react";
+import { X, Reply, Loader2, Paperclip, Smile, Send, FileText, Image as ImageIcon } from "lucide-react";
 
 const ChatInput = ({
-    chatMessage, 
-    setChatMessage, 
-    handleSend,
-    fileInputRef, 
-    handleFileUpload, 
+    chatMessage,
+    setChatMessage,
+    handleSend,     // Yeh ab (message, file) accept karega
+    fileInputRef,
+    // handleFileUpload, // Iski ab zaroorat nahi hai direct change pe
     uploadingFile,
-    replyingTo, 
+    replyingTo,
     setReplyingTo,
-    showEmojiPicker, 
+    showEmojiPicker,
     setShowEmojiPicker,
-    isTyping,
-    typingUsers
+    // New Props needed from Parent
+    selectedFile,   // State from parent
+    setSelectedFile // Setter from parent
 }) => {
     const textareaRef = useRef(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -26,42 +28,79 @@ const ChatInput = ({
         }
     }, [chatMessage]);
 
-    // Auto-focus on mount
+    // Generate Preview when file is selected
     useEffect(() => {
-        if (textareaRef.current) {
-            textareaRef.current.focus();
+        if (selectedFile) {
+            // Create object URL for images
+            if (selectedFile.type.startsWith('image/')) {
+                const url = URL.createObjectURL(selectedFile);
+                setPreviewUrl(url);
+                return () => URL.revokeObjectURL(url); // Cleanup
+            } else {
+                setPreviewUrl(null);
+            }
+        } else {
+            setPreviewUrl(null);
         }
-    }, []);
+    }, [selectedFile]);
+
+    // Handle File Selection (Stop immediate upload)
+    const onFileSelect = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            setSelectedFile(e.target.files[0]);
+        }
+    };
+
+    // Clear selected file
+    const removeFile = () => {
+        setSelectedFile(null);
+        setPreviewUrl(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
 
     const handleKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            handleSend();
+            // Allow send if text exists OR file exists
+            if (chatMessage.trim() || selectedFile) {
+                onSendClick();
+            }
         }
+    };
+
+    const onSendClick = () => {
+        if ((!chatMessage.trim() && !selectedFile) || uploadingFile) return;
+
+        // Pass both text and file to the parent handler
+        handleSend(selectedFile);
+
+        // Clear local state happens in parent usually, but we can reset height here
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
     };
 
     return (
         <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-4">
-            {/* Reply Context */}
+
+            {/* 1. Reply Context */}
             <AnimatePresence>
                 {replyingTo && (
                     <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="mb-3 overflow-hidden"
+                        className="mb-2 overflow-hidden"
                     >
-                        <div className="flex items-center gap-2 p-3 bg-slate-900/40 border border-slate-800/50 rounded-xl">
-                            <Reply className="h-4 w-4 text-sky-400 flex-shrink-0" />
+                        <div className="flex items-center gap-2 p-2 bg-slate-900/40 border border-slate-800/50 rounded-lg border-l-4 border-l-sky-500">
+                            <Reply className="h-4 w-4 text-sky-400" />
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs text-sky-400 font-medium">Replying to {replyingTo.senderId?.name || replyingTo.sender?.name || 'User'}</p>
-                                <p className="text-sm text-slate-300 truncate">{replyingTo.text || replyingTo.content}</p>
+                                <p className="text-xs text-sky-400 font-bold">
+                                    Replying to {replyingTo.senderId?.name || 'User'}
+                                </p>
+                                <p className="text-xs text-slate-300 truncate">
+                                    {replyingTo.content || "Attachment"}
+                                </p>
                             </div>
-                            <button 
-                                onClick={() => setReplyingTo(null)} 
-                                className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors flex-shrink-0"
-                            >
+                            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-slate-800 rounded text-slate-400">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>
@@ -69,48 +108,69 @@ const ChatInput = ({
                 )}
             </AnimatePresence>
 
-            {/* File Upload Progress */}
+            {/* 2. File Preview Area (NEW) */}
             <AnimatePresence>
-                {uploadingFile && (
+                {selectedFile && !uploadingFile && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
-                        transition={{ duration: 0.2 }}
-                        className="mb-3 p-3 rounded-xl bg-gradient-to-r from-slate-800/40 to-slate-900/40 border border-slate-700/50"
+                        className="mb-3 relative inline-block group"
                     >
-                        <div className="flex items-center gap-3">
-                            <Loader2 className="h-5 w-5 text-sky-400 animate-spin flex-shrink-0" />
-                            <div className="flex-1">
-                                <p className="text-sm text-slate-300 mb-2">Uploading file...</p>
-                                <div className="w-full h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
-                                    <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: "100%" }}
-                                        transition={{ duration: 1.5 }}
-                                        className="h-full bg-gradient-to-r from-sky-500 to-blue-500"
-                                    />
+                        <div className="p-2 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 w-fit max-w-full">
+                            {previewUrl ? (
+                                <img src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-600" />
+                            ) : (
+                                <div className="h-16 w-16 bg-slate-700 rounded-lg flex items-center justify-center">
+                                    <FileText className="h-8 w-8 text-slate-400" />
                                 </div>
+                            )}
+                            <div className="flex-1 min-w-0 pr-4">
+                                <p className="text-sm text-slate-200 font-medium truncate max-w-[200px]">{selectedFile.name}</p>
+                                <p className="text-xs text-slate-400">{(selectedFile.size / 1024).toFixed(1)} KB</p>
                             </div>
+                            <button
+                                onClick={removeFile}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition-colors"
+                            >
+                                <X className="h-3 w-3" />
+                            </button>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
+            {/* 3. Upload Progress (Existing) */}
+            <AnimatePresence>
+                {uploadingFile && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="mb-3 flex items-center gap-3 p-3 bg-slate-900/60 rounded-xl border border-sky-500/30"
+                    >
+                        <Loader2 className="h-5 w-5 text-sky-400 animate-spin" />
+                        <span className="text-sm text-sky-400">Sending file...</span>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Input Controls */}
             <div className="flex items-end gap-3">
                 <input
                     ref={fileInputRef}
                     type="file"
-                    onChange={handleFileUpload}
+                    onChange={onFileSelect} // CHANGED: Calls local function, not upload directly
                     className="hidden"
-                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" // Removed video/audio for now based on your schema
                 />
 
-                <ActionButton 
-                    icon={Paperclip} 
-                    onClick={() => fileInputRef.current?.click()} 
+                <ActionButton
+                    icon={Paperclip}
+                    onClick={() => fileInputRef.current?.click()}
                     title="Attach file"
-                    disabled={uploadingFile}
+                    disabled={uploadingFile || selectedFile} // Disable if file already selected
+                    active={!!selectedFile}
                 />
 
                 <div className="flex-1 relative">
@@ -119,34 +179,30 @@ const ChatInput = ({
                         value={chatMessage}
                         onChange={(e) => setChatMessage(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="Type a message..."
+                        placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
                         rows={1}
                         disabled={uploadingFile}
-                        className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
                         style={{ minHeight: '44px', maxHeight: '120px' }}
                     />
                 </div>
 
                 <div className="relative">
-                    <ActionButton 
-                        icon={Smile} 
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)} 
-                        title="Emoji"
+                    <ActionButton
+                        icon={Smile}
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                         active={showEmojiPicker}
                         disabled={uploadingFile}
                     />
-
+                    {/* Emoji Picker Logic (Same as before) */}
                     <AnimatePresence>
                         {showEmojiPicker && (
-                            <EmojiPicker 
+                            <EmojiPicker
                                 onSelect={(emoji) => {
                                     setChatMessage(prev => prev + emoji);
                                     setShowEmojiPicker(false);
-                                    // Focus back on textarea
-                                    if (textareaRef.current) {
-                                        textareaRef.current.focus();
-                                    }
-                                }} 
+                                    textareaRef.current?.focus();
+                                }}
                             />
                         )}
                     </AnimatePresence>
@@ -155,43 +211,36 @@ const ChatInput = ({
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={handleSend}
-                    disabled={!chatMessage.trim() || uploadingFile}
-                    className={`p-3 rounded-xl transition-all flex-shrink-0 ${
-                        chatMessage.trim() && !uploadingFile
-                            ? 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25'
-                            : 'bg-slate-800/40 text-slate-600 cursor-not-allowed'
-                    }`}
+                    onClick={onSendClick}
+                    // Enable button if there is text OR a file
+                    disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile}
+                    className={`p-3 rounded-xl transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                        ? 'bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25'
+                        : 'bg-slate-800/40 text-slate-600 cursor-not-allowed'
+                        }`}
                 >
-                    {uploadingFile ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                        <Send className="h-5 w-5" />
-                    )}
+                    {uploadingFile ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 </motion.button>
             </div>
 
-            <p className="text-xs text-slate-600 mt-2.5 text-center">
-                Press <kbd className="px-1.5 py-0.5 rounded bg-slate-800/60 border border-slate-700/50 font-mono text-[10px]">Enter</kbd> to send,
-                <kbd className="px-1.5 py-0.5 rounded bg-slate-800/60 border border-slate-700/50 font-mono mx-1 text-[10px]">Shift + Enter</kbd> for new line
-            </p>
+            {/* ...Footer text... */}
         </div>
     );
 };
 
+// ... keep ActionButton and EmojiPicker components as they were ...
 const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
     <motion.button
         whileHover={!disabled ? { scale: 1.05 } : {}}
         whileTap={!disabled ? { scale: 0.95 } : {}}
         onClick={onClick}
         disabled={disabled}
-        className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
-            active
-                ? 'bg-sky-500/20 text-sky-400'
-                : disabled
+        className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${active
+            ? 'bg-sky-500/20 text-sky-400'
+            : disabled
                 ? 'text-slate-600 cursor-not-allowed'
                 : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-300'
-        }`}
+            }`}
         title={title}
     >
         <Icon className="h-5 w-5" />

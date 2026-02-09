@@ -1,4 +1,3 @@
-// models/message.js
 const mongoose = require("mongoose");
 
 const messageSchema = new mongoose.Schema(
@@ -15,25 +14,30 @@ const messageSchema = new mongoose.Schema(
             required: true,
             index: true
         },
+        // FIX 1: Allow empty content for attachment-only messages
         content: {
             type: String,
-            required: true,
             trim: true,
+            default: "", // Default to empty string
             maxlength: 5000
         },
-        // Message type
+        // Message type (overall)
         type: {
             type: String,
             enum: ["text", "image", "file", "video", "audio"],
             default: "text"
         },
-        // Attachments
-        attachments: [{
-            url: String,
-            type: String,
-            name: String,
-            size: Number
-        }],
+        // FIX 2: Correctly define attachments array structure
+        attachments: [
+            {
+                url: { type: String, required: true },
+                name: { type: String },
+                // "type" is a reserved keyword in Mongoose. 
+                // It must be defined like this to work as a field name:
+                type: { type: String },
+                size: { type: Number }
+            }
+        ],
         // Reply reference
         replyTo: {
             type: mongoose.Schema.Types.ObjectId,
@@ -51,7 +55,7 @@ const messageSchema = new mongoose.Schema(
                 default: Date.now
             }
         }],
-        // Read receipts - array of user IDs who have read this message
+        // Read receipts
         readBy: [{
             userId: {
                 type: mongoose.Schema.Types.ObjectId,
@@ -99,8 +103,6 @@ messageSchema.statics.markReadUpTo = async function (chatId, userId, lastReadMes
         throw new Error("Message not found");
     }
 
-    // Update all messages in this chat created before or at the same time as lastMessage
-    // that don't already have this user in readBy
     return this.updateMany(
         {
             chatId,
@@ -120,13 +122,12 @@ messageSchema.statics.markReadUpTo = async function (chatId, userId, lastReadMes
 
 // Instance method: Add a reaction
 messageSchema.methods.addReaction = async function (userId, emoji) {
-    // Check if user already reacted with this emoji
     const existingReaction = this.reactions.find(
         r => String(r.userId) === String(userId) && r.emoji === emoji
     );
 
     if (existingReaction) {
-        return this; // Already reacted
+        return this;
     }
 
     this.reactions.push({ userId, emoji });

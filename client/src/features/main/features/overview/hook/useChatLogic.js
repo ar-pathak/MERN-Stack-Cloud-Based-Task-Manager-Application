@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as chatService from "../../../../../service/chat.service";
 import * as socketService from "../../../../../service/Chat.socket.service";
 import { useAuth } from "../../../../../context/AuthContext";
+import { uploadService } from "../../../../../service/upload.service";
 
 export const useChatLogic = (selectedChat) => {
     // 1. Local State
@@ -267,17 +268,33 @@ export const useChatLogic = (selectedChat) => {
     }, []);
 
     const handleSendMessage = async (options = {}) => {
+        // 1. Capture values immediately
         const content = chatMessage.trim();
-        if (!content && !options.attachments) return;
+        const fileToSend = options.file; // <--- Raw File from ChatPanel
+
+        // Validation: Text OR File OR Attachments must exist
+        if (!content && !fileToSend && (!options.attachments || options.attachments.length === 0)) return;
 
         const chatId = String(selectedChat.chatId || selectedChat.id || selectedChat._id);
-
-        // Optimistic UI Update
         const tempId = `temp-${Date.now()}`;
+
+        // 2. Prepare Optimistic Attachments (Preview)
+        let optimisticAttachments = options.attachments || [];
+        if (fileToSend) {
+            // Create a local preview URL so image shows immediately
+            optimisticAttachments = [...optimisticAttachments, {
+                url: URL.createObjectURL(fileToSend),
+                type: fileToSend.type,
+                name: fileToSend.name,
+                size: fileToSend.size
+            }];
+        }
+
+        // 3. Create Temp Message for UI
         const tempMessage = {
             id: tempId,
             _id: tempId,
-            content,
+            content: content,
             text: content,
             sender: {
                 name: user?.name || 'You',
@@ -292,28 +309,38 @@ export const useChatLogic = (selectedChat) => {
             createdAt: new Date().toISOString(),
             isOwn: true,
             status: 'sending',
-            replyTo: options.replyTo
+            replyTo: options.replyTo,
+            attachments: optimisticAttachments // Show preview
         };
 
-        setChatMessage("");
+        // 4. Update UI immediately
+        setChatMessage(""); // Clear input
         setShowEmojiPicker(false);
         setMessages(prev => [...prev, tempMessage]);
 
-        // Immediate scroll
         setTimeout(() => scrollToBottom("auto"), 50);
-
-        // Stop typing indicator
         socketService.emitStopTyping(chatId);
 
         try {
+            let finalAttachments = options.attachments || [];
+
+            // 5. Upload File (The Missing Logic)
+            if (fileToSend) {
+                setUploadingFile(true);
+                // Upload file to backend
+                const uploadedData = await uploadService.uploadFile(fileToSend);
+                finalAttachments.push(uploadedData);
+            }
+
+            // 6. Send Message to API
             const sentMessage = await chatService.sendMessage(
                 chatId,
                 content,
-                options.attachments || [],
+                finalAttachments,
                 options.replyTo?._id || options.replyTo?.id
             );
 
-            // Replace temp message with real one
+            // 7. Success: Replace Temp Message with Real Message
             setMessages(prev => prev.map(msg =>
                 msg.id === tempId ? {
                     ...sentMessage,
@@ -322,19 +349,18 @@ export const useChatLogic = (selectedChat) => {
                 } : msg
             ));
 
-            // Emit to socket
+            // Emit socket event
             socketService.emitSendMessage(chatId, sentMessage);
 
         } catch (error) {
             console.error("Send failed", error);
-
-            // Update message to show error
+            // Mark as failed in UI
             setMessages(prev => prev.map(msg =>
                 msg.id === tempId ? { ...msg, status: 'failed' } : msg
             ));
-
-            // Don't restore message, let user retry manually
-            alert("Failed to send message. Please try again.");
+            alert("Failed to send message: " + (error.message || "Unknown error"));
+        } finally {
+            setUploadingFile(false);
         }
     };
 
@@ -344,17 +370,14 @@ export const useChatLogic = (selectedChat) => {
 
         setUploadingFile(true);
         try {
-            const uploadedFile = await chatService.uploadFile(file, (progress) => {
-                console.log("Upload progress:", progress);
-            });
+            const uploadedFile = await uploadService.uploadFile(file);
 
             await handleSendMessage({ attachments: [uploadedFile] });
         } catch (error) {
-            console.error("Upload failed", error);
-            alert("Failed to upload file.");
+            alert("File upload failed: " + error.message);
         } finally {
             setUploadingFile(false);
-            if (fileInputRef.current) fileInputRef.current.value = "";
+            if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
         }
     };
 

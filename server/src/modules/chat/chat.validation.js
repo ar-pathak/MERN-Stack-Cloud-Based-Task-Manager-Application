@@ -72,11 +72,14 @@ const removeMemberSchema = z.object({
 // ---------------------------------------------------------------------------
 const sendMessageSchema = z.object({
     chatId: objectId,
+
+    // 1. Remove .min(1) so empty strings are allowed
     content: z
         .string()
         .trim()
-        .min(1, "Message cannot be empty")
-        .max(5000, "Message cannot exceed 5,000 characters"),
+        .max(5000, "Message cannot exceed 5,000 characters")
+        .optional()
+        .default(""), // Ensure it defaults to empty string if missing
 
     attachments: z
         .array(z.object({
@@ -86,9 +89,19 @@ const sendMessageSchema = z.object({
             size: z.number().optional()
         }))
         .max(10, "Cannot attach more than 10 files")
-        .optional(),
+        .optional()
+        .default([]), // Ensure it defaults to empty array
 
     replyTo: objectId.optional()
+}).refine((data) => {
+    // 2. Add custom logic: Content OR Attachments must exist
+    const hasContent = data.content && data.content.length > 0;
+    const hasAttachments = data.attachments && data.attachments.length > 0;
+
+    return hasContent || hasAttachments;
+}, {
+    message: "Message must contain text or at least one attachment",
+    path: ["content"] // Attach the error to the content field
 });
 
 // ---------------------------------------------------------------------------

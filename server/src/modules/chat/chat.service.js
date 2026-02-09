@@ -102,8 +102,11 @@ class ChatService {
     // -----------------------------------------------------------------------
     async sendMessage(senderId, chatId, content, attachments = [], replyTo = null) {
         // Validate content
-        if (!content || content.trim().length === 0) {
-            throw new Error("Message content cannot be empty");
+        if (
+            (!content || content.trim().length === 0) &&
+            (!attachments || attachments.length === 0)
+        ) {
+            throw new Error("Message must contain text or at least one attachment");
         }
 
         // Verify the sender is actually a member of this chat
