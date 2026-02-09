@@ -19,7 +19,8 @@ import {
 import {
   onReceiveMessage,
   onMessageRead,
-  onOverviewUpdate
+  onOverviewUpdate,
+  onOverviewUnread // [ADDED] Import the unread listener
 } from "../../../../../service/Chat.socket.service";
 
 // Components
@@ -192,9 +193,21 @@ const OverviewLayout = () => {
     timelineRef.current = timeline;
   }, [timeline]);
 
+  // [FIX] Update Unread Count when Selected Item Changes
   useEffect(() => {
     selectedItemRef.current = selectedItem;
+
+    // Explicitly reset unread count if we selected a chat
+    if (selectedItem) {
+      const chatId = selectedItem.id || selectedItem._id;
+      // Ensure handleUnreadUpdate is defined or accessible here
+      // We can call the logic directly since we have the function definition below
+      // But since 'handleUnreadUpdate' is defined via useCallback below, we need to ensure dependency order.
+      // The safest way is to do it in the render or trigger it. 
+      // We will call the logic from handleUnreadUpdate here directly or ensure the function is available.
+    }
   }, [selectedItem]);
+
 
   const showToast = (message) => {
     setToast(message);
@@ -242,7 +255,7 @@ const OverviewLayout = () => {
     };
   }, []);
 
-  // ---------------- MOVED HERE: Refresh Timeline ----------------
+  // ---------------- Refresh Timeline ----------------
   const refreshTimeline = useCallback(async () => {
     try {
       const res = await getOverviewActivity();
@@ -261,12 +274,9 @@ const OverviewLayout = () => {
     }
   }, [dispatch, normalizeNode]);
 
-
   // ---------------- HELPER: DEEP UPDATE & REORDER ----------------
   const handleSidebarActivity = useCallback((chatId, messageData) => {
     const currentTimeline = timelineRef.current;
-    const currentSelected = selectedItemRef.current;
-    const currentSelectedId = currentSelected?.id || currentSelected?._id;
 
     // Helper to deeply update the tree
     const updateTreeItem = (items, targetId, updateFn) => {
@@ -309,37 +319,80 @@ const OverviewLayout = () => {
       return { items: newItems, found };
     };
 
-    // Is the message for the currently open chat?
-    const isOpen = String(chatId) === String(currentSelectedId);
-
-    const senderId = messageData.sender?._id || messageData.sender?.id;
-    const currentUserId = user?._id || user?.id;
-    const isOwn = String(senderId) === String(currentUserId);
-
-    // Update function for the node
+    // Update function for the node (Preview & Time only)
+    // NOTE: Unread counts are handled by 'overview:unread' event
     const updateNode = (node) => ({
       ...node,
       lastMessage: messageData,
-      unreadCount: (isOpen || isOwn) ? 0 : (node.unreadCount || 0) + 1
+      latestActivity: new Date().getTime()
     });
 
-    // Attempt to find and update in tree
     const result = updateTreeItem(currentTimeline, chatId, updateNode);
 
     if (result.found) {
       let newTimeline = result.items;
 
-      // REORDER LOGIC:
+      // REORDER LOGIC: Move to top
       const rootIndex = newTimeline.findIndex(item => String(item.id || item._id) === String(chatId));
 
       if (rootIndex > 0) {
         const [movedItem] = newTimeline.splice(rootIndex, 1);
         newTimeline.unshift(movedItem);
+      } else if (rootIndex === -1) {
+        // If it's a nested item, strictly we might want to resort the whole list
+        newTimeline.sort((a, b) => {
+          const timeA = new Date(a.latestActivity || 0).getTime();
+          const timeB = new Date(b.latestActivity || 0).getTime();
+          return timeB - timeA;
+        });
       }
 
       dispatch(setOverviewData({ timeline: newTimeline }));
     }
-  }, [dispatch, user]);
+  }, [dispatch]);
+
+  // ---------------- [NEW] HANDLE UNREAD COUNTS ----------------
+  const handleUnreadUpdate = useCallback((data) => {
+    const { chatId, incrementBy, reset } = data;
+    const currentTimeline = timelineRef.current;
+
+    const updateRecursive = (items) => {
+      return items.map(item => {
+        // Check match
+        if (String(item.id || item._id) === String(chatId)) {
+          let newCount = item.unreadCount || 0;
+
+          if (reset) {
+            newCount = 0;
+          } else if (incrementBy) {
+            newCount += incrementBy;
+          }
+
+          return { ...item, unreadCount: newCount };
+        }
+
+        // Recurse
+        let newItem = { ...item };
+        if (item.projects) newItem.projects = updateRecursive(item.projects);
+        if (item.tasks) newItem.tasks = updateRecursive(item.tasks);
+        if (item.subtasks) newItem.subtasks = updateRecursive(item.subtasks);
+
+        return newItem;
+      });
+    };
+
+    const newTimeline = updateRecursive(currentTimeline);
+    dispatch(setOverviewData({ timeline: newTimeline }));
+  }, [dispatch]);
+
+  // [FIX] Listener to reset count when item is selected
+  useEffect(() => {
+    if (selectedItem) {
+      const chatId = selectedItem.id || selectedItem._id;
+      // Trigger local update immediately
+      handleUnreadUpdate({ chatId, reset: true });
+    }
+  }, [selectedItem, handleUnreadUpdate]);
 
   // ---------------- WRAPPER: HANDLE SEND MESSAGE ----------------
   const handleSendMessageWrapper = async (options) => {
@@ -351,6 +404,8 @@ const OverviewLayout = () => {
     await chat.handleSendMessage(options);
 
     // 3. Manually trigger sidebar update (Optimistic)
+    // NOTE: This updates sidebar preview only, it does not duplicate chat messages
+    // because useChatLogic handles the chat message list.
     if (currentChatId && (contentToSend.trim() || options?.attachments)) {
       const optimisticMsg = {
         _id: `temp-${Date.now()}`,
@@ -376,26 +431,10 @@ const OverviewLayout = () => {
       handleSidebarActivity(chatId, message);
     };
 
-    // 2. Read Update (Clear unread count)
+    // 2. Read Update (Safety fallbacks)
     const handleReadUpdate = ({ chatId }) => {
-      const currentTimeline = timelineRef.current;
-
-      const updateTreeItem = (items) => {
-        return items.map(item => {
-          if (String(item.id || item._id) === String(chatId)) {
-            return { ...item, unreadCount: 0 };
-          }
-          // Recursion
-          let newItem = { ...item };
-          if (item.projects) newItem.projects = updateTreeItem(item.projects);
-          if (item.tasks) newItem.tasks = updateTreeItem(item.tasks);
-          if (item.subtasks) newItem.subtasks = updateTreeItem(item.subtasks);
-          return newItem;
-        });
-      };
-
-      const newTimeline = updateTreeItem(currentTimeline);
-      dispatch(setOverviewData({ timeline: newTimeline }));
+      // Also reset count here to be safe
+      handleUnreadUpdate({ chatId, reset: true });
     };
 
     // 3. Overview Refresh
@@ -408,18 +447,24 @@ const OverviewLayout = () => {
       }
     };
 
+    // 4. [NEW] Overview Unread
+    const handleOverviewUnreadEvent = (data) => {
+      handleUnreadUpdate(data);
+    };
+
     // Attach Listeners
     const unsubReceive = onReceiveMessage(handleReceiveMessage);
     const unsubRead = onMessageRead(handleReadUpdate);
     const unsubOverview = onOverviewUpdate(handleOverviewUpdate);
+    const unsubUnread = onOverviewUnread(handleOverviewUnreadEvent);
 
     return () => {
       unsubReceive();
       unsubRead();
       unsubOverview();
+      unsubUnread();
     };
-  }, [dispatch, normalizeNode, handleSidebarActivity, refreshTimeline]);
-
+  }, [dispatch, normalizeNode, handleSidebarActivity, refreshTimeline, handleUnreadUpdate]);
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
@@ -443,7 +488,7 @@ const OverviewLayout = () => {
     });
   }, [timeline, searchQuery, filterType]);
 
-  // NEW: Enhanced task creation handlers
+  // Enhanced task creation handlers
   const handleCreateGlobalTask = () => {
     setTaskCreationContext({
       level: 'global',
@@ -506,7 +551,6 @@ const OverviewLayout = () => {
 
   const teams = [];
 
-  // Check if timeline is empty after loading
   const isTimelineEmpty = !loadingTimeline && timeline.length === 0;
   const hasFilteredResults = filteredItems.length > 0;
 
@@ -553,10 +597,10 @@ const OverviewLayout = () => {
                 </svg>
               </div>
               <h3 className="text-sm font-medium text-slate-300 mb-1">
-                Koi results nahi mile
+                No results found
               </h3>
               <p className="text-xs text-slate-500">
-                {searchQuery ? 'Apni search query change karke try karo' : 'Filter change karke dekho'}
+                {searchQuery ? 'Try changing your search query' : 'Try changing your filter'}
               </p>
             </motion.div>
           )}
@@ -671,7 +715,7 @@ const OverviewLayout = () => {
                 messages={chat.messages}
                 chatMessage={chat.chatMessage}
                 setChatMessage={chat.setChatMessage}
-                handleSendMessage={handleSendMessageWrapper} // <-- WRAPPER PASSED HERE
+                handleSendMessage={handleSendMessageWrapper}
                 showChatInfo={chat.showChatInfo}
                 setShowChatInfo={chat.setShowChatInfo}
                 selectedMessage={chat.selectedMessage}

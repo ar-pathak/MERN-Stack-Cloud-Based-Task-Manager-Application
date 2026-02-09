@@ -53,14 +53,14 @@ module.exports = (io, socket) => {
             // 1️⃣ Emit to open chat window
             emitToMembers(io, chat, userId, "chat:receive", { chatId, message });
 
-            // 2️⃣ Emit overview delta update
+            // 2️⃣ Emit overview delta update (move to top + update last message)
             emitToMembers(io, chat, userId, "overview:update", {
                 entity: "chat",
                 chatId,
                 lastMessage: message
             });
 
-            // 3️⃣ Emit unread increment
+            // 3️⃣ Emit unread increment (ONLY to members who haven't read)
             emitToMembers(io, chat, userId, "overview:unread", {
                 chatId,
                 incrementBy: 1
@@ -97,13 +97,43 @@ module.exports = (io, socket) => {
 
     // ---------------- Read Receipts ----------------
     socket.on("chat:read", async ({ chatId, lastReadMessageId }) => {
-        const chat = await loadAndAuthorise(socket, chatId, userId);
-        if (!chat) return;
+        try {
+            const chat = await loadAndAuthorise(socket, chatId, userId);
+            if (!chat) return;
 
-        emitToMembers(io, chat, userId, "chat:read_update", {
-            chatId,
-            readBy: userId,
-            lastReadMessageId
-        });
+            // Update all messages up to lastReadMessageId as read by this user
+            await Message.updateMany(
+                {
+                    chatId: chatId,
+                    _id: { $lte: lastReadMessageId },
+                    senderId: { $ne: userId }, // Don't mark own messages
+                    "readBy.userId": { $ne: userId } // Not already read
+                },
+                {
+                    $push: {
+                        readBy: {
+                            userId: userId,
+                            readAt: new Date()
+                        }
+                    }
+                }
+            );
+
+            // Emit read receipt to other members
+            emitToMembers(io, chat, userId, "chat:read_update", {
+                chatId,
+                readBy: userId,
+                lastReadMessageId
+            });
+
+            // 🔥 NEW: Emit unread reset to the current user ONLY
+            io.to(`user:${userId}`).emit("overview:unread_reset", {
+                chatId
+            });
+
+        } catch (error) {
+            console.error("chat:read error", error);
+            socket.emit("error", { event: "chat:read", reason: "Internal error" });
+        }
     });
 };

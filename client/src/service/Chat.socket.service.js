@@ -17,9 +17,9 @@ export const connectSocket = (token) => {
         transports: ["websocket", "polling"],
     });
 
-    socket.on("connect", () => console.log("[socket] connected –", socket.id));
-    socket.on("disconnect", (r) => console.log("[socket] disconnected –", r));
-    socket.on("error", (err) => console.error("[socket] error –", err));
+    socket.on("connect", () => console.log("[socket] connected —", socket.id));
+    socket.on("disconnect", (r) => console.log("[socket] disconnected —", r));
+    socket.on("error", (err) => console.error("[socket] error —", err));
 
     return socket;
 };
@@ -72,9 +72,25 @@ export const onMessageRead = (callback) =>
 export const onUserStatus = (callback) =>
     attachListener("user:status", callback);
 
-// 🔥 NEW – Left Sidebar Realtime
+// 🔥 LEFT SIDEBAR REALTIME UPDATES
+
+/**
+ * Triggered when a new message is sent in any chat the user is part of
+ * Payload: { entity: "chat", chatId, lastMessage }
+ */
 export const onOverviewUpdate = (callback) =>
     attachListener("overview:update", callback);
 
+/**
+ * Triggered when unread count should increment
+ * Payload: { chatId, incrementBy }
+ */
 export const onOverviewUnread = (callback) =>
     attachListener("overview:unread", callback);
+
+/**
+ * 🆕 Triggered when user reads messages (reset unread count to 0)
+ * Payload: { chatId }
+ */
+export const onOverviewUnreadReset = (callback) =>
+    attachListener("overview:unread_reset", callback);

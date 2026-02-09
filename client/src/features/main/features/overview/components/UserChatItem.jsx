@@ -1,10 +1,16 @@
 import React from 'react';
 import { MessageSquare, Users } from 'lucide-react';
 import { useAuth } from "../../../../../context/AuthContext";
+
 const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
     const isSelected = selectedItem?.id === chat.id;
     const isGroup = chat.chatType === 'group';
     const { user } = useAuth();
+
+    // 🔥 Get unread count
+    const unreadCount = chat.unreadCount || 0;
+    const hasUnread = unreadCount > 0;
+
     const formatActivityTime = (dateString) => {
         if (!dateString) return '';
         const date = new Date(dateString);
@@ -19,7 +25,9 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
         <div
             className={`group flex items-start gap-3 px-3 py-3 mb-1 rounded-xl cursor-pointer transition-all ${isSelected
                 ? 'bg-slate-800/80 border-l-2 border-sky-500'
-                : 'hover:bg-slate-800/40 border-l-2 border-transparent'
+                : hasUnread
+                    ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-sky-500/50'
+                    : 'hover:bg-slate-800/40 border-l-2 border-transparent'
                 }`}
             onClick={() => setSelectedItem(chat)}
         >
@@ -34,7 +42,17 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                         </span>
                     )}
                 </div>
-                {/* Type Badge */}
+
+                {/* 🔥 Unread Badge (Top-right of avatar) */}
+                {hasUnread && (
+                    <div className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-sky-500 border-2 border-slate-900 flex items-center justify-center animate-pulse">
+                        <span className="text-[10px] font-bold text-white">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    </div>
+                )}
+
+                {/* Type Badge (Bottom-right of avatar) */}
                 <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center">
                     {isGroup ? (
                         <Users className="h-2.5 w-2.5 text-indigo-400" />
@@ -47,7 +65,12 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
             {/* 2. CONTENT */}
             <div className="flex-1 min-w-0 pt-0.5">
                 <div className="flex items-center justify-between mb-0.5">
-                    <span className={`text-sm font-semibold truncate ${isSelected ? 'text-sky-400' : 'text-slate-200'}`}>
+                    <span className={`text-sm font-semibold truncate ${isSelected
+                        ? 'text-sky-400'
+                        : hasUnread
+                            ? 'text-slate-100'
+                            : 'text-slate-200'
+                        }`}>
                         {chat.title}
                     </span>
                     <span className="text-[10px] text-slate-500 flex-shrink-0 ml-2">
@@ -56,10 +79,18 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                 </div>
 
                 <div className="flex items-center">
-                    <p className="text-xs text-slate-500 truncate group-hover:text-slate-400 transition-colors">
+                    <p className={`text-xs truncate group-hover:text-slate-400 transition-colors ${hasUnread ? 'text-slate-300 font-medium' : 'text-slate-500'
+                        }`}>
                         {chat.lastMessage?.sender && (
-                            <span className={`${isSelected ? 'text-sky-500/80' : 'text-slate-400'} mr-1 font-medium`}>
-                                {user.username === chat.lastMessage?.sender?.username ? 'You' : chat.lastMessage?.sender?.username?.split(' ')[0] || 'User'}
+                            <span className={`${isSelected
+                                ? 'text-sky-500/80'
+                                : hasUnread
+                                    ? 'text-sky-400'
+                                    : 'text-slate-400'
+                                } mr-1 font-medium`}>
+                                {user.username === chat.lastMessage?.sender?.username
+                                    ? 'You'
+                                    : chat.lastMessage?.sender?.username?.split(' ')[0] || 'User'}
                             </span>
                         )}
                         {chat.description || chat.lastMessage?.content || "Start a conversation"}

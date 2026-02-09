@@ -24,7 +24,7 @@ import {
 
 const ChatPage = () => {
     const { userId: targetUserId } = useParams();
-    const { user: currentUser, token } = useAuth(); // Ensure token is available
+    const { user: currentUser, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
 
@@ -66,7 +66,7 @@ const ChatPage = () => {
                     status: 'sent',
                     replyTo: message.replyTo
                 };
-                setMessages(prev => [...prev, newMsg]); // Append new message at bottom
+                setMessages(prev => [...prev, newMsg]);
                 scrollToBottom();
             }
         });
@@ -180,7 +180,7 @@ const ChatPage = () => {
             let currentChatId = activeChatId;
 
             if (!currentChatId) {
-                const newChat = await initiateChat(targetUserId);
+                const newChat = await initiateChat(targetUserProfile._id);
                 currentChatId = newChat._id;
                 setActiveChatId(currentChatId);
             }
