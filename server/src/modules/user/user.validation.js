@@ -63,6 +63,26 @@ const searchSchema = z.object({
 });
 
 /**
+ * Mention search schema (for @mention suggestions)
+ */
+const mentionSearchSchema = z.object({
+    query: z.string()
+        .trim()
+        .max(20, "Mention query too long")
+        .default(""),
+    chatId: objectIdSchema.optional(),
+    workspaceId: objectIdSchema.optional(),
+    projectId: objectIdSchema.optional(),
+    taskId: objectIdSchema.optional(),
+    subtaskId: objectIdSchema.optional(),
+    limit: z.coerce
+        .number()
+        .int()
+        .min(1, "Limit must be at least 1")
+        .max(20, "Limit cannot exceed 20")
+        .default(8)
+});
+/**
  * User ID Parameter Schema
  */
 const userIdSchema = z.object({
@@ -129,6 +149,7 @@ module.exports = {
     objectIdSchema,
     updateProfileSchema,
     searchSchema,
+    mentionSearchSchema,
     userIdSchema,
     usernameParamSchema,
     preferencesSchema,
@@ -137,3 +158,6 @@ module.exports = {
 
 
 };
+
+
+

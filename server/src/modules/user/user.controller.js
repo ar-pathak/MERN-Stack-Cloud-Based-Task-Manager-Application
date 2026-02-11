@@ -64,6 +64,22 @@ const userController = {
     },
 
     /**
+     * Search mention candidates
+     * GET /mentions
+     */
+    searchMentions: async (req, res) => {
+        try {
+            const result = await userService.searchMentionCandidates(
+                req.query.query,
+                req.user?._id,
+                req.query
+            );
+            return sendSuccess(res, result, 'Mention candidates retrieved');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+    /**
      * Update user preferences
      * PATCH /me/preferences
      */

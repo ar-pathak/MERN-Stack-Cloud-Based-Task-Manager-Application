@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Comment = require('../../models/comment');
 const Post = require('../../models/post');
 const User = require('../../models/user');
+const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
 
 class CommentService {
 
@@ -18,45 +19,37 @@ class CommentService {
         const session = await mongoose.startSession();
         session.startTransaction();
 
+        let mentionUsers = [];
+
         try {
             // Verify post exists and comments are enabled
             const post = await Post.findById(postId).session(session);
 
-            if (!post || post.status !== 'active') {
-                throw new Error('Post not found');
+            if (!post || post.status !== "active") {
+                throw new Error("Post not found");
             }
 
             if (post.settings?.commentsDisabled) {
-                throw new Error('Comments are disabled on this post');
+                throw new Error("Comments are disabled on this post");
             }
 
             // If replying to a comment, verify it exists
             if (parentCommentId) {
                 const parentComment = await Comment.findById(parentCommentId).session(session);
 
-                if (!parentComment || parentComment.status !== 'active') {
-                    throw new Error('Parent comment not found');
+                if (!parentComment || parentComment.status !== "active") {
+                    throw new Error("Parent comment not found");
                 }
 
                 if (parentComment.post.toString() !== postId.toString()) {
-                    throw new Error('Parent comment does not belong to this post');
+                    throw new Error("Parent comment does not belong to this post");
                 }
             }
 
-            // Extract mentions from content
-            const mentionRegex = /@(\w+)/g;
-            const mentionMatches = content.match(mentionRegex) || [];
-            const mentionUsernames = mentionMatches.map(m => m.substring(1).toLowerCase());
-
-            let mentions = [];
-            if (mentionUsernames.length > 0) {
-                const mentionedUsers = await User.find({
-                    username: { $in: mentionUsernames },
-                    accountStatus: 'active'
-                }).select('_id').session(session);
-
-                mentions = mentionedUsers.map(u => u._id);
-            }
+            mentionUsers = await resolveMentionUsersFromText([content], {
+                excludeUserIds: [userId],
+                session
+            });
 
             // Create comment
             const [comment] = await Comment.create([{
@@ -65,15 +58,38 @@ class CommentService {
                 content,
                 parentComment: parentCommentId,
                 media,
-                mentions
+                mentions: mentionUsers.map((user) => user._id)
             }], { session });
 
             await session.commitTransaction();
 
-            // Populate author info
-            await comment.populate('author', 'username name avatar isVerified');
+            // Populate author + mentions info
+            await comment.populate("author", "username name avatar isVerified");
+            await comment.populate("mentions", "username name avatar");
 
-            // TODO: Send notifications to post author and mentioned users
+            if (mentionUsers.length > 0) {
+                const actor = await User.findById(userId).select("name username").lean();
+                const actorLabel = actor?.name || actor?.username || "Someone";
+
+                await notifyMentionedUsers({
+                    actorId: userId,
+                    mentionUsers,
+                    title: "You were mentioned in a comment",
+                    message: `${actorLabel} mentioned you in a comment: "${getMentionSnippet(content)}"`,
+                    type: "activity",
+                    category: "social",
+                    priority: "normal",
+                    entityType: "none",
+                    entityId: comment._id,
+                    link: "/main",
+                    metadata: {
+                        source: "comment.create",
+                        commentId: comment._id,
+                        postId
+                    },
+                    dedupeKey: `mention:comment:${String(comment._id)}`
+                });
+            }
 
             return comment;
         } catch (error) {
@@ -95,21 +111,58 @@ class CommentService {
         const comment = await Comment.findById(commentId);
 
         if (!comment) {
-            throw new Error('Comment not found');
+            throw new Error("Comment not found");
         }
 
         if (comment.author.toString() !== userId.toString()) {
-            throw new Error('You do not have permission to edit this comment');
+            throw new Error("You do not have permission to edit this comment");
         }
 
-        if (comment.status !== 'active') {
-            throw new Error('Cannot edit a deleted or hidden comment');
+        if (comment.status !== "active") {
+            throw new Error("Cannot edit a deleted or hidden comment");
         }
+
+        const mentionUsers = await resolveMentionUsersFromText([content], {
+            excludeUserIds: [userId]
+        });
+
+        const previousMentionIds = new Set((comment.mentions || []).map((id) => String(id)));
 
         comment.content = content;
+        comment.mentions = mentionUsers.map((user) => user._id);
         await comment.save();
 
-        await comment.populate('author', 'username name avatar isVerified');
+        await comment.populate("author", "username name avatar isVerified");
+        await comment.populate("mentions", "username name avatar");
+
+        const newlyMentioned = mentionUsers.filter(
+            (user) => !previousMentionIds.has(String(user._id))
+        );
+
+        if (newlyMentioned.length > 0) {
+            const actor = await User.findById(userId).select("name username").lean();
+            const actorLabel = actor?.name || actor?.username || "Someone";
+
+            await notifyMentionedUsers({
+                actorId: userId,
+                mentionUsers: newlyMentioned,
+                title: "You were mentioned in an edited comment",
+                message: `${actorLabel} mentioned you in an edited comment: "${getMentionSnippet(content)}"`,
+                type: "activity",
+                category: "social",
+                priority: "normal",
+                entityType: "none",
+                entityId: comment._id,
+                link: "/main",
+                metadata: {
+                    source: "comment.update",
+                    commentId: comment._id,
+                    postId: comment.post
+                },
+                dedupeKey: `mention:comment:update:${String(comment._id)}`
+            });
+        }
+
         return comment;
     }
 
@@ -311,3 +364,4 @@ class CommentService {
 }
 
 module.exports = new CommentService();
+

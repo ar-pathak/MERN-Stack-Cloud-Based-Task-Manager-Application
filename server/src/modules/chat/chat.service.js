@@ -2,6 +2,11 @@
 const Chat = require("../../models/chat");
 const Message = require("../../models/message");
 const mongoose = require("mongoose");
+const {
+    resolveMentionUsersFromText,
+    notifyMentionedUsers,
+    getMentionSnippet
+} = require("../utils/mentionService");
 
 class ChatService {
 
@@ -126,25 +131,38 @@ class ChatService {
             }
         }
 
+        const cleanContent = content ? content.trim() : "";
+
+        const mentionUsers = cleanContent
+            ? await resolveMentionUsersFromText([cleanContent], {
+                allowedUserIds: chat.members,
+                excludeUserIds: [senderId]
+            })
+            : [];
+
         // Create message
         const messageData = {
             chatId,
             senderId,
-            content: content.trim(),
+            content: cleanContent,
             status: "active"
         };
+
+        if (mentionUsers.length) {
+            messageData.mentions = mentionUsers.map((user) => user._id);
+        }
 
         if (attachments && attachments.length > 0) {
             messageData.attachments = attachments;
             // Infer type from first attachment
-            if (attachments[0].type?.startsWith('image')) {
-                messageData.type = 'image';
-            } else if (attachments[0].type?.startsWith('video')) {
-                messageData.type = 'video';
-            } else if (attachments[0].type?.startsWith('audio')) {
-                messageData.type = 'audio';
+            if (attachments[0].type?.startsWith("image")) {
+                messageData.type = "image";
+            } else if (attachments[0].type?.startsWith("video")) {
+                messageData.type = "video";
+            } else if (attachments[0].type?.startsWith("audio")) {
+                messageData.type = "audio";
             } else {
-                messageData.type = 'file';
+                messageData.type = "file";
             }
         }
 
@@ -158,14 +176,48 @@ class ChatService {
         // Mongoose timestamps so the inbox sort stays correct)
         await Chat.findByIdAndUpdate(chatId, { lastMessage: message._id });
 
-        // Populate and return
-        return Message.findById(message._id)
-            .populate("senderId", "name avatar")
-            .populate("replyTo", "content senderId")
+        const populatedMessage = await Message.findById(message._id)
+            .populate("senderId", "name username avatar")
+            .populate({
+                path: "replyTo",
+                select: "content senderId",
+                populate: { path: "senderId", select: "name username avatar" }
+            })
+            .populate("mentions", "username name avatar")
             .lean();
+
+        if (mentionUsers.length) {
+            const senderLabel = populatedMessage?.senderId?.name
+                || populatedMessage?.senderId?.username
+                || "Someone";
+
+            try {
+                await notifyMentionedUsers({
+                    actorId: senderId,
+                    mentionUsers,
+                    title: "You were mentioned in chat",
+                    message: `${senderLabel} mentioned you: "${getMentionSnippet(cleanContent)}"`,
+                    type: "chat",
+                    category: "chat",
+                    priority: "high",
+                    entityType: "chat",
+                    entityId: chatId,
+                    chatId,
+                    link: "/main",
+                    metadata: {
+                        source: "chat.message",
+                        messageId: message._id
+                    },
+                    dedupeKey: `mention:chat:${String(message._id)}`
+                });
+            } catch (mentionError) {
+                console.error("chat mention notification error", mentionError);
+            }
+        }
+
+        return populatedMessage;
     }
 
-    // -----------------------------------------------------------------------
     // 5. Get Messages — with membership check & safe pagination
     // -----------------------------------------------------------------------
     async getMessages(chatId, userId, page, limit) {
@@ -194,6 +246,7 @@ class ChatService {
                 populate: { path: "senderId", select: "name" }
             })
             .populate("reactions.userId", "name avatar")
+            .populate("mentions", "username name avatar")
             .lean();
 
         // Get total count for pagination info
@@ -300,16 +353,59 @@ class ChatService {
             throw new Error("You can only edit your own messages");
         }
 
-        message.content = newContent.trim();
+        const cleanContent = newContent.trim();
+        const mentionUsers = await resolveMentionUsersFromText([cleanContent], {
+            allowedUserIds: chat.members,
+            excludeUserIds: [userId]
+        });
+
+        const previousMentionIds = new Set((message.mentions || []).map((id) => String(id)));
+
+        message.content = cleanContent;
         message.edited = true;
         message.editedAt = new Date();
         message.status = "edited";
+        message.mentions = mentionUsers.map((user) => user._id);
         await message.save();
 
-        return message;
-    }
+        const newlyMentionedUsers = mentionUsers.filter((user) => !previousMentionIds.has(String(user._id)));
 
-    // -----------------------------------------------------------------------
+        const populatedMessage = await Message.findById(message._id)
+            .populate("senderId", "name username avatar")
+            .populate("mentions", "username name avatar")
+            .lean();
+
+        if (newlyMentionedUsers.length) {
+            const senderLabel = populatedMessage?.senderId?.name
+                || populatedMessage?.senderId?.username
+                || "Someone";
+
+            try {
+                await notifyMentionedUsers({
+                    actorId: userId,
+                    mentionUsers: newlyMentionedUsers,
+                    title: "You were mentioned in edited message",
+                    message: `${senderLabel} mentioned you: "${getMentionSnippet(cleanContent)}"`,
+                    type: "chat",
+                    category: "chat",
+                    priority: "high",
+                    entityType: "chat",
+                    entityId: chatId,
+                    chatId,
+                    link: "/main",
+                    metadata: {
+                        source: "chat.message.edit",
+                        messageId: message._id
+                    },
+                    dedupeKey: `mention:chat:edit:${String(message._id)}`
+                });
+            } catch (mentionError) {
+                console.error("chat edited mention notification error", mentionError);
+            }
+        }
+
+        return populatedMessage;
+    }
     // 9. Add Reaction
     // -----------------------------------------------------------------------
     async addReaction(messageId, userId, emoji, chatId) {
@@ -495,8 +591,14 @@ class ChatService {
             .sort({ createdAt: -1 })
             .limit(limit)
             .populate("senderId", "name avatar")
+            .populate("mentions", "username name avatar")
             .lean();
     }
 }
 
 module.exports = new ChatService();
+
+
+
+
+

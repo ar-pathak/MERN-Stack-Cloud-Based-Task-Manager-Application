@@ -5,6 +5,7 @@ import {
     Check, CheckCheck, Copy, X, Smile, ArrowUpRight
 } from "lucide-react";
 import { useAuth } from "../../../../../../context/AuthContext";
+import { useNavigate } from "react-router";
 
 const ChatMessage = ({
     message,
@@ -17,6 +18,7 @@ const ChatMessage = ({
     isConsecutive = false,
 }) => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const currentUserId = user?._id || user?.id;
 
     // --- DATA NORMALIZATION ---
@@ -120,6 +122,67 @@ const ChatMessage = ({
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     };
 
+    const mentionByUsername = new Map(
+        (message.mentions || [])
+            .filter((item) => item && typeof item === "object" && item.username)
+            .map((item) => [String(item.username).toLowerCase(), item])
+    );
+
+    const renderContentWithMentions = (text) => {
+        const source = String(text || "");
+        if (!source.includes("@")) return source;
+
+        const parts = [];
+        const regex = /@([a-z0-9_]{3,20})/gi;
+        let lastIndex = 0;
+        let match;
+
+        while ((match = regex.exec(source)) !== null) {
+            const tokenStart = match.index;
+            const tokenEnd = regex.lastIndex;
+            const username = String(match[1] || "").toLowerCase();
+
+            if (tokenStart > lastIndex) {
+                parts.push(source.slice(lastIndex, tokenStart));
+            }
+
+            const userMatch = mentionByUsername.get(username);
+            const mentionText = source.slice(tokenStart, tokenEnd);
+
+            if (userMatch?._id) {
+                parts.push(
+                    <button
+                        key={`mention-${messageId}-${tokenStart}`}
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            navigate(`/profile/${userMatch._id}`);
+                        }}
+                        className="inline rounded px-0.5 text-sky-300 hover:text-sky-200 hover:underline"
+                    >
+                        {mentionText}
+                    </button>
+                );
+            } else {
+                parts.push(
+                    <span
+                        key={`mention-${messageId}-${tokenStart}`}
+                        className="text-sky-300"
+                    >
+                        {mentionText}
+                    </span>
+                );
+            }
+
+            lastIndex = tokenEnd;
+        }
+
+        if (lastIndex < source.length) {
+            parts.push(source.slice(lastIndex));
+        }
+
+        return parts;
+    };
     // --- REACTIONS LOGIC ---
     const messageReactions = message.reactions || [];
     const groupedReactions = Array.isArray(messageReactions)
@@ -150,7 +213,7 @@ const ChatMessage = ({
                 className="flex justify-center my-3 px-4"
             >
                 <div className="max-w-[90%] rounded-full border border-slate-700/70 bg-slate-900/70 px-4 py-1.5 text-center text-[11px] text-slate-300">
-                    {content}
+                    {renderContentWithMentions(content)}
                 </div>
             </motion.div>
         );
@@ -279,7 +342,7 @@ const ChatMessage = ({
 
                                     {/* Text Content */}
                                     <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${isOwnMessage ? 'text-white/95' : 'text-slate-100'}`}>
-                                        {content}
+                                        {renderContentWithMentions(content)}
                                     </p>
 
                                     {/* Attachments */}
@@ -453,3 +516,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, danger }) => (
 );
 
 export default ChatMessage;
+
+
+
+

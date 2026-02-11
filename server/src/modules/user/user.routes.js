@@ -6,6 +6,7 @@ const { validate } = require('../../middleware/validate');
 const {
     updateProfileSchema,
     searchSchema,
+    mentionSearchSchema,
     userIdSchema,
     usernameParamSchema,
     preferencesSchema,
@@ -66,6 +67,12 @@ router.get(
     userController.searchUsers
 );
 
+// Mention suggestions for @mentions
+router.get(
+    '/mentions',
+    validate(mentionSearchSchema, 'query'),
+    userController.searchMentions
+);
 // Get user statistics
 router.get(
     '/:id/stats',

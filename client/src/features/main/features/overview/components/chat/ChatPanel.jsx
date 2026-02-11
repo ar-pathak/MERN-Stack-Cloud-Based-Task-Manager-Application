@@ -201,6 +201,7 @@ const ChatPanel = ({
                                 setReplyingTo={setReplyingTo}
                                 showEmojiPicker={showEmojiPicker}
                                 setShowEmojiPicker={setShowEmojiPicker}
+                                chatId={chatId}
                                 isTyping={isTyping}
                                 typingUsers={typingUsers}
                                 selectedFile={selectedFile}

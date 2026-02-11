@@ -4,6 +4,7 @@ const Like = require('../../models/like');
 const Comment = require('../../models/comment');
 const Follow = require('../../models/follow');
 const User = require('../../models/user');
+const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
 
 class PostService {
 
@@ -17,39 +18,77 @@ class PostService {
         const session = await mongoose.startSession();
         session.startTransaction();
 
+        let mentionUsers = [];
+
         try {
             // Validate user exists and is active
             const user = await User.findById(userId)
-                .select('accountStatus')
+                .select("accountStatus name username")
                 .session(session);
 
-            if (!user || user.accountStatus !== 'active') {
-                throw new Error('User not found or inactive');
+            if (!user || user.accountStatus !== "active") {
+                throw new Error("User not found or inactive");
             }
 
-            // Process mentions - validate users exist
-            if (postData.mentions && postData.mentions.length > 0) {
-                const mentionedUsers = await User.find({
-                    _id: { $in: postData.mentions },
-                    accountStatus: 'active'
-                }).select('_id').session(session);
+            const usersMentionedByText = await resolveMentionUsersFromText([postData.content], {
+                excludeUserIds: [userId],
+                session
+            });
 
-                postData.mentions = mentionedUsers.map(u => u._id);
+            const explicitMentionIds = Array.isArray(postData.mentions) ? postData.mentions : [];
+            let usersMentionedByIds = [];
+            if (explicitMentionIds.length > 0) {
+                usersMentionedByIds = await User.find({
+                    _id: { $in: explicitMentionIds },
+                    accountStatus: "active",
+                    "preferences.privacy.allowMentions": { $ne: false }
+                })
+                    .select("_id username name avatar")
+                    .session(session)
+                    .lean();
             }
+
+            const mentionMap = new Map();
+            [...usersMentionedByText, ...usersMentionedByIds].forEach((userDoc) => {
+                if (!userDoc?._id) return;
+                mentionMap.set(String(userDoc._id), userDoc);
+            });
+
+            mentionUsers = Array.from(mentionMap.values());
 
             // Create post
             const [post] = await Post.create([{
                 ...postData,
+                mentions: mentionUsers.map((item) => item._id),
                 author: userId
             }], { session });
 
             await session.commitTransaction();
 
-            // Populate author info
-            await post.populate('author', 'username name avatar isVerified');
+            // Populate author + mentions info
+            await post.populate("author", "username name avatar isVerified");
+            await post.populate("mentions", "username name avatar");
 
-            // TODO: Trigger notifications for mentions
-            // TODO: Process media uploads if needed
+            if (mentionUsers.length > 0) {
+                const actorLabel = user.name || user.username || "Someone";
+                await notifyMentionedUsers({
+                    actorId: userId,
+                    mentionUsers,
+                    title: "You were mentioned in a post",
+                    message: `${actorLabel} mentioned you in a post: "${getMentionSnippet(postData.content)}"`,
+                    type: "activity",
+                    category: "social",
+                    priority: "normal",
+                    entityType: "none",
+                    entityId: post._id,
+                    link: "/main",
+                    metadata: {
+                        source: "post.create",
+                        postId: post._id
+                    },
+                    dedupeKey: `mention:post:${String(post._id)}`
+                });
+            }
 
             return post.toPublicJSON();
         } catch (error) {
@@ -129,32 +168,71 @@ class PostService {
         const post = await Post.findById(postId);
 
         if (!post) {
-            throw new Error('Post not found');
+            throw new Error("Post not found");
         }
 
         if (post.author.toString() !== userId.toString()) {
-            throw new Error('You do not have permission to edit this post');
+            throw new Error("You do not have permission to edit this post");
         }
 
-        if (post.status !== 'active') {
-            throw new Error('Cannot edit a deleted or hidden post');
+        if (post.status !== "active") {
+            throw new Error("Cannot edit a deleted or hidden post");
         }
 
         // Only allow updating certain fields
-        const allowedUpdates = ['content', 'media', 'visibility', 'settings'];
+        const allowedUpdates = ["content", "media", "visibility", "settings"];
         const updates = {};
 
-        Object.keys(updateData).forEach(key => {
+        Object.keys(updateData).forEach((key) => {
             if (allowedUpdates.includes(key)) {
                 updates[key] = updateData[key];
             }
         });
 
+        const previousMentionIds = new Set((post.mentions || []).map((id) => String(id)));
+
+        if (typeof updates.content === "string") {
+            const mentionUsers = await resolveMentionUsersFromText([updates.content], {
+                excludeUserIds: [userId]
+            });
+
+            updates.mentions = mentionUsers.map((item) => item._id);
+
+            const newlyMentioned = mentionUsers.filter(
+                (item) => !previousMentionIds.has(String(item._id))
+            );
+
+            if (newlyMentioned.length > 0) {
+                const actor = await User.findById(userId).select("name username").lean();
+                const actorLabel = actor?.name || actor?.username || "Someone";
+
+                await notifyMentionedUsers({
+                    actorId: userId,
+                    mentionUsers: newlyMentioned,
+                    title: "You were mentioned in an updated post",
+                    message: `${actorLabel} mentioned you in an updated post: "${getMentionSnippet(updates.content)}"`,
+                    type: "activity",
+                    category: "social",
+                    priority: "normal",
+                    entityType: "none",
+                    entityId: postId,
+                    link: "/main",
+                    metadata: {
+                        source: "post.update",
+                        postId
+                    },
+                    dedupeKey: `mention:post:update:${String(postId)}`
+                });
+            }
+        }
+
         // Update the post
         Object.assign(post, updates);
         await post.save();
 
-        await post.populate('author', 'username name avatar isVerified');
+        await post.populate("author", "username name avatar isVerified");
+        await post.populate("mentions", "username name avatar");
+
         return post.toPublicJSON();
     }
 
@@ -531,3 +609,5 @@ class PostService {
 }
 
 module.exports = new PostService();
+
+

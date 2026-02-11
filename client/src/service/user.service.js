@@ -122,6 +122,28 @@ export const searchUsers = async (query, params = {}) => {
 };
 
 /**
+ * Search mention candidates
+ * GET /mentions
+ * @param {String} query - mention text after @
+ * @param {Object} options - { chatId, workspaceId, projectId, taskId, subtaskId, limit }
+ */
+export const searchMentionCandidates = async (query = "", options = {}) => {
+    try {
+        const response = await api.get(`${BASE_URL}/mentions`, {
+            params: {
+                query,
+                ...options
+            }
+        });
+        return response.data?.data?.users || response.data?.data?.results || response.data?.data || [];
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to search mention candidates",
+            status: error.response?.status,
+        };
+    }
+};
+/**
  * Get Popular / Trending Users
  * GET /popular
  * @param {Number} limit - Default 10

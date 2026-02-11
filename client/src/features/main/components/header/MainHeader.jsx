@@ -211,7 +211,7 @@ const MainHeader = () => {
 
   return (
     <>
-      <header className="sticky top-0 z-20 border-b border-slate-800/70 bg-slate-950/40 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 border-b border-slate-800/70 bg-slate-950/40 backdrop-blur-xl">
         <div className="flex items-center justify-between gap-3 px-4 py-3 md:px-6">
           {/* Left */}
           <div className="flex items-center gap-3">

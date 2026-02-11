@@ -1,5 +1,10 @@
 const User = require('../../models/user');
 const Follow = require('../../models/follow');
+const Chat = require('../../models/chat');
+const WorkspaceMember = require('../../models/workspaceMember');
+const Project = require('../../models/project');
+const Task = require('../../models/tasks');
+const Subtask = require('../../models/subtasks');
 
 class UserService {
     /**
@@ -162,6 +167,162 @@ class UserService {
         };
     }
 
+    /**
+     * Search mention candidates for @mentions
+     * @param {String} query - current text after @
+     * @param {ObjectId} currentUserId - requester user id
+     * @param {Object} scope - optional scope identifiers
+     * @returns {Promise<{users: Array}>}
+     */
+    async searchMentionCandidates(query = "", currentUserId, scope = {}) {
+        const searchToken = String(query || "").trim().toLowerCase();
+        const limit = Math.min(20, Math.max(1, Number(scope.limit) || 8));
+
+        const collectScopeUserIds = async () => {
+            if (scope.chatId) {
+                const chat = await Chat.findById(scope.chatId).select("members").lean();
+                return (chat?.members || []).map((id) => String(id));
+            }
+
+            if (scope.subtaskId) {
+                const subtask = await Subtask.findById(scope.subtaskId)
+                    .select("assignedTo createdBy task")
+                    .lean();
+
+                if (!subtask) return [];
+
+                const task = subtask.task
+                    ? await Task.findById(subtask.task).select("assignees createdBy").lean()
+                    : null;
+
+                return [
+                    ...(subtask.assignedTo || []),
+                    subtask.createdBy,
+                    ...(task?.assignees || []),
+                    task?.createdBy
+                ]
+                    .filter(Boolean)
+                    .map((id) => String(id));
+            }
+
+            if (scope.taskId) {
+                const task = await Task.findById(scope.taskId)
+                    .select("assignees createdBy")
+                    .lean();
+
+                if (!task) return [];
+
+                return [
+                    ...(task.assignees || []),
+                    task.createdBy
+                ]
+                    .filter(Boolean)
+                    .map((id) => String(id));
+            }
+
+            if (scope.projectId) {
+                const project = await Project.findById(scope.projectId)
+                    .select("owner members.user")
+                    .lean();
+
+                if (!project) return [];
+
+                return [
+                    project.owner,
+                    ...((project.members || []).map((member) => member.user))
+                ]
+                    .filter(Boolean)
+                    .map((id) => String(id));
+            }
+
+            if (scope.workspaceId) {
+                const members = await WorkspaceMember.find({
+                    workspace: scope.workspaceId,
+                    status: "active"
+                })
+                    .select("user")
+                    .lean();
+
+                return members.map((member) => String(member.user));
+            }
+
+            return null;
+        };
+
+        const allowedUserIds = await collectScopeUserIds();
+        const currentUserIdString = String(currentUserId);
+        const normalizedAllowedUserIds = Array.isArray(allowedUserIds)
+            ? Array.from(new Set(allowedUserIds.map((id) => String(id))))
+            : null;
+
+        if (Array.isArray(normalizedAllowedUserIds)) {
+            if (normalizedAllowedUserIds.length === 0) {
+                return { users: [] };
+            }
+
+            // Prevent scope probing: requester must be part of the resolved scope.
+            if (!normalizedAllowedUserIds.includes(currentUserIdString)) {
+                return { users: [] };
+            }
+        }
+
+        const escapedToken = searchToken.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = escapedToken ? new RegExp(escapedToken, "i") : null;
+
+        const filter = {
+            accountStatus: "active",
+            "preferences.privacy.allowMentions": { $ne: false },
+            _id: { $ne: currentUserId }
+        };
+
+        if (Array.isArray(normalizedAllowedUserIds) && normalizedAllowedUserIds.length > 0) {
+            filter._id.$in = normalizedAllowedUserIds;
+        }
+
+        if (regex) {
+            filter.$or = [
+                { username: regex },
+                { name: regex }
+            ];
+        }
+
+        const users = await User.find(filter)
+            .select("username name avatar isOnline")
+            .limit(regex ? limit * 4 : limit)
+            .lean();
+
+        const scored = users
+            .map((user) => {
+                const username = String(user.username || "").toLowerCase();
+                const name = String(user.name || "").toLowerCase();
+
+                let score = 0;
+                if (searchToken) {
+                    if (username === searchToken) score += 100;
+                    if (username.startsWith(searchToken)) score += 70;
+                    if (name.startsWith(searchToken)) score += 45;
+                    if (username.includes(searchToken)) score += 20;
+                    if (name.includes(searchToken)) score += 10;
+                } else {
+                    score += 5;
+                }
+
+                if (user.isOnline) score += 8;
+
+                return { ...user, score };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit)
+            .map((user) => ({
+                _id: user._id,
+                username: user.username,
+                name: user.name,
+                avatar: user.avatar,
+                isOnline: user.isOnline
+            }));
+
+        return { users: scored };
+    }
     /**
      * Update user preferences
      * @param {ObjectId} userId - User ID
@@ -340,3 +501,4 @@ class UserService {
 }
 
 module.exports = new UserService();
+

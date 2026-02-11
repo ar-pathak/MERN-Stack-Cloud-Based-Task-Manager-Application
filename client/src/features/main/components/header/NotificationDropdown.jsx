@@ -182,7 +182,7 @@ const NotificationDropdown = () => {
     const badgeCount = unreadCount || unreadInList;
 
     return (
-        <div ref={containerRef} className="relative">
+        <div ref={containerRef} className="relative z-50">
             <button
                 onClick={() => setOpen((value) => !value)}
                 className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 hover:bg-slate-800/70 transition-colors"

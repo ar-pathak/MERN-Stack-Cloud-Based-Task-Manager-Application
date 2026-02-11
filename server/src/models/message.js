@@ -33,6 +33,12 @@ const messageSchema = new mongoose.Schema(
             default: false,
             index: true
         },
+        // Mentioned users in the message content (@username)
+        mentions: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            index: true
+        }],
         // FIX 2: Correctly define attachments array structure
         attachments: [
             {
@@ -100,6 +106,7 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ chatId: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, status: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, pinned: 1 });
+messageSchema.index({ chatId: 1, mentions: 1, createdAt: -1 });
 
 // Static method: Mark all messages up to a specific message as read by a user
 messageSchema.statics.markReadUpTo = async function (chatId, userId, lastReadMessageId) {
@@ -149,3 +156,5 @@ messageSchema.methods.removeReaction = async function (userId, emoji) {
 };
 
 module.exports = mongoose.model("Message", messageSchema);
+
+
