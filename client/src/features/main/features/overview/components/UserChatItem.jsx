@@ -1,11 +1,12 @@
 import React from 'react';
-import { MessageSquare, Users } from 'lucide-react';
+import { MessageSquare, Users, Phone } from 'lucide-react';
 import { useAuth } from "../../../../../context/AuthContext";
 
 const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
     const isSelected = selectedItem?.id === chat.id;
     const isGroup = chat.chatType === 'group';
     const { user } = useAuth();
+    const hasActiveCall = !!chat?.hasActiveCall;
 
     // 🔥 Get unread count
     const unreadCount = chat.unreadCount || 0;
@@ -25,6 +26,8 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
         <div
             className={`group flex items-start gap-3 px-3 py-3 mb-1 rounded-xl cursor-pointer transition-all ${isSelected
                 ? 'bg-slate-800/80 border-l-2 border-sky-500'
+                : hasActiveCall
+                    ? 'bg-emerald-900/15 hover:bg-emerald-900/25 border-l-2 border-emerald-500/60'
                 : hasUnread
                     ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-sky-500/50'
                     : 'hover:bg-slate-800/40 border-l-2 border-transparent'
@@ -60,6 +63,11 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                         <MessageSquare className="h-2.5 w-2.5 text-sky-400" />
                     )}
                 </div>
+                {hasActiveCall && (
+                    <div className="absolute -bottom-1 -left-1 h-5 w-5 rounded-full bg-emerald-500 border-2 border-slate-900 flex items-center justify-center animate-pulse">
+                        <Phone className="h-2.5 w-2.5 text-white" />
+                    </div>
+                )}
             </div>
 
             {/* 2. CONTENT */}
@@ -79,8 +87,15 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                 </div>
 
                 <div className="flex items-center">
-                    <p className={`text-xs truncate group-hover:text-slate-400 transition-colors ${hasUnread ? 'text-slate-300 font-medium' : 'text-slate-500'
+                    <p className={`text-xs truncate group-hover:text-slate-400 transition-colors ${hasActiveCall
+                        ? 'text-emerald-300 font-semibold'
+                        : hasUnread
+                            ? 'text-slate-300 font-medium'
+                            : 'text-slate-500'
                         }`}>
+                        {hasActiveCall && (
+                            <span className="text-emerald-400 mr-1">Live call â€¢</span>
+                        )}
                         {chat.lastMessage?.sender && (
                             <span className={`${isSelected
                                 ? 'text-sky-500/80'

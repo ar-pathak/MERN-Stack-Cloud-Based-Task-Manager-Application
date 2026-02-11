@@ -1,12 +1,16 @@
 import { useState, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import InfoSidebar from "../infoSidebar/InfoSidebar";
 
-// Sub-components
 import ChatHeader from "./ChatHeader";
 import PinnedBanner from "./PinnedBanner";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
+import useWebRTC from "../../hook/useWebRTC";
+// import VideoCallModal from "./VideoCallModal"; // <-- Removed (Replaced by CallInterface)
+// import IncomingCallModal from "./IncomingCallModal"; // <-- Removed (Optional, keeping code clean)
+import CallInterface from "./CallInterface"; // <-- Added
+import { useAuth } from "../../../../../../context/AuthContext";
 
 const ChatPanel = ({
     item,
@@ -27,130 +31,101 @@ const ChatPanel = ({
     isTyping,
     typingUsers,
     fileInputRef,
-    handleFileUpload,
     uploadingFile,
     showEmojiPicker,
     setShowEmojiPicker,
     overview,
     onUpdate,
 }) => {
-    // Local State
+    const { user } = useAuth();
+
     const [searchQuery, setSearchQuery] = useState("");
     const [showSearch, setShowSearch] = useState(false);
     const [messageFilter, setMessageFilter] = useState("all");
     const [replyingTo, setReplyingTo] = useState(null);
-
-    // NEW: State for the selected file (before sending)
     const [selectedFile, setSelectedFile] = useState(null);
 
-    // Derived State
-    const pinnedMessages = useMemo(
-        () => messages.filter((msg) => msg?.pinned),
-        [messages]
-    );
+    // ── WebRTC ────────────────────────────────────────────────────────────
+    const chatId = item?.chatId || item?.id || item?._id;
 
+    const {
+        localStream,
+        remoteStreams,
+        currentCall,
+        callStatus,
+        participants,
+        isAudioEnabled,
+        isVideoEnabled,
+        isScreenSharing,
+        startCall,
+        joinCall,
+        leaveCall,
+        endCall,
+        toggleAudio,
+        toggleVideo,
+        toggleScreenShare,
+    } = useWebRTC(chatId);
+
+    // Check if I am the host
+    const isHost = useMemo(() => {
+        if (!currentCall || !user) return false;
+        return String(currentCall.callerId?._id || currentCall.callerId) === String(user._id || user.id);
+    }, [currentCall, user]);
+
+    // ── Call Handlers ─────────────────────────────────────────────────────
+    const handleStartVideoCall = () => startCall('video');
+    const handleStartAudioCall = () => startCall('audio');
+
+    // ── Message filtering (Existing logic) ────────────────────────────────
+    const pinnedMessages = useMemo(() => messages.filter(msg => msg?.pinned), [messages]);
     const typingMembers = useMemo(() => {
-        if (!typingUsers || typingUsers.length === 0) return [];
-        return typingUsers.map((u) => ({
-            name: u.userName || u.name || "Someone",
-            typing: true,
-        }));
+        if (!typingUsers?.length) return [];
+        return typingUsers.map(u => ({ name: u.userName || u.name || "Someone", typing: true }));
     }, [typingUsers]);
 
     const filteredMessages = useMemo(() => {
-        let filtered = messages;
-
-        if (searchQuery) {
-            filtered = filtered.filter((msg) => {
-                const content = msg?.text || msg?.content || "";
-                return content.toLowerCase().includes(searchQuery.toLowerCase());
-            });
-        }
-
-        if (messageFilter === "files") {
-            filtered = filtered.filter((msg) => msg?.attachments?.length > 0);
-        } else if (messageFilter === "pinned") {
-            filtered = filtered.filter((msg) => msg?.pinned);
-        } else if (messageFilter === "media") {
-            filtered = filtered.filter((msg) =>
-                msg?.attachments?.some(
-                    (att) =>
-                        att?.type?.startsWith("image") ||
-                        att?.type?.startsWith("video")
-                )
-            );
-        }
-
-        return filtered;
+        let f = messages;
+        if (searchQuery) f = f.filter(m => (m?.text || m?.content || "").toLowerCase().includes(searchQuery.toLowerCase()));
+        if (messageFilter === "files") f = f.filter(m => m?.attachments?.length > 0);
+        if (messageFilter === "pinned") f = f.filter(m => m?.pinned);
+        return f;
     }, [messages, searchQuery, messageFilter]);
 
-    const handleMessageReaction = (messageId, emoji) => {
-        handleReaction?.(messageId, emoji);
-    };
-
-    // UPDATED: Handle Send to include file logic
+    // ── Message Send (Existing logic) ─────────────────────────────────────
     const handleSendWithContext = (fileFromInput) => {
-        // Use file passed from input or current state
         const fileToSend = fileFromInput || selectedFile;
-
         if (chatMessage?.trim() || fileToSend || replyingTo) {
-            // Pass the file to the parent's handleSendMessage
-            // The parent (ChatWindow/Container) must now handle the upload logic
-            handleSendMessage({
-                replyTo: replyingTo,
-                file: fileToSend
-            });
-
-            // Clear local states
+            handleSendMessage({ replyTo: replyingTo, file: fileToSend });
             setReplyingTo(null);
             setSelectedFile(null);
-
-            // Note: We don't clear chatMessage here as it's a prop (setChatMessage), 
-            // usually cleared by the parent after successful send.
         }
     };
 
     const handleMessageChange = (value) => {
         setChatMessage(value);
-        if (value?.trim() && handleTyping) {
-            handleTyping();
-        }
+        if (value?.trim() && handleTyping) handleTyping();
     };
 
+    // ── Render ────────────────────────────────────────────────────────────
     return (
-        <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+        <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden relative">
             <AnimatePresence mode="wait">
                 {showChatInfo && item?.type !== "dm" ? (
-                    <motion.div
-                        key="info"
-                        initial={{ x: "100%", opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        exit={{ x: "100%", opacity: 0 }}
-                        transition={{ duration: 0.25, ease: "easeOut" }}
-                        className="w-full h-full min-h-0 overflow-y-auto"
-                    >
+                    <div className="w-full h-full min-h-0 overflow-y-auto">
                         <InfoSidebar
                             item={item}
                             overview={overview}
                             onClose={() => setShowChatInfo(false)}
                             onUpdate={onUpdate}
                         />
-                    </motion.div>
+                    </div>
                 ) : (
-                    <motion.div
-                        key="chat"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="flex-1 flex flex-col h-full min-h-0 overflow-hidden"
-                    >
-                        {/* HEADER */}
-                        <div className="flex-shrink-0">
+                    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden relative">
+                        {/* 1. Header */}
+                        <div className="flex-shrink-0 z-20">
                             <ChatHeader
                                 item={item}
                                 typingMembers={typingMembers}
-                                isTyping={isTyping}
                                 showSearch={showSearch}
                                 setShowSearch={setShowSearch}
                                 searchQuery={searchQuery}
@@ -159,16 +134,47 @@ const ChatPanel = ({
                                 setMessageFilter={setMessageFilter}
                                 showChatInfo={showChatInfo}
                                 setShowChatInfo={setShowChatInfo}
+                                onStartVideoCall={handleStartVideoCall}
+                                onStartAudioCall={handleStartAudioCall}
                             />
+                        </div>
 
+                        {/* 2. CALL INTERFACE (The Telegram Style Bar) - ADDED HERE */}
+                        <div className="flex-shrink-0 z-30">
+                             <AnimatePresence>
+                                {currentCall && (
+                                    <CallInterface
+                                        activeUserId={user?._id}
+                                        currentCall={currentCall}
+                                        callStatus={callStatus}
+                                        isHost={isHost}
+                                        localStream={localStream}
+                                        remoteStreams={remoteStreams}
+                                        participants={participants}
+                                        isAudioEnabled={isAudioEnabled}
+                                        isVideoEnabled={isVideoEnabled}
+                                        isScreenSharing={isScreenSharing}
+                                        onToggleAudio={toggleAudio}
+                                        onToggleVideo={toggleVideo}
+                                        onToggleScreenShare={toggleScreenShare}
+                                        onLeaveCall={leaveCall}
+                                        onEndCall={endCall}
+                                        onJoinCall={joinCall}
+                                    />
+                                )}
+                             </AnimatePresence>
+                        </div>
+
+                        {/* 3. Pinned Banner */}
+                        <div className="flex-shrink-0 z-10">
                             <PinnedBanner
                                 pinnedMessages={pinnedMessages}
                                 onViewPinned={() => setMessageFilter("pinned")}
                             />
                         </div>
 
-                        {/* MESSAGES */}
-                        <div className="flex-1 min-h-0 overflow-y-auto">
+                        {/* 4. Messages Area */}
+                        <div className="flex-1 min-h-0 overflow-y-auto relative z-0">
                             <MessageList
                                 messages={filteredMessages}
                                 itemType={item?.type}
@@ -177,20 +183,19 @@ const ChatPanel = ({
                                 handleDeleteMessage={handleDeleteMessage}
                                 handlePinMessage={handlePinMessage}
                                 handleEditMessage={handleEditMessage}
-                                onReact={handleMessageReaction}
+                                onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
                                 onReply={setReplyingTo}
                                 chatEndRef={chatEndRef}
                             />
                         </div>
 
-                        {/* INPUT */}
-                        <div className="flex-shrink-0">
+                        {/* 5. Input Area */}
+                        <div className="flex-shrink-0 z-20">
                             <ChatInput
                                 chatMessage={chatMessage}
                                 setChatMessage={handleMessageChange}
                                 handleSend={handleSendWithContext}
                                 fileInputRef={fileInputRef}
-                                // handleFileUpload removed (handled locally in ChatInput via selectedFile)
                                 uploadingFile={uploadingFile}
                                 replyingTo={replyingTo}
                                 setReplyingTo={setReplyingTo}
@@ -198,12 +203,11 @@ const ChatPanel = ({
                                 setShowEmojiPicker={setShowEmojiPicker}
                                 isTyping={isTyping}
                                 typingUsers={typingUsers}
-                                // NEW PROPS
                                 selectedFile={selectedFile}
                                 setSelectedFile={setSelectedFile}
                             />
                         </div>
-                    </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
         </div>

@@ -24,9 +24,11 @@ const followRoutes = require("./modules/follow/follow.routes");
 const usersRoutes = require("./modules/user/user.routes");
 const chatRoutes = require("./modules/chat/chat.routes");
 const uploadRoutes = require("./modules/upload/upload.routes");
+const callsRoutes = require("./modules/call/call.routes");
 
 // Socket handler + auth middleware for Socket.IO
 const chatSocketHandler = require("./modules/chat/chat.socket");
+const callSocketHandler = require("./modules/call/Call.socket");
 const socketAuthMiddleware = require("./middleware/socketAuthMiddleware"); // ← see note below
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,7 @@ app.use("/api/follow", followRoutes);
 app.use("/api/user", usersRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/upload", uploadRoutes);
+app.use("/api/calls", callsRoutes);
 
 // ---------------------------------------------------------------------------
 // 404 handler  –  must come after all routes, before the error handler
@@ -175,8 +178,9 @@ io.on("connection", (socket) => {
 
     console.log(`[socket] connected — user ${userId}, socket ${socket.id}`);
 
-    // Hand off to the chat event handlers
+    // Hand off to socket event handlers
     chatSocketHandler(io, socket, onlineUsers);
+    callSocketHandler(io, socket);
 
     // Clean up on disconnect
     socket.on("disconnect", () => {

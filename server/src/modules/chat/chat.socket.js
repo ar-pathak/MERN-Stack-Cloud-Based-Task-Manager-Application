@@ -34,6 +34,28 @@ module.exports = (io, socket) => {
 
     socket.join(`user:${userId}`);
 
+    // Join/leave chat rooms used by call and real-time chat scoped broadcasts.
+    socket.on("join-chat", async (chatId) => {
+        try {
+            const chat = await loadAndAuthorise(socket, chatId, userId);
+            if (!chat) return;
+
+            socket.join(String(chat._id));
+        } catch (error) {
+            console.error("join-chat error", error);
+            socket.emit("error", { event: "join-chat", reason: "Internal error" });
+        }
+    });
+
+    socket.on("leave-chat", async (chatId) => {
+        try {
+            if (!chatId) return;
+            socket.leave(String(chatId));
+        } catch (error) {
+            console.error("leave-chat error", error);
+        }
+    });
+
     // ---------------- Online Status ----------------
     User.findByIdAndUpdate(userId, { isOnline: true }, { new: true })
         .select("name avatar isOnline")

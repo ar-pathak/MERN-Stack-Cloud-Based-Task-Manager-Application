@@ -20,8 +20,12 @@ import {
   onReceiveMessage,
   onMessageRead,
   onOverviewUpdate,
-  onOverviewUnread
+  onOverviewUnread,
+  onCallIncoming,
+  onCallInitiated,
+  onCallEnded
 } from "../../../../../service/Chat.socket.service";
+import api from "../../../../../config/axios";
 
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
@@ -163,6 +167,7 @@ const OverviewLayout = () => {
   const [toast, setToast] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
+  const [activeCallsByChatId, setActiveCallsByChatId] = useState({});
 
   const { user } = useAuth();
 
@@ -185,19 +190,85 @@ const OverviewLayout = () => {
   const chat = useChatLogic(selectedItem);
 
   const timelineRef = useRef(timeline);
-  const selectedItemRef = useRef(selectedItem);
 
   useEffect(() => {
     timelineRef.current = timeline;
   }, [timeline]);
 
-  useEffect(() => {
-    selectedItemRef.current = selectedItem;
-    if (selectedItem) {
-      const chatId = selectedItem.id || selectedItem._id;
-      // We rely on the socket listener logic to reset, but we can double check here later
+  const upsertActiveCall = useCallback((payload) => {
+    const call = payload?.call || payload;
+    const callId = String(payload?.callId || call?._id || call?.callId || "");
+    const chatId = String(payload?.chatId || call?.chatId?._id || call?.chatId || "");
+    if (!callId || !chatId) return;
+
+    setActiveCallsByChatId((prev) => ({
+      ...prev,
+      [chatId]: {
+        ...(prev[chatId] || {}),
+        ...call,
+        callId,
+        _id: callId,
+        chatId,
+      },
+    }));
+  }, []);
+
+  const removeActiveCall = useCallback((payload) => {
+    const callId = String(payload?.callId || payload?._id || "");
+    const chatId = String(payload?.chatId || payload?.call?.chatId?._id || payload?.call?.chatId || "");
+
+    setActiveCallsByChatId((prev) => {
+      if (chatId && prev[chatId]) {
+        const next = { ...prev };
+        delete next[chatId];
+        return next;
+      }
+
+      if (!callId) return prev;
+
+      const next = { ...prev };
+      for (const [key, value] of Object.entries(next)) {
+        const existingCallId = String(value?.callId || value?._id || "");
+        if (existingCallId === callId) {
+          delete next[key];
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const refreshActiveCalls = useCallback(async () => {
+    try {
+      const response = await api.get("/api/calls/active/list");
+      const activeCalls =
+        response?.data?.data?.activeCalls ||
+        response?.data?.activeCalls ||
+        [];
+
+      const byChat = {};
+      for (const call of activeCalls) {
+        const chatId = String(call?.chatId?._id || call?.chatId || "");
+        const callId = String(call?._id || call?.callId || "");
+        if (!chatId || !callId) continue;
+
+        byChat[chatId] = {
+          ...call,
+          callId,
+          _id: callId,
+          chatId,
+        };
+      }
+      setActiveCallsByChatId(byChat);
+    } catch (error) {
+      // ignore temporary network failures; next poll/socket event will recover.
     }
-  }, [selectedItem]);
+  }, []);
+
+  useEffect(() => {
+    refreshActiveCalls();
+    const interval = setInterval(refreshActiveCalls, 15000);
+    return () => clearInterval(interval);
+  }, [refreshActiveCalls]);
 
 
   const showToast = (message) => {
@@ -407,19 +478,43 @@ const OverviewLayout = () => {
     const handleOverviewUnreadEvent = (data) => {
       handleUnreadUpdate(data);
     };
+    const handleCallIncomingEvent = (data) => {
+      upsertActiveCall(data);
+      // Do not auto-open chat on incoming call. User can manually open/join.
+    };
+    const handleCallInitiatedEvent = (data) => {
+      upsertActiveCall(data);
+    };
+    const handleCallEndedEvent = (data) => {
+      removeActiveCall(data);
+    };
 
     const unsubReceive = onReceiveMessage(handleReceiveMessage);
     const unsubRead = onMessageRead(handleReadUpdate);
     const unsubOverview = onOverviewUpdate(handleOverviewUpdate);
     const unsubUnread = onOverviewUnread(handleOverviewUnreadEvent);
+    const unsubCallIncoming = onCallIncoming(handleCallIncomingEvent);
+    const unsubCallInitiated = onCallInitiated(handleCallInitiatedEvent);
+    const unsubCallEnded = onCallEnded(handleCallEndedEvent);
 
     return () => {
       unsubReceive();
       unsubRead();
       unsubOverview();
       unsubUnread();
+      unsubCallIncoming();
+      unsubCallInitiated();
+      unsubCallEnded();
     };
-  }, [dispatch, normalizeNode, handleSidebarActivity, refreshTimeline, handleUnreadUpdate]);
+  }, [
+    dispatch,
+    normalizeNode,
+    handleSidebarActivity,
+    refreshTimeline,
+    handleUnreadUpdate,
+    upsertActiveCall,
+    removeActiveCall
+  ]);
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
@@ -440,34 +535,46 @@ const OverviewLayout = () => {
       return items.map(item => {
         const newItem = { ...item };
         let deepUnreadSum = 0;
+        let deepActiveCallCount = 0;
 
         // Recurse Projects
         if (newItem.projects) {
           newItem.projects = recurseEnrich(newItem.projects);
           deepUnreadSum += newItem.projects.reduce((acc, p) => acc + (p.unreadCount || 0) + (p.deepUnreadCount || 0), 0);
+          deepActiveCallCount += newItem.projects.reduce((acc, p) => acc + (p.activeCallCount || 0) + (p.deepActiveCallCount || 0), 0);
         }
 
         // Recurse Tasks
         if (newItem.tasks) {
           newItem.tasks = recurseEnrich(newItem.tasks);
           deepUnreadSum += newItem.tasks.reduce((acc, t) => acc + (t.unreadCount || 0) + (t.deepUnreadCount || 0), 0);
+          deepActiveCallCount += newItem.tasks.reduce((acc, t) => acc + (t.activeCallCount || 0) + (t.deepActiveCallCount || 0), 0);
         }
 
         // Recurse Subtasks
         if (newItem.subtasks) {
           newItem.subtasks = recurseEnrich(newItem.subtasks);
           deepUnreadSum += newItem.subtasks.reduce((acc, s) => acc + (s.unreadCount || 0) + (s.deepUnreadCount || 0), 0);
+          deepActiveCallCount += newItem.subtasks.reduce((acc, s) => acc + (s.activeCallCount || 0) + (s.deepActiveCallCount || 0), 0);
         }
+
+        const itemChatId = String(newItem.chatId || newItem.id || newItem._id || "");
+        const ownActiveCall = newItem.type === "chat" ? activeCallsByChatId[itemChatId] : null;
 
         newItem.deepUnreadCount = deepUnreadSum;
         newItem.hasChildUnread = deepUnreadSum > 0;
+        newItem.activeCall = ownActiveCall || null;
+        newItem.hasActiveCall = !!ownActiveCall;
+        newItem.activeCallCount = ownActiveCall ? 1 : 0;
+        newItem.deepActiveCallCount = deepActiveCallCount;
+        newItem.hasChildActiveCall = deepActiveCallCount > 0;
 
         return newItem;
       });
     };
 
     return recurseEnrich(timeline);
-  }, [timeline]);
+  }, [timeline, activeCallsByChatId]);
 
   const filteredItems = useMemo(() => {
     return (enrichedTimeline || []).filter((item) => {

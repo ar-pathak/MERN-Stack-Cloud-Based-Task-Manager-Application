@@ -11,6 +11,7 @@ export const connectSocket = (token) => {
 
     socket = io(SOCKET_URL, {
         auth: { token },
+        withCredentials: true,
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 2000,
@@ -52,9 +53,11 @@ export const emitMessageRead = (chatId, lastReadMessageId) => {
 // ---------------- LISTENERS ----------------
 
 const attachListener = (eventName, callback) => {
-    if (!socket) return () => { };
-    socket.on(eventName, callback);
-    return () => socket.off(eventName, callback);
+    const activeSocket = socket || connectSocket();
+    if (!activeSocket) return () => { };
+
+    activeSocket.on(eventName, callback);
+    return () => activeSocket.off(eventName, callback);
 };
 
 export const onReceiveMessage = (callback) =>
@@ -94,3 +97,14 @@ export const onOverviewUnread = (callback) =>
  */
 export const onOverviewUnreadReset = (callback) =>
     attachListener("overview:unread_reset", callback);
+
+// ---------------- CALL LISTENERS ----------------
+
+export const onCallIncoming = (callback) =>
+    attachListener("call:incoming", callback);
+
+export const onCallInitiated = (callback) =>
+    attachListener("call:initiated", callback);
+
+export const onCallEnded = (callback) =>
+    attachListener("call:ended", callback);

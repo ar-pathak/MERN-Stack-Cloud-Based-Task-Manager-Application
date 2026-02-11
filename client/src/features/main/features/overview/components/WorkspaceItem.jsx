@@ -39,6 +39,7 @@ const WorkspaceItem = ({
     const canCreateProject = workspace.permissions?.canCreateProject;
     const canCreateTaskInWs = workspace.permissions?.canCreateTask;
     const wsLastMsg = workspace.lastMessage;
+    const activeCallCount = (workspace.activeCallCount || 0) + (workspace.deepActiveCallCount || 0);
     const { user } = useAuth();
     return (
         <div key={workspaceId} className="mb-1">
@@ -97,6 +98,11 @@ const WorkspaceItem = ({
                     <div className="flex items-center justify-between mb-0.5">
                         <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-slate-200 truncate">{workspace.name}</span>
+                            {activeCallCount > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                    Live {activeCallCount}
+                                </span>
+                            )}
                             {workspace.starred && <Star className="h-3 w-3 text-amber-400 fill-amber-400" />}
                             {workspace.pinned && <Pin className="h-3 w-3 text-slate-500" />}
                             {workspace.muted && <BellOff className="h-3 w-3 text-slate-500" />}

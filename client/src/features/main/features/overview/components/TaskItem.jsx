@@ -29,6 +29,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
 
     const isTaskCompleted = task.status === 'completed';
     const isTaskHighPriority = task.isHighPriority;
+    const activeCallCount = (task.activeCallCount || 0) + (task.deepActiveCallCount || 0);
 
     const lastMsg = task.lastMessage;
     const senderName = user.username === lastMsg?.sender?.username ? 'You' : lastMsg?.sender?.username?.split(' ')[0] || 'User';
@@ -92,10 +93,17 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
 
                     <div className="flex-1 min-w-0 pt-0.5">
                         <div className="flex justify-between items-start mb-0.5">
-                            <span className={`text-sm font-medium truncate block ${isTaskCompleted ? 'text-slate-500 line-through' : 'text-slate-200'
-                                }`}>
-                                {task.title}
-                            </span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span className={`text-sm font-medium truncate block ${isTaskCompleted ? 'text-slate-500 line-through' : 'text-slate-200'
+                                    }`}>
+                                    {task.title}
+                                </span>
+                                {activeCallCount > 0 && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex-shrink-0">
+                                        Live {activeCallCount}
+                                    </span>
+                                )}
+                            </div>
                             {(lastMsg || task.updatedAt) && (
                                 <span className="text-[10px] text-slate-500 ml-2 whitespace-nowrap">
                                     {formatActivityTime(lastMsg?.createdAt || task.updatedAt)}
@@ -238,10 +246,17 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
 
                 <div className="flex-1 min-w-0 pt-0.5">
                     <div className="flex justify-between items-start">
-                        <span className={`text-sm font-medium truncate block ${isTaskCompleted ? 'text-slate-500 line-through' : 'text-slate-200'
-                            }`}>
-                            {task.title}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`text-sm font-medium truncate block ${isTaskCompleted ? 'text-slate-500 line-through' : 'text-slate-200'
+                                }`}>
+                                {task.title}
+                            </span>
+                            {activeCallCount > 0 && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex-shrink-0">
+                                    Live {activeCallCount}
+                                </span>
+                            )}
+                        </div>
                         {(lastMsg) && (
                             <span className="text-[10px] text-slate-500 whitespace-nowrap ml-2">
                                 {formatActivityTime(lastMsg.createdAt)}
