@@ -1,5 +1,6 @@
 const Call = require("../../models/call");
 const Chat = require("../../models/chat");
+const { createNotifications } = require("../notification/notification.service");
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -55,6 +56,26 @@ async function emitCallEnded(io, call, reason) {
     const chat = await Chat.findById(call.chatId).populate("members", "_id");
     if (chat) {
         emitToAllMembers(io, chat, "call:ended", payload);
+
+        const recipientIds = chat.members.map((member) => member._id);
+        await createNotifications({
+            recipientIds,
+            actorId: call.callerId,
+            title: "Call ended",
+            message: "An active call has ended.",
+            type: "call",
+            category: "call",
+            priority: "normal",
+            entityType: "call",
+            entityId: call._id,
+            chatId: call.chatId,
+            callId: call._id,
+            link: "/main",
+            metadata: {
+                reason
+            },
+            dedupeKey: `call:end:${String(call._id)}:${reason}`
+        });
     }
 }
 
@@ -108,6 +129,7 @@ module.exports = (io, socket) => {
 
             socket.join(`call:${newCall._id}`);
             await newCall.populate("callerId", "name avatar");
+            const callerName = newCall.callerId?.name || "A user";
 
             // ── CHANGE START ────────────────────────────────────────────────
             // IMPORTANT: Broadcast 'call:initiated' to the WHOLE ROOM.
@@ -124,11 +146,31 @@ module.exports = (io, socket) => {
             emitToMembers(io, chat, userId, "call:incoming", {
                 callId: newCall._id,
                 callerId: userId,
-                callerName: chat.members.find(m => String(m._id) === String(userId))?.name,
+                callerName,
                 chatId,
                 chatName: chat.name,
                 type,
                 mode
+            });
+
+            await createNotifications({
+                recipientIds: chat.members.map((member) => member._id),
+                actorId: userId,
+                title: `${type === "audio" ? "Audio" : "Video"} call started`,
+                message: `${callerName} started a ${type} call${chat.name ? ` in "${chat.name}"` : ""}.`,
+                type: "call",
+                category: "call",
+                priority: "high",
+                entityType: "call",
+                entityId: newCall._id,
+                chatId,
+                callId: newCall._id,
+                link: "/main",
+                metadata: {
+                    mode,
+                    chatName: chat.name || null
+                },
+                dedupeKey: `call:start:${String(newCall._id)}`
             });
 
             // Timeout Logic

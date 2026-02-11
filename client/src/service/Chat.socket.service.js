@@ -108,3 +108,23 @@ export const onCallInitiated = (callback) =>
 
 export const onCallEnded = (callback) =>
     attachListener("call:ended", callback);
+
+// ---------------- NOTIFICATION LISTENERS ----------------
+
+export const onNotificationNew = (callback) =>
+    attachListener("notification:new", callback);
+
+export const onNotificationUpdated = (callback) =>
+    attachListener("notification:updated", callback);
+
+export const onNotificationDeleted = (callback) =>
+    attachListener("notification:deleted", callback);
+
+export const onNotificationBulk = (callback) =>
+    attachListener("notification:bulk", callback);
+
+export const onNotificationAllRead = (callback) =>
+    attachListener("notification:all_read", callback);
+
+export const onNotificationUnreadCount = (callback) =>
+    attachListener("notification:unread_count", callback);

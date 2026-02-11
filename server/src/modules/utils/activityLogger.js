@@ -2,6 +2,7 @@ const Activity = require("../../models/activity");
 const Message = require("../../models/message");
 const Chat = require("../../models/chat");
 const User = require("../../models/user");
+const { createActivityNotifications } = require("../notification/notification.service");
 
 const normalizeId = (id) => {
     if (!id) return null;
@@ -141,6 +142,20 @@ const logActivity = async ({
             session
         });
     }
+
+    await createActivityNotifications({
+        actorId: normalizedActorId,
+        action,
+        message,
+        level,
+        workspaceId,
+        projectId,
+        taskId,
+        subtaskId,
+        chatId: normalizedChatId,
+        meta,
+        session
+    });
 
     return activity;
 };

@@ -25,11 +25,13 @@ const usersRoutes = require("./modules/user/user.routes");
 const chatRoutes = require("./modules/chat/chat.routes");
 const uploadRoutes = require("./modules/upload/upload.routes");
 const callsRoutes = require("./modules/call/call.routes");
+const notificationRoutes = require("./modules/notification/notification.routes");
 
 // Socket handler + auth middleware for Socket.IO
 const chatSocketHandler = require("./modules/chat/chat.socket");
 const callSocketHandler = require("./modules/call/Call.socket");
 const socketAuthMiddleware = require("./middleware/socketAuthMiddleware"); // ← see note below
+const { setIO } = require("./modules/utils/socketStore");
 
 // ---------------------------------------------------------------------------
 // Express app
@@ -95,6 +97,7 @@ app.use("/api/user", usersRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/calls", callsRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ---------------------------------------------------------------------------
 // 404 handler  –  must come after all routes, before the error handler
@@ -158,6 +161,8 @@ const io = new Server(httpServer, {
     pingTimeout: 60000,
     pingInterval: 25000
 });
+
+setIO(io);
 
 // ── Socket.IO auth middleware ─────────────────────────────────────────────
 // Runs once per connection, before any event handlers.

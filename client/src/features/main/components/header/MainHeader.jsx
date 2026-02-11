@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Menu, Search, Plus, CheckSquare, Zap, Video, Send, User as UserIcon, FileText, Loader2, X } from "lucide-react";
+import { Menu, Search, Plus, CheckSquare, Zap, Video, Send, User as UserIcon, FileText, Loader2, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router";
@@ -11,6 +11,7 @@ import WorkspacePopup from "../popup/WorkspacePopup";
 import { createWorkspace } from "../../../../service/workspace.service";
 import { searchUsers } from "../../../../service/user.service";
 import { searchPosts } from "../../../../service/post.service";
+import NotificationDropdown from "./NotificationDropdown";
 
 // store & services
 import { setOverviewData } from "../../../../store/slice/overviewSlice";
@@ -398,17 +399,7 @@ const MainHeader = () => {
               </AnimatePresence>
             </div>
 
-            {/* Notifications (Existing) */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 hover:bg-slate-800/70 transition-colors"
-            >
-              <Bell className="h-4 w-4 text-slate-300" />
-              <span className="absolute right-1.5 top-1.5 flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400/60 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-400" />
-              </span>
-            </motion.button>
+            <NotificationDropdown />
 
             <UserMenu user={user} />
           </div>
