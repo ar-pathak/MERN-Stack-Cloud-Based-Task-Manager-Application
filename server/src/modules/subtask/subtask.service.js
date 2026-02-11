@@ -1,9 +1,39 @@
 const Subtask = require('../../models/subtasks');
 const Task = require('../../models/tasks');
+const Project = require('../../models/project');
+const Workspace = require('../../models/workspace');
 const mongoose = require('mongoose');
 // Import Chat and Message models
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
+const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+
+const withSession = (query, session) => (session ? query.session(session) : query);
+
+const loadSubtaskContext = async (subtaskOrTaskId, session = null) => {
+    const taskId = typeof subtaskOrTaskId === "object" && subtaskOrTaskId.task
+        ? subtaskOrTaskId.task
+        : subtaskOrTaskId;
+
+    const taskQuery = Task.findById(taskId).select('title workspace project chatId');
+    const task = await withSession(taskQuery, session).lean();
+    if (!task) return { task: null, project: null, workspace: null };
+
+    let project = null;
+    if (task.project) {
+        const projectQuery = Project.findById(task.project).select('name chatId workspace');
+        project = await withSession(projectQuery, session).lean();
+    }
+
+    const workspaceId = task.workspace || project?.workspace || null;
+    let workspace = null;
+    if (workspaceId) {
+        const workspaceQuery = Workspace.findById(workspaceId).select('name chatId');
+        workspace = await withSession(workspaceQuery, session).lean();
+    }
+
+    return { task, project, workspace };
+};
 
 class SubtaskService {
     /**
@@ -64,6 +94,24 @@ class SubtaskService {
             { path: 'completedBy', select: 'name email avatar' }
         ]);
 
+        const { task: parentTask, project, workspace } = await loadSubtaskContext(taskId);
+        const actorLabel = await getUserLabel(createdBy);
+        await logActivity({
+            actorId: createdBy,
+            action: "subtask.created",
+            level: "subtask",
+            workspaceId: parentTask?.workspace || workspace?._id || null,
+            projectId: parentTask?.project || project?._id || null,
+            taskId,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [parentTask?.chatId, project?.chatId, workspace?.chatId],
+            message: `${actorLabel} created subtask "${subtask.title}" in task "${parentTask?.title || "task"}".`,
+            meta: {
+                subtaskTitle: subtask.title
+            }
+        });
+
         return subtask;
     }
 
@@ -112,6 +160,9 @@ class SubtaskService {
         if (!subtask) {
             throw new Error('Subtask not found');
         }
+
+        const oldTitle = subtask.title;
+        const oldCompleted = subtask.completed;
 
         // Handle completion status change
         if (updates.completed !== undefined && updates.completed !== subtask.completed) {
@@ -163,6 +214,41 @@ class SubtaskService {
             { path: 'completedBy', select: 'name email avatar' }
         ]);
 
+        const { task, project, workspace } = await loadSubtaskContext(subtask.task);
+        const actorLabel = await getUserLabel(userId);
+        const renamed = updates.title && updates.title !== oldTitle;
+        const completionChanged = updates.completed !== undefined && updates.completed !== oldCompleted;
+
+        let message = `${actorLabel} updated subtask "${subtask.title}".`;
+        let action = "subtask.updated";
+
+        if (renamed) {
+            action = "subtask.renamed";
+            message = `${actorLabel} renamed subtask from "${oldTitle}" to "${subtask.title}".`;
+        } else if (completionChanged) {
+            action = updates.completed ? "subtask.completed" : "subtask.reopened";
+            message = updates.completed
+                ? `${actorLabel} marked subtask "${subtask.title}" as completed.`
+                : `${actorLabel} reopened subtask "${subtask.title}".`;
+        }
+
+        await logActivity({
+            actorId: userId,
+            action,
+            level: "subtask",
+            workspaceId: task?.workspace || workspace?._id || null,
+            projectId: task?.project || project?._id || null,
+            taskId: subtask.task,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
+            message,
+            meta: {
+                oldTitle,
+                newTitle: subtask.title
+            }
+        });
+
         return subtask;
     }
 
@@ -194,6 +280,24 @@ class SubtaskService {
             { path: 'completedBy', select: 'name email avatar' }
         ]);
 
+        const { task, project, workspace } = await loadSubtaskContext(subtask.task);
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: subtask.completed ? "subtask.completed" : "subtask.reopened",
+            level: "subtask",
+            workspaceId: task?.workspace || workspace?._id || null,
+            projectId: task?.project || project?._id || null,
+            taskId: subtask.task,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
+            message: subtask.completed
+                ? `${actorLabel} marked subtask "${subtask.title}" as completed.`
+                : `${actorLabel} reopened subtask "${subtask.title}".`,
+            meta: {}
+        });
+
         return subtask;
     }
 
@@ -213,6 +317,23 @@ class SubtaskService {
         session.startTransaction();
 
         try {
+            const { task, project, workspace } = await loadSubtaskContext(subtask.task, session);
+            const actorLabel = await getUserLabel(subtask.createdBy, session);
+            await logActivity({
+                actorId: subtask.createdBy,
+                action: "subtask.deleted",
+                level: "subtask",
+                workspaceId: task?.workspace || workspace?._id || null,
+                projectId: task?.project || project?._id || null,
+                taskId: subtask.task,
+                subtaskId: subtask._id,
+                chatId: task?.chatId || project?.chatId || workspace?.chatId || null,
+                mirrorChatIds: [project?.chatId, workspace?.chatId],
+                message: `${actorLabel} deleted subtask "${subtask.title}".`,
+                meta: {},
+                session
+            });
+
             // 1. Delete Chat and Messages (UPDATED)
             if (subtask.chatId) {
                 await Message.deleteMany({ chatId: subtask.chatId }, { session });
@@ -288,7 +409,7 @@ class SubtaskService {
     /**
      * Add specific assignees to an existing list
      */
-    async addAssignees(subtaskId, userIds) {
+    async addAssignees(subtaskId, userIds, actorId) {
         const subtask = await Subtask.findById(subtaskId);
         if (!subtask) throw new Error('Subtask not found');
 
@@ -305,13 +426,33 @@ class SubtaskService {
             });
         }
 
+        const { task, project, workspace } = await loadSubtaskContext(subtask.task);
+        const actionUserId = actorId || subtask.createdBy;
+        const actorLabel = await getUserLabel(actionUserId);
+        const labels = await getUserLabels(userIds);
+        await logActivity({
+            actorId: actionUserId,
+            action: "subtask.assignees_added",
+            level: "subtask",
+            workspaceId: task?.workspace || workspace?._id || null,
+            projectId: task?.project || project?._id || null,
+            taskId: subtask.task,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
+            message: `${actorLabel} assigned ${formatUserList(labels)} to subtask "${subtask.title}".`,
+            meta: {
+                assigneeIds: userIds
+            }
+        });
+
         return this.getSubtaskById(subtaskId);
     }
 
     /**
      * Remove specific assignees
      */
-    async removeAssignees(subtaskId, userIds) {
+    async removeAssignees(subtaskId, userIds, actorId) {
         const subtask = await Subtask.findById(subtaskId);
         if (!subtask) throw new Error('Subtask not found');
 
@@ -326,6 +467,26 @@ class SubtaskService {
                 $pull: { members: { $in: userIds } }
             });
         }
+
+        const { task, project, workspace } = await loadSubtaskContext(subtask.task);
+        const actionUserId = actorId || subtask.createdBy;
+        const actorLabel = await getUserLabel(actionUserId);
+        const labels = await getUserLabels(userIds);
+        await logActivity({
+            actorId: actionUserId,
+            action: "subtask.assignees_removed",
+            level: "subtask",
+            workspaceId: task?.workspace || workspace?._id || null,
+            projectId: task?.project || project?._id || null,
+            taskId: subtask.task,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
+            message: `${actorLabel} removed ${formatUserList(labels)} from subtask "${subtask.title}".`,
+            meta: {
+                assigneeIds: userIds
+            }
+        });
 
         return this.getSubtaskById(subtaskId);
     }
@@ -380,6 +541,22 @@ class SubtaskService {
         if (!isAssigned) {
             throw new Error("You are not assigned to this subtask");
         }
+
+        const { task, project, workspace } = await loadSubtaskContext(subtask.task);
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "subtask.member_left",
+            level: "subtask",
+            workspaceId: task?.workspace || workspace?._id || null,
+            projectId: task?.project || project?._id || null,
+            taskId: subtask.task,
+            subtaskId: subtask._id,
+            chatId: subtask.chatId,
+            mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
+            message: `${actorLabel} left subtask "${subtask.title}".`,
+            meta: {}
+        });
 
         // 2. Remove user from assignedTo array
         await Subtask.updateOne(

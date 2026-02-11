@@ -112,7 +112,8 @@ const workspaceController = {
                 userId,
                 username,
                 email,
-                role
+                role,
+                requesterId: req.user._id
             });
 
             return sendSuccess(res, member, 'Member added successfully', 201);

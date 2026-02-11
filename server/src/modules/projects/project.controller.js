@@ -49,12 +49,13 @@ const projectController = {
     updateProject: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error('Invalid Project ID');
             }
             const updateData = updateProjectSchema.parse(req.body);
 
-            await projectService.updateProject(projectId, updateData);
+            await projectService.updateProject(projectId, updateData, userId);
             res.status(201).json({ message: 'project updated successfully' })
         } catch (error) {
             return handleError(error, res)
@@ -62,6 +63,7 @@ const projectController = {
     }, updateProjectMemberRole: async (req, res) => {
         try {
             const { projectId, memberId } = req.params;
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId) || !mongoose.Types.ObjectId.isValid(memberId)) {
                 throw new Error("Invalid Project ID or Member ID");
@@ -69,7 +71,7 @@ const projectController = {
 
             const { role } = updateProjectMemberRoleSchema.parse(req.body);
 
-            const result = await projectService.updateProjectMemberRole(projectId, memberId, role);
+            const result = await projectService.updateProjectMemberRole(projectId, memberId, role, userId);
 
             sendSuccess(res, null, result.message);
         } catch (error) {
@@ -79,10 +81,11 @@ const projectController = {
     deleteProject: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error('Invalid Project ID')
             }
-            await projectService.deleteProject(projectId)
+            await projectService.deleteProject(projectId, userId)
             res.status(200).json({ message: "Project deleted successfully" })
 
         } catch (error) {
@@ -104,6 +107,7 @@ const projectController = {
     addProjectTeams: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error("Invalid Project ID");
@@ -111,7 +115,7 @@ const projectController = {
 
             const data = addProjectTeamsSchema.parse(req.body);
 
-            const result = await projectService.addProjectTeams(projectId, data);
+            const result = await projectService.addProjectTeams(projectId, data, userId);
 
             sendSuccess(res, null, result.message);
         } catch (error) {
@@ -121,6 +125,7 @@ const projectController = {
     removeProjectTeams: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error("Invalid Project ID");
@@ -130,7 +135,8 @@ const projectController = {
 
             const result = await projectService.removeProjectTeams(
                 projectId,
-                data
+                data,
+                userId
             );
 
             sendSuccess(res, null, result.message);
@@ -156,6 +162,7 @@ const projectController = {
     addProjectMembers: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error("Invalid Project ID");
@@ -163,7 +170,7 @@ const projectController = {
 
             const data = addProjectMembersSchema.parse(req.body);
 
-            const result = await projectService.addProjectMembers(projectId, data);
+            const result = await projectService.addProjectMembers(projectId, data, userId);
             sendSuccess(res, null, result.message);
         } catch (error) {
             return handleError(error, res);
@@ -173,6 +180,7 @@ const projectController = {
     removeProjectMembers: async (req, res) => {
         try {
             const { projectId } = req.params;
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
                 throw new Error("Invalid Project ID");
@@ -180,7 +188,7 @@ const projectController = {
 
             const data = removeProjectMembersSchema.parse(req.body);
 
-            const result = await projectService.removeProjectMembers(projectId, data);
+            const result = await projectService.removeProjectMembers(projectId, data, userId);
             sendSuccess(res, null, result.message);
         } catch (error) {
             return handleError(error, res);

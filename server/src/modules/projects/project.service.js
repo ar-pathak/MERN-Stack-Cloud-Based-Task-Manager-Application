@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const Project = require('../../models/project');
+const Workspace = require('../../models/workspace');
 const Task = require('../../models/tasks');
 const Subtask = require('../../models/subtasks');
 // Import Chat models
@@ -7,6 +8,7 @@ const Chat = require('../../models/chat');
 const Message = require('../../models/message');
 
 const { touchWorkspace } = require('../utils/updateParent');
+const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
 
 // Helper function to remove users from task and subtask assignments within the project
 // AND remove them from the Project Chat (UPDATED)
@@ -84,6 +86,22 @@ const projectService = {
             chatId: chat._id // Store the chat ID
         });
 
+        const workspace = await Workspace.findById(workspaceId).select('name chatId');
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "project.created",
+            level: "project",
+            workspaceId,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} created project "${project.name}" in workspace "${workspace?.name || "workspace"}".`,
+            meta: {
+                projectName: project.name
+            }
+        });
+
         await touchWorkspace(workspaceId);
         return project;
     },
@@ -104,7 +122,8 @@ const projectService = {
         return project;
     },
 
-    updateProject: async (projectId, updateData) => {
+    updateProject: async (projectId, updateData, userId) => {
+        const existingProject = await Project.findById(projectId).select('name workspace chatId');
         const project = await Project.findByIdAndUpdate(projectId, updateData, { new: true })
         if (!project) {
             throw new Error('Project not found')
@@ -117,11 +136,34 @@ const projectService = {
             });
         }
 
+        const workspace = await Workspace.findById(project.workspace).select('name chatId');
+        const actorLabel = await getUserLabel(userId);
+        const oldName = existingProject?.name || project.name;
+        const renamed = updateData.name && updateData.name !== oldName;
+        const message = renamed
+            ? `${actorLabel} renamed project from "${oldName}" to "${project.name}".`
+            : `${actorLabel} updated project "${project.name}".`;
+
+        await logActivity({
+            actorId: userId,
+            action: renamed ? "project.renamed" : "project.updated",
+            level: "project",
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message,
+            meta: {
+                oldName,
+                newName: project.name
+            }
+        });
+
         await touchWorkspace(project.workspace);
         return project;
     },
 
-    deleteProject: async (projectId) => {
+    deleteProject: async (projectId, userId) => {
         // Start a transaction for cascading delete
         const session = await mongoose.startSession();
         session.startTransaction();
@@ -133,6 +175,24 @@ const projectService = {
             if (!projectToDelete) {
                 throw new Error('Project not found');
             }
+
+            const workspace = await Workspace.findById(projectToDelete.workspace)
+                .session(session)
+                .select('name chatId');
+            const actorLabel = await getUserLabel(userId, session);
+            await logActivity({
+                actorId: userId,
+                action: "project.deleted",
+                level: "project",
+                workspaceId: projectToDelete.workspace,
+                projectId: projectToDelete._id,
+                chatId: workspace?.chatId || null,
+                message: `${actorLabel} deleted project "${projectToDelete.name}" from workspace "${workspace?.name || "workspace"}".`,
+                meta: {
+                    projectName: projectToDelete.name
+                },
+                session
+            });
 
             // 2. Find all Tasks in the project to identify Subtasks
             const tasks = await Task.find({ project: projectId }).select('_id').session(session);
@@ -177,7 +237,7 @@ const projectService = {
         return project.teams;
     },
 
-    addProjectTeams: async (projectId, { teams }) => {
+    addProjectTeams: async (projectId, { teams }, userId) => {
         // NOTE: If you want team members to be auto-added to chat, logic would be complex 
         // because teams are dynamic. Usually, we rely on `getProjectMembers` or explicit member addition.
         // For now, keeping this strictly for the Project model structure.
@@ -196,10 +256,26 @@ const projectService = {
             throw new Error("Project not found");
         }
 
+        const actorLabel = await getUserLabel(userId || project.owner);
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        await logActivity({
+            actorId: userId || project.owner,
+            action: "project.teams_added",
+            level: "project",
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} added ${teams.length} team(s) to project "${project.name}".`,
+            meta: {
+                teamIds: teams
+            }
+        });
+
         return { message: "Teams added to project" };
     },
 
-    removeProjectTeams: async (projectId, { teams }) => {
+    removeProjectTeams: async (projectId, { teams }, userId) => {
         const project = await Project.findByIdAndUpdate(
             projectId,
             {
@@ -213,6 +289,22 @@ const projectService = {
         if (!project) {
             throw new Error("Project not found");
         }
+
+        const actorLabel = await getUserLabel(userId || project.owner);
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        await logActivity({
+            actorId: userId || project.owner,
+            action: "project.teams_removed",
+            level: "project",
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} removed ${teams.length} team(s) from project "${project.name}".`,
+            meta: {
+                teamIds: teams
+            }
+        });
 
         return { message: "Teams removed from project" };
     },
@@ -228,8 +320,8 @@ const projectService = {
         return project.members;
     },
 
-    addProjectMembers: async (projectId, { members }) => {
-        const project = await Project.findById(projectId).select('members chatId');
+    addProjectMembers: async (projectId, { members }, userId) => {
+        const project = await Project.findById(projectId).select('members chatId workspace name');
 
         if (!project) {
             throw new Error("Project not found");
@@ -261,10 +353,32 @@ const projectService = {
             });
         }
 
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        const actorLabel = await getUserLabel(userId);
+        const addedLabels = await getUserLabels(newMembers.map((m) => m.user));
+        await logActivity({
+            actorId: userId,
+            action: "project.members_added",
+            level: "project",
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} added ${formatUserList(addedLabels)} to project "${project.name}".`,
+            meta: {
+                memberIds: newMembers.map((m) => m.user)
+            }
+        });
+
         return { message: `${newMembers.length} new members added successfully` };
     },
 
-    removeProjectMembers: async (projectId, { users }) => {
+    removeProjectMembers: async (projectId, { users }, userId) => {
+        const projectInfo = await Project.findById(projectId).select('name workspace chatId');
+        if (!projectInfo) {
+            throw new Error("Project not found");
+        }
+
         const session = await mongoose.startSession();
         session.startTransaction();
 
@@ -288,6 +402,24 @@ const projectService = {
             }
 
             await session.commitTransaction();
+
+            const workspace = await Workspace.findById(projectInfo.workspace).select('chatId');
+            const actorLabel = await getUserLabel(userId);
+            const removedLabels = await getUserLabels(users);
+            await logActivity({
+                actorId: userId,
+                action: "project.members_removed",
+                level: "project",
+                workspaceId: projectInfo.workspace,
+                projectId: projectInfo._id,
+                chatId: projectInfo.chatId,
+                mirrorChatIds: [workspace?.chatId],
+                message: `${actorLabel} removed ${formatUserList(removedLabels)} from project "${projectInfo.name}".`,
+                meta: {
+                    memberIds: users
+                }
+            });
+
             return { message: "Members removed from project and unassigned from tasks" };
         } catch (error) {
             await session.abortTransaction();
@@ -297,7 +429,7 @@ const projectService = {
         }
     },
 
-    updateProjectMemberRole: async (projectId, memberId, role) => {
+    updateProjectMemberRole: async (projectId, memberId, role, userId) => {
         const project = await Project.findOneAndUpdate(
             {
                 _id: projectId,
@@ -316,6 +448,24 @@ const projectService = {
         if (!project) {
             throw new Error("Project not found or user is not a member of this project");
         }
+
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        const actorLabel = await getUserLabel(userId);
+        const memberLabel = await getUserLabel(memberId);
+        await logActivity({
+            actorId: userId,
+            action: "project.member_role_updated",
+            level: "project",
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} changed ${memberLabel}'s role to ${role} in project "${project.name}".`,
+            meta: {
+                memberId,
+                role
+            }
+        });
 
         return { message: "Member role updated successfully" };
     },
@@ -341,6 +491,21 @@ const projectService = {
             if (!isMember) {
                 throw new Error("You are not a member of this project");
             }
+
+            const workspace = await Workspace.findById(project.workspace).session(session).select('name chatId');
+            const actorLabel = await getUserLabel(userId, session);
+            await logActivity({
+                actorId: userId,
+                action: "project.member_left",
+                level: "project",
+                workspaceId: project.workspace,
+                projectId: project._id,
+                chatId: project.chatId,
+                mirrorChatIds: [workspace?.chatId],
+                message: `${actorLabel} left project "${project.name}".`,
+                meta: {},
+                session
+            });
 
             // 3. Clean up user assignments in tasks/subtasks AND Chat (UPDATED inside helper)
             await cleanupProjectResources(projectId, [userId], session);

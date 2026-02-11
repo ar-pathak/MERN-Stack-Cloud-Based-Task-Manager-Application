@@ -29,6 +29,11 @@ const ChatMessage = ({
         : String(senderIdString) === String(currentUserId);
 
     const content = message.content || message.text || '';
+    const isSystemMessage = Boolean(
+        message.isSystem ||
+        message.type === "system" ||
+        message.meta?.isActivity
+    );
 
     // State
     const [showActions, setShowActions] = useState(false);
@@ -135,6 +140,21 @@ const ChatMessage = ({
             return acc;
         }, {})
         : {};
+
+    if (isSystemMessage) {
+        return (
+            <motion.div
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-center my-3 px-4"
+            >
+                <div className="max-w-[90%] rounded-full border border-slate-700/70 bg-slate-900/70 px-4 py-1.5 text-center text-[11px] text-slate-300">
+                    {content}
+                </div>
+            </motion.div>
+        );
+    }
 
     // --- DYNAMIC STYLES ---
     const containerMargin = isConsecutive ? 'mb-0.5' : 'mb-6';

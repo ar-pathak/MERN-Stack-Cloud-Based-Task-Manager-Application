@@ -27,6 +27,12 @@ const messageSchema = new mongoose.Schema(
             enum: ["text", "image", "file", "video", "audio"],
             default: "text"
         },
+        // System / activity messages rendered differently in UI
+        isSystem: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
         // FIX 2: Correctly define attachments array structure
         attachments: [
             {

@@ -5,11 +5,34 @@ const Task = require('../../models/tasks');
 const Team = require('../../models/team');
 const User = require('../../models/user');
 const Subtask = require('../../models/subtasks');
+const Project = require('../../models/project');
+const Workspace = require('../../models/workspace');
 // Import Chat models
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
 
 const { touchParents } = require('../utils/updateParent');
+const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+
+const withSession = (query, session) => (session ? query.session(session) : query);
+
+const loadTaskContext = async (task, session = null) => {
+    let project = null;
+    let workspace = null;
+
+    if (task.project) {
+        const projectQuery = Project.findById(task.project).select('name chatId workspace');
+        project = await withSession(projectQuery, session).lean();
+    }
+
+    const workspaceId = task.workspace || project?.workspace;
+    if (workspaceId) {
+        const workspaceQuery = Workspace.findById(workspaceId).select('name chatId');
+        workspace = await withSession(workspaceQuery, session).lean();
+    }
+
+    return { project, workspace };
+};
 
 const taskService = {
     createTask: async (userId, taskData, scope = {}) => {
@@ -47,6 +70,36 @@ const taskService = {
             chatId: chat._id // Store the chat ID
         });
 
+        const project = scope.projectId
+            ? await Project.findById(scope.projectId).select('name chatId workspace').lean()
+            : null;
+        const workspaceId = scope.workspaceId || project?.workspace || null;
+        const workspace = workspaceId
+            ? await Workspace.findById(workspaceId).select('name chatId').lean()
+            : null;
+
+        const actorLabel = await getUserLabel(userId);
+        const parentLabel = project
+            ? `project "${project.name}"`
+            : workspace
+                ? `workspace "${workspace.name}"`
+                : "personal space";
+
+        await logActivity({
+            actorId: userId,
+            action: "task.created",
+            level: "task",
+            workspaceId,
+            projectId: project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message: `${actorLabel} created task "${task.title}" in ${parentLabel}.`,
+            meta: {
+                taskTitle: task.title
+            }
+        });
+
         await touchParents(task);
 
         return task;
@@ -65,6 +118,8 @@ const taskService = {
             throw new Error("You are not allowed to update this task");
         }
 
+        const oldTitle = task.title;
+
         await Task.updateOne(
             { _id: taskId },
             { $set: data }
@@ -76,6 +131,30 @@ const taskService = {
                 name: data.title
             });
         }
+
+        const { project, workspace } = await loadTaskContext(task);
+        const actorLabel = await getUserLabel(userId);
+        const newTitle = data.title || task.title;
+        const renamed = data.title && data.title !== oldTitle;
+        const message = renamed
+            ? `${actorLabel} renamed task from "${oldTitle}" to "${newTitle}".`
+            : `${actorLabel} updated task "${task.title}".`;
+
+        await logActivity({
+            actorId: userId,
+            action: renamed ? "task.renamed" : "task.updated",
+            level: "task",
+            workspaceId: task.workspace || workspace?._id || null,
+            projectId: task.project || project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message,
+            meta: {
+                oldTitle,
+                newTitle
+            }
+        });
 
         await touchParents(task);
 
@@ -153,6 +232,26 @@ const taskService = {
             });
         }
 
+        if (targetAssigneeIds.length > 0) {
+            const { project, workspace } = await loadTaskContext(task);
+            const actorLabel = await getUserLabel(userId);
+            const assigneeLabels = await getUserLabels(targetAssigneeIds);
+            await logActivity({
+                actorId: userId,
+                action: "task.assignees_added",
+                level: "task",
+                workspaceId: task.workspace || workspace?._id || null,
+                projectId: task.project || project?._id || null,
+                taskId: task._id,
+                chatId: task.chatId,
+                mirrorChatIds: [project?.chatId, workspace?.chatId],
+                message: `${actorLabel} assigned ${formatUserList(assigneeLabels)} to task "${task.title}".`,
+                meta: {
+                    assigneeIds: targetAssigneeIds
+                }
+            });
+        }
+
         await touchParents(task);
 
         return { message: "Added assignees to task" };
@@ -220,6 +319,37 @@ const taskService = {
 
             await session.commitTransaction();
 
+            const { project, workspace } = await loadTaskContext(task);
+            const actorLabel = await getUserLabel(userId);
+            const removedAssigneeLabels = data.assignees?.length
+                ? await getUserLabels(data.assignees)
+                : [];
+            const removedTeamsText = data.assigneesTeams?.length
+                ? `${data.assigneesTeams.length} team assignment(s)`
+                : "";
+
+            const parts = [];
+            if (removedAssigneeLabels.length) parts.push(formatUserList(removedAssigneeLabels));
+            if (removedTeamsText) parts.push(removedTeamsText);
+
+            if (parts.length) {
+                await logActivity({
+                    actorId: userId,
+                    action: "task.assignees_removed",
+                    level: "task",
+                    workspaceId: task.workspace || workspace?._id || null,
+                    projectId: task.project || project?._id || null,
+                    taskId: task._id,
+                    chatId: task.chatId,
+                    mirrorChatIds: [project?.chatId, workspace?.chatId],
+                    message: `${actorLabel} removed ${parts.join(" and ")} from task "${task.title}".`,
+                    meta: {
+                        assigneeIds: data.assignees || [],
+                        teamIds: data.assigneesTeams || []
+                    }
+                });
+            }
+
             await touchParents(task);
 
             return { message: "Removed assignees from task and its subtasks" };
@@ -249,12 +379,33 @@ const taskService = {
             throw new Error("Task already has this status");
         }
 
+        const oldStatus = task.status;
+
         await Task.updateOne(
             { _id: taskId },
             {
                 $set: { status: newStatus }
             }
         );
+
+        const { project, workspace } = await loadTaskContext(task);
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "task.status_changed",
+            level: "task",
+            workspaceId: task.workspace || workspace?._id || null,
+            projectId: task.project || project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message: `${actorLabel} changed task "${task.title}" status from "${oldStatus}" to "${newStatus}".`,
+            meta: {
+                oldStatus,
+                newStatus
+            }
+        });
+
         await touchParents(task);
         return { message: "Task status updated successfully" };
     },
@@ -283,6 +434,22 @@ const taskService = {
                 $set: { status: "deleted" }
             }
         );
+
+        const { project, workspace } = await loadTaskContext(task);
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "task.soft_deleted",
+            level: "task",
+            workspaceId: task.workspace || workspace?._id || null,
+            projectId: task.project || project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message: `${actorLabel} deleted task "${task.title}".`,
+            meta: {}
+        });
+
         await touchParents(task);
 
         return { message: "Task deleted successfully" };
@@ -321,6 +488,22 @@ const taskService = {
                 $set: { status: "active" }
             }
         );
+
+        const { project, workspace } = await loadTaskContext(task);
+        const actorLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "task.restored",
+            level: "task",
+            workspaceId: task.workspace || workspace?._id || null,
+            projectId: task.project || project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message: `${actorLabel} restored task "${task.title}".`,
+            meta: {}
+        });
+
         await touchParents(task);
 
         return { message: "Task restored successfully" };
@@ -344,6 +527,22 @@ const taskService = {
         session.startTransaction();
 
         try {
+            const { project, workspace } = await loadTaskContext(task, session);
+            const actorLabel = await getUserLabel(userId, session);
+            await logActivity({
+                actorId: userId,
+                action: "task.permanently_deleted",
+                level: "task",
+                workspaceId: task.workspace || workspace?._id || null,
+                projectId: task.project || project?._id || null,
+                taskId: task._id,
+                chatId: project?.chatId || workspace?.chatId || null,
+                mirrorChatIds: [workspace?.chatId],
+                message: `${actorLabel} permanently deleted task "${task.title}".`,
+                meta: {},
+                session
+            });
+
             // 1. Delete all Subtasks associated with this task
             await Subtask.deleteMany({ task: taskId }, { session });
 
@@ -448,6 +647,22 @@ const taskService = {
         session.startTransaction();
 
         try {
+            const { project, workspace } = await loadTaskContext(task, session);
+            const actorLabel = await getUserLabel(userId, session);
+            await logActivity({
+                actorId: userId,
+                action: "task.member_left",
+                level: "task",
+                workspaceId: task.workspace || workspace?._id || null,
+                projectId: task.project || project?._id || null,
+                taskId: task._id,
+                chatId: task.chatId,
+                mirrorChatIds: [project?.chatId, workspace?.chatId],
+                message: `${actorLabel} left task "${task.title}".`,
+                meta: {},
+                session
+            });
+
             // 2. Remove user from Task assignees
             await Task.findByIdAndUpdate(
                 taskId,

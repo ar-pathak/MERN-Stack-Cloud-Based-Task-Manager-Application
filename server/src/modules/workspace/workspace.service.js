@@ -13,6 +13,7 @@ const Message = require('../../models/message');
 
 const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
+const { logActivity, getUserLabel } = require('../utils/activityLogger');
 
 // Helper function to remove a user from all workspace resources
 // This is used for both leaveWorkspace and removeMember
@@ -93,6 +94,19 @@ const workspaceService = {
             role: "owner"
         });
 
+        const ownerLabel = await getUserLabel(ownerId);
+        await logActivity({
+            actorId: ownerId,
+            action: "workspace.created",
+            level: "workspace",
+            workspaceId: workspace._id,
+            chatId: workspace.chatId,
+            message: `${ownerLabel} created workspace "${workspace.name}".`,
+            meta: {
+                workspaceName: workspace.name
+            }
+        });
+
         return workspace;
     },
 
@@ -151,6 +165,7 @@ const workspaceService = {
             throw new Error('Only workspace owners and admins can update workspace details');
         }
 
+        const existingWorkspace = await Workspace.findById(id).select('name chatId');
         const updatedWorkspace = await Workspace.findByIdAndUpdate(
             id,
             data,
@@ -167,6 +182,26 @@ const workspaceService = {
         if (!updatedWorkspace) {
             throw new Error('Workspace not found or update failed');
         }
+
+        const actorLabel = await getUserLabel(userId);
+        const oldName = existingWorkspace?.name || updatedWorkspace.name;
+        const renamed = data.name && data.name !== oldName;
+        const message = renamed
+            ? `${actorLabel} renamed workspace from "${oldName}" to "${updatedWorkspace.name}".`
+            : `${actorLabel} updated workspace "${updatedWorkspace.name}".`;
+
+        await logActivity({
+            actorId: userId,
+            action: renamed ? "workspace.renamed" : "workspace.updated",
+            level: "workspace",
+            workspaceId: updatedWorkspace._id,
+            chatId: updatedWorkspace.chatId,
+            message,
+            meta: {
+                oldName,
+                newName: updatedWorkspace.name
+            }
+        });
 
         return updatedWorkspace;
     },
@@ -224,7 +259,7 @@ const workspaceService = {
         }
     },
 
-    addMember: async ({ workspaceId, userId, username, email, role = 'member' }) => {
+    addMember: async ({ workspaceId, userId, username, email, role = 'member', requesterId }) => {
         let user = null;
 
         if (userId) {
@@ -262,6 +297,21 @@ const workspaceService = {
             });
         }
 
+        const actorLabel = await getUserLabel(requesterId || user._id);
+        const targetLabel = await getUserLabel(user._id);
+        await logActivity({
+            actorId: requesterId || user._id,
+            action: "workspace.member_added",
+            level: "workspace",
+            workspaceId: workspaceId,
+            chatId: workspace?.chatId,
+            message: `${actorLabel} added ${targetLabel} to workspace "${workspace?.name || "workspace"}" as ${role}.`,
+            meta: {
+                addedUserId: user._id,
+                role
+            }
+        });
+
         return await member.populate('user', 'name email');
     },
 
@@ -297,10 +347,27 @@ const workspaceService = {
             throw new Error("You cannot remove yourself. Please leave the workspace instead.");
         }
 
+        const workspace = await Workspace.findById(workspaceId).select('name chatId');
+        const requesterLabel = await getUserLabel(requesterId);
+        const memberLabel = await getUserLabel(memberId);
+
         const session = await WorkspaceMember.startSession();
         session.startTransaction();
 
         try {
+            await logActivity({
+                actorId: requesterId,
+                action: "workspace.member_removed",
+                level: "workspace",
+                workspaceId,
+                chatId: workspace?.chatId,
+                message: `${requesterLabel} removed ${memberLabel} from workspace "${workspace?.name || "workspace"}".`,
+                meta: {
+                    removedUserId: memberId
+                },
+                session
+            });
+
             await WorkspaceMember.findOneAndDelete({
                 workspace: workspaceId,
                 user: memberId
@@ -349,6 +416,22 @@ const workspaceService = {
             { new: true }
         ).populate('user', 'name email');
 
+        const workspace = await Workspace.findById(workspaceId).select('name chatId');
+        const requesterLabel = await getUserLabel(requesterId);
+        const memberLabel = await getUserLabel(memberId);
+        await logActivity({
+            actorId: requesterId,
+            action: "workspace.member_role_updated",
+            level: "workspace",
+            workspaceId,
+            chatId: workspace?.chatId,
+            message: `${requesterLabel} changed ${memberLabel}'s role to ${role} in workspace "${workspace?.name || "workspace"}".`,
+            meta: {
+                userId: memberId,
+                role
+            }
+        });
+
         return result;
     },
 
@@ -357,6 +440,7 @@ const workspaceService = {
         session.startTransaction();
 
         try {
+            const workspace = await Workspace.findById(workspaceId).session(session).select('name chatId');
             const currentOwner = await WorkspaceMember.findOne({
                 workspace: workspaceId,
                 user: currentOwnerId,
@@ -389,7 +473,6 @@ const workspaceService = {
             );
 
             // Update Chat Admin (UPDATED)
-            const workspace = await Workspace.findById(workspaceId).session(session);
             if (workspace && workspace.chatId) {
                 await Chat.findByIdAndUpdate(
                     workspace.chatId,
@@ -397,6 +480,22 @@ const workspaceService = {
                     { session }
                 );
             }
+
+            const oldOwnerLabel = await getUserLabel(currentOwnerId, session);
+            const newOwnerLabel = await getUserLabel(newOwnerId, session);
+            await logActivity({
+                actorId: currentOwnerId,
+                action: "workspace.ownership_transferred",
+                level: "workspace",
+                workspaceId,
+                chatId: workspace?.chatId,
+                message: `${oldOwnerLabel} transferred workspace "${workspace?.name || "workspace"}" ownership to ${newOwnerLabel}.`,
+                meta: {
+                    from: currentOwnerId,
+                    to: newOwnerId
+                },
+                session
+            });
 
             await session.commitTransaction();
         } catch (error) {
@@ -513,6 +612,19 @@ const workspaceService = {
         invite.status = "accepted";
         await invite.save();
 
+        const userLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "workspace.member_joined",
+            level: "workspace",
+            workspaceId: workspace?._id || invite.workspace,
+            chatId: workspace?.chatId,
+            message: `${userLabel} joined workspace "${workspace?.name || "workspace"}".`,
+            meta: {
+                viaInvite: true
+            }
+        });
+
         return workspace;
     },
 
@@ -536,10 +648,24 @@ const workspaceService = {
             }
         }
 
+        const workspace = await Workspace.findById(workspaceId).select('name chatId');
+        const userLabel = await getUserLabel(userId);
+
         const session = await WorkspaceMember.startSession();
         session.startTransaction();
 
         try {
+            await logActivity({
+                actorId: userId,
+                action: "workspace.member_left",
+                level: "workspace",
+                workspaceId,
+                chatId: workspace?.chatId,
+                message: `${userLabel} left workspace "${workspace?.name || "workspace"}".`,
+                meta: {},
+                session
+            });
+
             await WorkspaceMember.findOneAndDelete({
                 workspace: workspaceId,
                 user: userId

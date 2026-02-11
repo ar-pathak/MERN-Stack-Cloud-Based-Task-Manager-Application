@@ -4,6 +4,11 @@ import { MessageSquare, ChevronDown } from "lucide-react";
 import ChatMessage from "./ChatMessage";
 
 const SCROLL_THRESHOLD = 120;
+const isSystemMessage = (msg) => Boolean(
+  msg?.isSystem ||
+  msg?.type === "system" ||
+  msg?.meta?.isActivity
+);
 
 const MessageList = ({
   messages = [],
@@ -95,16 +100,16 @@ const MessageList = ({
       }
 
       const prevMsg = messages[index - 1];
+      const currentIsSystem = isSystemMessage(msg);
+      const previousIsSystem = isSystemMessage(prevMsg);
       
       // LOGIC IMPROVEMENT: 
       // Check if sender is same AND time difference is less than 60 seconds
       const isSameSender = prevMsg && (prevMsg.senderId?._id || prevMsg.senderId) === (msg.senderId?._id || msg.senderId);
       const isWithinTimeWindow = prevMsg && (new Date(msg.createdAt) - new Date(prevMsg.createdAt) < 60000); // 1 minute
-      const isNotSystem = prevMsg?.type !== "system";
+      const isConsecutive = !currentIsSystem && !previousIsSystem && isSameSender && isWithinTimeWindow;
 
-      const isConsecutive = isSameSender && isWithinTimeWindow && isNotSystem;
-
-      currentGroup.messages.push({ ...msg, isConsecutive });
+      currentGroup.messages.push({ ...msg, isConsecutive, isSystem: currentIsSystem });
     });
 
     return groups;

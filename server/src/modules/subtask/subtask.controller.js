@@ -214,8 +214,9 @@ const subtaskController = {
         try {
             const { subtaskId } = req.params;
             const { assignees } = req.body; // Array of IDs validated by middleware
+            const userId = req.user.id;
 
-            const subtask = await subtaskService.addAssignees(subtaskId, assignees);
+            const subtask = await subtaskService.addAssignees(subtaskId, assignees, userId);
 
             res.status(200).json({
                 success: true,
@@ -238,8 +239,9 @@ const subtaskController = {
         try {
             const { subtaskId } = req.params;
             const { assignees } = req.body;
+            const userId = req.user.id;
 
-            const subtask = await subtaskService.removeAssignees(subtaskId, assignees);
+            const subtask = await subtaskService.removeAssignees(subtaskId, assignees, userId);
 
             res.status(200).json({
                 success: true,
