@@ -11,9 +11,23 @@ const MainPage = () => {
     const scrollRef = useRef(null);
     const scrollDirection = useScrollDirection(scrollRef);
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+    const [isMobileViewport, setIsMobileViewport] = useState(() =>
+        typeof window !== "undefined" ? window.innerWidth < 768 : false
+    );
     const { isToggle } = useToggle();
 
     useEffect(() => {
+        const onResize = () => {
+            setIsMobileViewport(window.innerWidth < 768);
+        };
+
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+
+    useEffect(() => {
+        if (isMobileViewport) return;
+
         if (scrollDirection === "down" && isHeaderVisible) {
             setIsHeaderVisible(false);
         }
@@ -21,27 +35,35 @@ const MainPage = () => {
             setIsHeaderVisible(true)
         }
 
-    }, [scrollDirection, isHeaderVisible, isToggle]);
-    
+    }, [scrollDirection, isHeaderVisible, isToggle, isMobileViewport]);
+
+    useEffect(() => {
+        if (!isMobileViewport) {
+            setIsHeaderVisible(true);
+        }
+    }, [isMobileViewport]);
 
     return (
 
-        <div className="flex h-screen overflow-hidden">
+        <div className="flex h-screen min-h-0 overflow-hidden">
             <ScrollBar />
             <AnimatedBackground />
             <MainSidebar />
 
             {/* Right Column */}
-            <div className="flex flex-col h-full flex-1 w-full relative">
-                <div
-                    className={`transition-all duration-300 ease-in-out ${isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
+            <div className="flex flex-col h-full min-h-0 flex-1 w-full relative">
+                {!isMobileViewport && (
+                    <div
+                        className={`transition-all duration-300 ease-in-out ${
+                            isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
                         }`}
-                >
-                    <MainHeader />
-                </div>
+                    >
+                        <MainHeader />
+                    </div>
+                )}
                 <div
                     ref={scrollRef}
-                    className="flex-1 overflow-y-auto overflow-x-hidden px-5 custom-scrollbar scroll-smooth"
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-0 md:px-5 custom-scrollbar scroll-smooth"
                 >
                     <Outlet />
                 </div>

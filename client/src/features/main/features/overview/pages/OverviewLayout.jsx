@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
+import { useNavigate } from "react-router";
 
 import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
@@ -41,6 +43,8 @@ import {
   normalizeOverviewNode,
 } from "../utils/overviewTimeline";
 
+const MOBILE_BREAKPOINT = 768;
+
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
@@ -52,8 +56,13 @@ const OverviewLayout = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
   const [pendingMentionJump, setPendingMentionJump] = useState(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
+  );
+  const [mobilePane, setMobilePane] = useState("overview");
 
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [taskCreationContext, setTaskCreationContext] = useState({
     level: "global",
@@ -74,6 +83,27 @@ const OverviewLayout = () => {
   useEffect(() => {
     timelineRef.current = timeline;
   }, [timeline]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobilePane("overview");
+    }
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    if (isMobileViewport && mobilePane === "chat" && !selectedItem) {
+      setMobilePane("overview");
+    }
+  }, [isMobileViewport, mobilePane, selectedItem]);
 
   const showToast = useCallback((message) => {
     setToast(message);
@@ -215,15 +245,29 @@ const OverviewLayout = () => {
     setExpandedItems(next);
   };
 
+  const handleMobileOpenChat = useCallback(
+    (timelineItem) => {
+      if (!timelineItem) return;
+      setSelectedItem(timelineItem);
+      if (isMobileViewport) {
+        setMobilePane("chat");
+      }
+    },
+    [isMobileViewport]
+  );
+
   const handleOpenMentionFromChatItem = useCallback((chatItem) => {
     const chatId = String(chatItem?.chatId || chatItem?.id || chatItem?._id || "");
     const messageId = String(chatItem?.nextMentionMessageId || "");
 
     setSelectedItem(chatItem);
+    if (isMobileViewport) {
+      setMobilePane("chat");
+    }
     if (chatId && messageId) {
       setPendingMentionJump({ chatId, messageId });
     }
-  }, []);
+  }, [isMobileViewport]);
 
   const handleMentionJumpHandled = useCallback(
     (handledMessageId) => {
@@ -321,10 +365,18 @@ const OverviewLayout = () => {
     pendingMentionJump && String(pendingMentionJump.chatId) === selectedChatId
       ? pendingMentionJump.messageId
       : null;
+  const showOverviewPane = !isMobileViewport || mobilePane === "overview";
+  const showChatPane = !isMobileViewport || mobilePane === "chat";
+  const profileId = user?._id || user?.id;
+  const shouldShowBottomMenu = isMobileViewport && mobilePane !== "chat";
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden">
-      <div className="w-96 border-r border-slate-800/50 bg-slate-950/40 backdrop-blur-xl flex flex-col overflow-hidden">
+    <div className={`flex h-full min-h-0 bg-slate-950 overflow-hidden ${shouldShowBottomMenu ? "pb-[5.25rem]" : ""}`}>
+      <div
+        className={`${showOverviewPane ? "flex" : "hidden"} ${
+          isMobileViewport ? "w-full" : "w-[22rem]"
+        } border-r border-slate-800/50 bg-slate-950/40 backdrop-blur-xl flex-col overflow-hidden`}
+      >
         <SidebarHeader
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
@@ -339,7 +391,7 @@ const OverviewLayout = () => {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {loadingTimeline && <TimelineSkeleton />}
 
           {!loadingTimeline && isTimelineEmpty && (
@@ -358,6 +410,8 @@ const OverviewLayout = () => {
               items={filteredItems}
               selectedItem={selectedItem}
               setSelectedItem={setSelectedItem}
+              onOpenChat={handleMobileOpenChat}
+              isMobile={isMobileViewport}
               expandedItems={expandedItems}
               toggleExpand={toggleExpand}
               onCreateSubtask={handleCreateSubtask}
@@ -368,7 +422,7 @@ const OverviewLayout = () => {
         </div>
       </div>
 
-      <div className="flex-1 h-full min-h-0 flex flex-col bg-slate-950 overflow-hidden">
+      <div className={`${showChatPane ? "flex" : "hidden"} flex-1 h-full min-h-0 min-w-0 flex-col bg-slate-950 overflow-hidden`}>
         <AnimatePresence mode="wait">
           {selectedItem ? (
             <motion.div
@@ -406,6 +460,7 @@ const OverviewLayout = () => {
                 onUpdate={refreshTimeline}
                 jumpToMessageId={jumpToMessageId}
                 onMentionJumpHandled={handleMentionJumpHandled}
+                onMobileBack={isMobileViewport ? () => setMobilePane("overview") : null}
               />
             </motion.div>
           ) : (
@@ -420,6 +475,58 @@ const OverviewLayout = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {shouldShowBottomMenu && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
+          style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="grid grid-cols-4 gap-1 px-2 pt-1.5">
+            <button
+              type="button"
+              onClick={() => setMobilePane("overview")}
+              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] ${
+                mobilePane === "overview"
+                  ? "bg-sky-500/15 text-sky-300"
+                  : "text-slate-400 hover:bg-slate-800/70"
+              }`}
+            >
+              <Grid2x2 className="h-4 w-4" />
+              Overview
+            </button>
+
+            <button
+              type="button"
+              onClick={() => showToast("Feed section is coming soon")}
+              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
+            >
+              <Newspaper className="h-4 w-4" />
+              Feed
+            </button>
+
+            <button
+              type="button"
+              onClick={() => showToast("Create post feature is coming soon")}
+              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
+            >
+              <SquarePen className="h-4 w-4" />
+              Create Post
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (!profileId) return;
+                navigate(`/profile/${profileId}`);
+              }}
+              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
+            >
+              <UserRound className="h-4 w-4" />
+              Me
+            </button>
+          </div>
+        </div>
+      )}
 
       <TaskPopup
         isOpen={taskPopupOpen}
@@ -482,7 +589,9 @@ const OverviewLayout = () => {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm"
+            className={`fixed right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm ${
+              shouldShowBottomMenu ? "bottom-24 left-6" : "bottom-6"
+            }`}
           >
             {toast}
           </motion.div>

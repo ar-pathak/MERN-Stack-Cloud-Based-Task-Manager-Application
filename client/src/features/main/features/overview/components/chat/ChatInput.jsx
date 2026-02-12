@@ -213,7 +213,7 @@ const ChatInput = ({
     };
 
     return (
-        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-4">
+        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 sm:p-3 md:p-4">
             <AnimatePresence>
                 {replyingTo && (
                     <motion.div
@@ -261,7 +261,7 @@ const ChatInput = ({
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <p className="text-sm text-slate-200 truncate max-w-[200px]">{selectedFile.name}</p>
+                                <p className="text-sm text-slate-200 truncate max-w-[130px] sm:max-w-[200px]">{selectedFile.name}</p>
                                 <p className="text-xs text-slate-500">{Math.round(selectedFile.size / 1024)} KB</p>
                             </div>
                         </div>
@@ -289,7 +289,7 @@ const ChatInput = ({
                 )}
             </AnimatePresence>
 
-            <div className="flex items-end gap-2">
+            <div className="flex items-end gap-1.5 sm:gap-2">
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -315,7 +315,7 @@ const ChatInput = ({
                         placeholder={selectedFile ? "Add a caption..." : "Type a message... Use @ to mention"}
                         rows={1}
                         disabled={uploadingFile}
-                        className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
+                        className="w-full px-3 py-2.5 sm:px-4 sm:py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
                         style={{ minHeight: "44px", maxHeight: "120px" }}
                     />
 
@@ -402,12 +402,12 @@ const ChatInput = ({
                     whileTap={{ scale: 0.95 }}
                     onClick={onSendClick}
                     disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile}
-                    className={`p-3 rounded-xl transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                    className={`p-2.5 sm:p-3 rounded-xl transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
                         ? "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25"
                         : "bg-slate-800/40 text-slate-600 cursor-not-allowed"
                         }`}
                 >
-                    {uploadingFile ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
+                    {uploadingFile ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 sm:h-5 sm:w-5" />}
                 </motion.button>
             </div>
         </div>
@@ -420,7 +420,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
         whileTap={!disabled ? { scale: 0.95 } : {}}
         onClick={onClick}
         disabled={disabled}
-        className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${active
+        className={`p-2 sm:p-2.5 rounded-xl transition-colors flex-shrink-0 ${active
             ? "bg-sky-500/20 text-sky-400"
             : disabled
                 ? "text-slate-600 cursor-not-allowed"
@@ -428,7 +428,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
             }`}
         title={title}
     >
-        <Icon className="h-5 w-5" />
+        <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
     </motion.button>
 );
 
@@ -438,9 +438,9 @@ const EmojiPicker = ({ onSelect }) => (
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
         transition={{ duration: 0.15 }}
-        className="absolute bottom-full right-0 mb-2 p-4 rounded-xl bg-slate-900/95 backdrop-blur-xl border border-slate-800/70 shadow-2xl z-50"
+        className="absolute bottom-full right-0 mb-2 p-3 sm:p-4 rounded-xl bg-slate-900/95 backdrop-blur-xl border border-slate-800/70 shadow-2xl z-50 max-w-[calc(100vw-1rem)]"
     >
-        <div className="grid grid-cols-8 gap-2 w-max">
+        <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 sm:gap-2 w-max">
             {[
                 "??", "??", "??", "??", "??", "?", "??", "??",
                 "??", "??", "??", "??", "?", "??", "??", "?",
@@ -452,7 +452,7 @@ const EmojiPicker = ({ onSelect }) => (
                     whileHover={{ scale: 1.2 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => onSelect(emoji)}
-                    className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-slate-800/60 transition-colors text-lg"
+                    className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center rounded-lg hover:bg-slate-800/60 transition-colors text-base sm:text-lg"
                 >
                     {emoji}
                 </motion.button>

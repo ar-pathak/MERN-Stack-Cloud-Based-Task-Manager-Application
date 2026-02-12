@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Briefcase, FolderOpen, CheckSquare, Star, BellOff,
-    Loader2, Search, Phone, Video, Info, ListTodo,
+    ArrowLeft, Briefcase, FolderOpen, CheckSquare, Star, BellOff,
+    Search, Phone, Video, Info, ListTodo,
     MoreVertical, UserPlus, Settings, LogOut, Archive,
     Users, Hash
 } from "lucide-react";
@@ -21,6 +21,7 @@ const ChatHeader = ({
     // ── Call handlers (wired from ChatPanel) ──────────────────────────────
     onStartVideoCall,
     onStartAudioCall,
+    onBack,
 }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const isDM = item?.type === 'chat' || item?.type === 'dm';
@@ -57,16 +58,27 @@ const ChatHeader = ({
     const onlineMembersCount = item?.members?.filter(m => m.online).length || 0;
 
     return (
-        <div className="flex-shrink-0 border-b border-slate-800/50 bg-gradient-to-b from-slate-950 to-slate-950/80 backdrop-blur-xl px-6 py-4">
+        <div className="flex-shrink-0 border-b border-slate-800/50 bg-gradient-to-b from-slate-950 to-slate-950/80 backdrop-blur-xl px-3 py-3 sm:px-4 sm:py-3 md:px-6 md:py-4">
             <div className="flex items-center justify-between">
 
                 {/* ── Avatar / icon ──────────────────────────────────────── */}
-                <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3 md:gap-4 flex-1 min-w-0">
+                    {onBack && (
+                        <motion.button
+                            whileTap={{ scale: 0.95 }}
+                            onClick={onBack}
+                            className="md:hidden inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 text-slate-200"
+                            aria-label="Back to overview"
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                        </motion.button>
+                    )}
+
                     <div className="relative group flex-shrink-0">
                         {isDM ? (
                             <motion.div
                                 whileHover={{ scale: 1.05 }}
-                                className="h-12 w-12 rounded-full overflow-hidden border-2 border-slate-800 shadow-lg relative"
+                                className="h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 rounded-full overflow-hidden border-2 border-slate-800 shadow-lg relative"
                             >
                                 {item?.avatar ? (
                                     <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
@@ -92,7 +104,7 @@ const ChatHeader = ({
                         ) : (
                             <motion.div
                                 whileHover={{ scale: 1.05, rotate: 5 }}
-                                className={`h-12 w-12 rounded-xl flex items-center justify-center transition-all border shadow-lg ${getItemColorClass(item?.type)}`}
+                                className={`h-10 w-10 sm:h-11 sm:w-11 md:h-12 md:w-12 rounded-xl flex items-center justify-center transition-all border shadow-lg ${getItemColorClass(item?.type)}`}
                             >
                                 {getItemIcon(item?.type)}
                             </motion.div>
@@ -116,7 +128,7 @@ const ChatHeader = ({
                     {/* ── Name + status ───────────────────────────────────── */}
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
-                            <h2 className="text-lg font-bold text-slate-100 truncate">
+                            <h2 className="text-base sm:text-lg font-bold text-slate-100 truncate">
                                 {getItemTitle(item)}
                             </h2>
                             {!isDM && item?.starred && (
@@ -164,7 +176,7 @@ const ChatHeader = ({
                 </div>
 
                 {/* ── Action buttons ─────────────────────────────────────── */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-0.5 sm:gap-1">
                     <HeaderButton
                         icon={Search}
                         tooltip="Search messages"
@@ -243,7 +255,7 @@ const ChatHeader = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="mt-4 overflow-hidden"
                     >
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                             <div className="flex-1 relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
                                 <input
@@ -258,7 +270,7 @@ const ChatHeader = ({
                             <select
                                 value={messageFilter}
                                 onChange={(e) => setMessageFilter(e.target.value)}
-                                className="px-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 transition-all cursor-pointer"
+                                className="w-full sm:w-auto px-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 transition-all cursor-pointer"
                             >
                                 <option value="all">All messages</option>
                                 <option value="files">Files only</option>
@@ -281,15 +293,15 @@ const HeaderButton = ({ icon: Icon, onClick, active, tooltip }) => (
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onClick}
-            className={`p-2.5 rounded-xl transition-all ${active
+            className={`p-2 sm:p-2.5 rounded-xl transition-all ${active
                     ? 'bg-sky-500/20 text-sky-400 shadow-lg shadow-sky-500/20'
                     : 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-300'
                 }`}
         >
-            <Icon className="h-5 w-5" />
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
         </motion.button>
         {tooltip && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-slate-300 text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden sm:block px-2 py-1 bg-slate-900 text-slate-300 text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
                 {tooltip}
             </div>
         )}

@@ -32,9 +32,9 @@ const SidebarHeader = ({ searchQuery, setSearchQuery, filterType, setFilterType 
 
 
     return (
-        <div className="flex-shrink-0 p-4 border-b border-slate-800/50">
+        <div className="flex-shrink-0 p-3 sm:p-4 border-b border-slate-800/50">
             <div className="flex items-center gap-2 mb-3 relative" ref={menuRef}>
-                <h2 className="text-lg font-bold text-slate-100">Conversations</h2>
+                <h2 className="text-base sm:text-lg font-bold text-slate-100">Conversations</h2>
 
                 <button
                     onClick={() => setOpen(v => !v)}
@@ -85,12 +85,12 @@ const SidebarHeader = ({ searchQuery, setSearchQuery, filterType, setFilterType 
                 />
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
                 {filters.map(filter => (
                     <button
                         key={filter.id}
                         onClick={() => setFilterType(filter.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filterType === filter.id
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${filterType === filter.id
                             ? "bg-sky-500/20 text-sky-400 border border-sky-500/30"
                             : "bg-slate-800/40 text-slate-400 hover:bg-slate-800/60"
                             }`}

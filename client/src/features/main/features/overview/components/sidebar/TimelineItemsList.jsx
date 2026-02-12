@@ -22,6 +22,8 @@ const TimelineItemsList = ({
   items,
   selectedItem,
   setSelectedItem,
+  isMobile = false,
+  onOpenChat,
   expandedItems,
   toggleExpand,
   onCreateSubtask,
@@ -42,6 +44,8 @@ const TimelineItemsList = ({
                   task={item}
                   selectedItem={selectedItem}
                   setSelectedItem={setSelectedItem}
+                  isMobile={isMobile}
+                  onOpenChat={onOpenChat}
                   expandedItems={expandedItems}
                   toggleExpand={toggleExpand}
                   onCreateSubtask={onCreateSubtask}
@@ -58,6 +62,7 @@ const TimelineItemsList = ({
                   chat={item}
                   selectedItem={selectedItem}
                   setSelectedItem={setSelectedItem}
+                  onOpenChat={onOpenChat}
                   onOpenMention={onOpenMention}
                 />
               </AnimatedItem>
@@ -72,6 +77,8 @@ const TimelineItemsList = ({
                 handleCreate={onWorkspaceAction}
                 selectedItem={selectedItem}
                 setSelectedItem={setSelectedItem}
+                isMobile={isMobile}
+                onOpenChat={onOpenChat}
                 expandedItems={expandedItems}
                 toggleExpand={toggleExpand}
               />

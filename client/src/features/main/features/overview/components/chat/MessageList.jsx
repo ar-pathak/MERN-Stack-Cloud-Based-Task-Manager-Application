@@ -178,7 +178,7 @@ const MessageList = ({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden px-4 md:px-8 py-4 custom-scrollbar"
+        className="h-full overflow-y-auto overflow-x-hidden px-2.5 sm:px-4 md:px-8 py-4 custom-scrollbar"
       >
         <div className="min-h-full flex flex-col justify-end pb-4">
           {messageGroups.map((group) => (
@@ -224,7 +224,7 @@ const MessageList = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.9 }}
             onClick={() => scrollToBottom("smooth")}
-            className="absolute bottom-6 right-6 z-30 p-3 rounded-full bg-slate-800 text-sky-400 shadow-xl border border-slate-700 hover:bg-slate-700 transition-all"
+            className="absolute bottom-20 right-4 z-30 p-3 rounded-full bg-slate-800 text-sky-400 shadow-xl border border-slate-700 hover:bg-slate-700 transition-all sm:bottom-6 sm:right-6"
             aria-label="Scroll to latest message"
           >
             <ChevronDown className="h-5 w-5" />

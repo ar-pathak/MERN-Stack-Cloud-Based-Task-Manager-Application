@@ -34,6 +34,8 @@ const WorkspaceItem = ({
     handleCreate,
     selectedItem,
     setSelectedItem,
+    isMobile = false,
+    onOpenChat,
     expandedItems,
     toggleExpand
 }) => {
@@ -45,21 +47,36 @@ const WorkspaceItem = ({
     const hasWorkspaceMention = workspaceMentionCount > 0;
     const hasWorkspaceChildMention = !hasWorkspaceMention && workspace.hasChildMentionUnread;
     const { user } = useAuth();
+    const hasWorkspaceChildren = (workspace.tasks?.length > 0) || (workspace.projects?.length > 0);
+    const isWorkspaceExpanded = expandedItems.has(workspaceId);
+
+    const handleWorkspaceClick = () => {
+        if (isMobile) {
+            if (hasWorkspaceChildren && !isWorkspaceExpanded) {
+                toggleExpand(workspaceId);
+                return;
+            }
+            setSelectedItem(workspace);
+            onOpenChat?.(workspace);
+            return;
+        }
+
+        setSelectedItem(workspace);
+        toggleExpand(workspaceId);
+    };
+
     return (
         <div key={workspaceId} className="mb-1">
             {/* Workspace Row */}
             <div
                 className={`group flex items-start gap-3 px-3 py-3 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === workspaceId ? 'bg-slate-800/80 border-l-2 border-sky-500' : 'border-l-2 border-transparent'
                     }`}
-                onClick={() => {
-                    setSelectedItem(workspace);
-                    toggleExpand(workspaceId);
-                }}
+                onClick={handleWorkspaceClick}
             >
                 {/* 1. Leading Section: Chevron + Icon */}
                 <div className="flex items-start gap-1">
                     <div className="mt-3">
-                        {(workspace.tasks?.length > 0 || workspace.projects?.length > 0) ? (
+                        {hasWorkspaceChildren ? (
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -177,6 +194,8 @@ const WorkspaceItem = ({
                         const isProjectCompleted = project.status === 'completed';
                         const isProjectHighPriority = project.isHighPriority;
                         const projLastMsg = project.lastMessage;
+                        const hasProjectChildren = project.tasks?.length > 0;
+                        const isProjectExpanded = expandedItems.has(project.id);
                         const projectMentionCount = project.mentionUnreadCount || 0;
                         const hasProjectMention = projectMentionCount > 0;
                         const hasProjectChildMention = !hasProjectMention && project.hasChildMentionUnread;
@@ -187,12 +206,22 @@ const WorkspaceItem = ({
                                     className={`group flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${selectedItem?.id === project.id ? 'bg-slate-800/80 border-l-2 border-purple-500' : 'border-l-2 border-transparent'
                                         }`}
                                     onClick={() => {
+                                        if (isMobile) {
+                                            if (hasProjectChildren && !isProjectExpanded) {
+                                                toggleExpand(project.id);
+                                                return;
+                                            }
+                                            setSelectedItem(project);
+                                            onOpenChat?.(project);
+                                            return;
+                                        }
+
                                         toggleExpand(project.id);
                                         setSelectedItem(project);
                                     }}
                                 >
                                     <div className="mt-1">
-                                        {(project.tasks?.length > 0) ? (
+                                        {hasProjectChildren ? (
                                             <button
                                                 onClick={(e) => {
                                                     e.stopPropagation();
@@ -296,6 +325,8 @@ const WorkspaceItem = ({
                                             expandedItems={expandedItems}
                                             toggleExpand={toggleExpand}
                                             onCreateSubtask={(task) => handleCreate(workspace, 'subtask', 'task', null, task)}
+                                            isMobile={isMobile}
+                                            onOpenChat={onOpenChat}
                                         />
                                     </div>
                                 ))}
@@ -316,6 +347,8 @@ const WorkspaceItem = ({
                                     toggleExpand={toggleExpand}
                                     onCreateSubtask={(task) => handleCreate(workspace, 'subtask', 'task', null, task)}
                                     variant="child"
+                                    isMobile={isMobile}
+                                    onOpenChat={onOpenChat}
                                 />
                             ))}
                         </div>

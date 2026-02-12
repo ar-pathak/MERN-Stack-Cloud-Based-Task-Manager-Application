@@ -18,7 +18,17 @@ const formatActivityTime = (dateString) => {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleExpand, onCreateSubtask, variant = 'child' }) => {
+const TaskItem = ({
+    task,
+    selectedItem,
+    setSelectedItem,
+    expandedItems,
+    toggleExpand,
+    onCreateSubtask,
+    variant = 'child',
+    isMobile = false,
+    onOpenChat
+}) => {
     const hasSubtasks = task.subtasks && task.subtasks.length > 0;
     const isSelected = selectedItem?.id === task.id;
     const isExpanded = expandedItems.has(task.id);
@@ -37,6 +47,25 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
     const lastMsg = task.lastMessage;
     const senderName = user.username === lastMsg?.sender?.username ? 'You' : lastMsg?.sender?.username?.split(' ')[0] || 'User';
 
+    const openTaskChat = () => {
+        setSelectedItem(task);
+        onOpenChat?.(task);
+    };
+
+    const handleTaskClick = () => {
+        if (isMobile) {
+            if (hasSubtasks && !isExpanded) {
+                toggleExpand(task.id);
+                return;
+            }
+            openTaskChat();
+            return;
+        }
+
+        setSelectedItem(task);
+        toggleExpand(task.id);
+    };
+
     // GLOBAL VARIANT
     if (variant === 'global') {
         return (
@@ -44,10 +73,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                 <div
                     className={`group flex items-start gap-3 px-3 py-3 rounded-xl hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-sky-500' : 'border-l-2 border-transparent'
                         }`}
-                    onClick={() => {
-                        setSelectedItem(task);
-                        toggleExpand(task.id)
-                    }}
+                    onClick={handleTaskClick}
                 >
                     <div className="flex items-start gap-1">
                         <div className="mt-3">
@@ -172,6 +198,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         setSelectedItem(subtask);
+                                        onOpenChat?.(subtask);
                                     }}
                                     className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer ${isSubtaskSelected
                                         ? 'bg-slate-800/80 border-l-2 border-emerald-500'
@@ -217,10 +244,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
             <div
                 className={`group flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-slate-800/40 cursor-pointer transition-all ${isSelected ? 'bg-slate-800/80 border-l-2 border-emerald-500' : 'border-l-2 border-transparent'
                     }`}
-                onClick={() => {
-                    setSelectedItem(task);
-                    toggleExpand(task.id)
-                }}
+                onClick={handleTaskClick}
             >
                 <div className="mt-2">
                     {hasSubtasks ? (
@@ -343,6 +367,7 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     setSelectedItem(subtask);
+                                    onOpenChat?.(subtask);
                                 }}
                                 className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all cursor-pointer ${isSubtaskSelected
                                     ? 'bg-slate-800/80 border-l-2 border-emerald-500'

@@ -2,7 +2,7 @@ import React from "react";
 import { MessageSquare, Users, Phone, AtSign, PhoneIncoming } from "lucide-react";
 import { useAuth } from "../../../../../context/AuthContext";
 
-const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenMention }) => {
+const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenChat, onOpenMention }) => {
     const isSelected = selectedItem?.id === chat.id;
     const isGroup = chat.chatType === "group";
     const { user } = useAuth();
@@ -41,7 +41,10 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenMention }) =>
                                 ? "bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-sky-500/50"
                                 : "hover:bg-slate-800/40 border-l-2 border-transparent"
                 }`}
-            onClick={() => setSelectedItem(chat)}
+            onClick={() => {
+                setSelectedItem(chat);
+                onOpenChat?.(chat);
+            }}
         >
             <div className="relative flex-shrink-0 h-10 w-10 ml-4.5">
                 <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center overflow-hidden">

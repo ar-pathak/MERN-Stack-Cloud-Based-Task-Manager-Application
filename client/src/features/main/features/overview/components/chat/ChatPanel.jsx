@@ -38,6 +38,7 @@ const ChatPanel = ({
     onUpdate,
     jumpToMessageId,
     onMentionJumpHandled,
+    onMobileBack,
 }) => {
     const { user } = useAuth();
 
@@ -142,6 +143,7 @@ const ChatPanel = ({
                                 setShowChatInfo={setShowChatInfo}
                                 onStartVideoCall={handleStartVideoCall}
                                 onStartAudioCall={handleStartAudioCall}
+                                onBack={onMobileBack}
                             />
                         </div>
 

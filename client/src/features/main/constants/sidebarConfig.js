@@ -5,35 +5,7 @@ export const NAV_ITEMS = [
         path: "/main",
         description: "Workspace overview",
         color: "sky"
-    },
-    {
-        label: "My Tasks",
-        icon: "ListChecks",
-        path: "/main/my-tasks",
-        description: "Your assigned tasks",
-        color: "violet"
-    },
-    {
-        label: "Projects",
-        icon: "FolderKanban",
-        path: "/main/projects",
-        description: "All projects",
-        color: "emerald"
-    },
-    {
-        label: "Activity",
-        icon: "Activity",
-        path: "/main/activity",
-        description: "Recent activity",
-        color: "amber"
-    },
-    {
-        label: "Schedule",
-        icon: "CalendarDays",
-        path: "/main/schedule",
-        description: "Calendar & schedule",
-        color: "rose"
-    },
+    }
 ];
 
 export const COLOR_THEMES = {
