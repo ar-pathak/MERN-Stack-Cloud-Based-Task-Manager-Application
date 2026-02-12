@@ -154,12 +154,18 @@ export const applyUnreadUpdate = (timeline, data) => {
   return recurse(timeline);
 };
 
-export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) => {
+export const enrichTimeline = (
+  timeline,
+  activeCallsByChatId,
+  mentionByChatId,
+  callInviteByChatId = {}
+) => {
   const recurse = (items) =>
     items.map((item) => {
       const nextItem = { ...item };
       let deepUnreadCount = 0;
       let deepMentionUnreadCount = 0;
+      let deepCallInviteUnreadCount = 0;
       let deepActiveCallCount = 0;
 
       if (nextItem.projects) {
@@ -171,6 +177,11 @@ export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) =
         deepMentionUnreadCount += nextItem.projects.reduce(
           (acc, project) =>
             acc + (project.mentionUnreadCount || 0) + (project.deepMentionUnreadCount || 0),
+          0
+        );
+        deepCallInviteUnreadCount += nextItem.projects.reduce(
+          (acc, project) =>
+            acc + (project.callInviteUnreadCount || 0) + (project.deepCallInviteUnreadCount || 0),
           0
         );
         deepActiveCallCount += nextItem.projects.reduce(
@@ -190,6 +201,11 @@ export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) =
           (acc, task) => acc + (task.mentionUnreadCount || 0) + (task.deepMentionUnreadCount || 0),
           0
         );
+        deepCallInviteUnreadCount += nextItem.tasks.reduce(
+          (acc, task) =>
+            acc + (task.callInviteUnreadCount || 0) + (task.deepCallInviteUnreadCount || 0),
+          0
+        );
         deepActiveCallCount += nextItem.tasks.reduce(
           (acc, task) => acc + (task.activeCallCount || 0) + (task.deepActiveCallCount || 0),
           0
@@ -207,6 +223,11 @@ export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) =
             acc + (subtask.mentionUnreadCount || 0) + (subtask.deepMentionUnreadCount || 0),
           0
         );
+        deepCallInviteUnreadCount += nextItem.subtasks.reduce(
+          (acc, subtask) =>
+            acc + (subtask.callInviteUnreadCount || 0) + (subtask.deepCallInviteUnreadCount || 0),
+          0
+        );
         deepActiveCallCount += nextItem.subtasks.reduce(
           (acc, subtask) =>
             acc + (subtask.activeCallCount || 0) + (subtask.deepActiveCallCount || 0),
@@ -216,6 +237,7 @@ export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) =
 
       const itemChatId = getItemChatId(nextItem);
       const mentionInfo = mentionByChatId[itemChatId] || null;
+      const callInviteInfo = callInviteByChatId[itemChatId] || null;
       const ownActiveCall = nextItem.type === "chat" ? activeCallsByChatId[itemChatId] : null;
 
       nextItem.deepUnreadCount = deepUnreadCount;
@@ -227,6 +249,13 @@ export const enrichTimeline = (timeline, activeCallsByChatId, mentionByChatId) =
       nextItem.nextMentionContent = mentionInfo?.nextMentionContent || "";
       nextItem.deepMentionUnreadCount = deepMentionUnreadCount;
       nextItem.hasChildMentionUnread = deepMentionUnreadCount > 0;
+
+      nextItem.callInviteUnreadCount = callInviteInfo?.unreadInviteCount || 0;
+      nextItem.nextCallInviteMessageId = callInviteInfo?.nextInviteMessageId || null;
+      nextItem.nextCallInviteCreatedAt = callInviteInfo?.nextInviteCreatedAt || null;
+      nextItem.nextCallInviteContent = callInviteInfo?.nextInviteContent || "";
+      nextItem.deepCallInviteUnreadCount = deepCallInviteUnreadCount;
+      nextItem.hasChildCallInviteUnread = deepCallInviteUnreadCount > 0;
 
       nextItem.activeCall = ownActiveCall || null;
       nextItem.hasActiveCall = !!ownActiveCall;

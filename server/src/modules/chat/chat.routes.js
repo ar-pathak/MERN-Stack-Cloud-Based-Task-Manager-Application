@@ -57,6 +57,12 @@ router.get(
 );
 
 router.get(
+    "/call-invites/unread",
+    validate(v.callInviteSummarySchema, "query"),
+    controller.getUnreadCallInviteSummary
+);
+
+router.get(
     "/:chatId/messages",
     validate(v.chatIdParamSchema, "params"),
     validate(v.paginationSchema, "query"),

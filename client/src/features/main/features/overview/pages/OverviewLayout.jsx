@@ -153,7 +153,13 @@ const OverviewLayout = () => {
     [handleUnreadUpdate]
   );
 
-  const { activeCallsByChatId, mentionByChatId, refreshUnreadMentions } = useOverviewRealtime({
+  const {
+    activeCallsByChatId,
+    mentionByChatId,
+    callInviteByChatId,
+    refreshUnreadMentions,
+    refreshUnreadCallInvites,
+  } = useOverviewRealtime({
     onReceiveMessageEvent: handleReceiveMessageEvent,
     onMessageReadEvent: handleMessageReadEvent,
     onOverviewUpdateEvent: handleOverviewUpdateEvent,
@@ -167,13 +173,14 @@ const OverviewLayout = () => {
 
       const timer = setTimeout(() => {
         refreshUnreadMentions();
+        refreshUnreadCallInvites();
       }, 400);
 
       return () => clearTimeout(timer);
     }
 
     return undefined;
-  }, [selectedItem, handleUnreadUpdate, refreshUnreadMentions]);
+  }, [selectedItem, handleUnreadUpdate, refreshUnreadMentions, refreshUnreadCallInvites]);
 
   const handleSendMessageWrapper = async (options) => {
     const contentToSend = chat.chatMessage;
@@ -229,13 +236,14 @@ const OverviewLayout = () => {
       });
 
       refreshUnreadMentions();
+      refreshUnreadCallInvites();
     },
-    [refreshUnreadMentions]
+    [refreshUnreadMentions, refreshUnreadCallInvites]
   );
 
   const enrichedTimeline = useMemo(
-    () => enrichTimeline(timeline, activeCallsByChatId, mentionByChatId),
-    [timeline, activeCallsByChatId, mentionByChatId]
+    () => enrichTimeline(timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId),
+    [timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId]
   );
 
   const filteredItems = useMemo(

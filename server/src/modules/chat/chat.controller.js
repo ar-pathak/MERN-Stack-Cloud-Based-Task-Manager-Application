@@ -141,6 +141,18 @@ module.exports = {
         }
     },
 
+    getUnreadCallInviteSummary: async (req, res) => {
+        try {
+            const result = await chatService.getUnreadCallInviteSummary(
+                req.user._id,
+                req.query.limit
+            );
+            sendSuccess(res, result);
+        } catch (e) {
+            handleError(e, res);
+        }
+    },
+
     // ── Send message ──────────────────────────────────────────────────────
     sendMessage: async (req, res) => {
         try {

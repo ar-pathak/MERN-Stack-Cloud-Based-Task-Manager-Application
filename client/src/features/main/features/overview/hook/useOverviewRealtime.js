@@ -9,7 +9,10 @@ import {
   onCallEnded,
 } from "../../../../../service/Chat.socket.service";
 import api from "../../../../../config/axios";
-import { getUnreadMentionSummary } from "../../../../../service/chat.service";
+import {
+  getUnreadMentionSummary,
+  getUnreadCallInviteSummary,
+} from "../../../../../service/chat.service";
 
 export const useOverviewRealtime = ({
   onReceiveMessageEvent,
@@ -19,6 +22,7 @@ export const useOverviewRealtime = ({
 }) => {
   const [activeCallsByChatId, setActiveCallsByChatId] = useState({});
   const [mentionByChatId, setMentionByChatId] = useState({});
+  const [callInviteByChatId, setCallInviteByChatId] = useState({});
 
   const upsertActiveCall = useCallback((payload) => {
     const call = payload?.call || payload;
@@ -104,6 +108,15 @@ export const useOverviewRealtime = ({
     }
   }, []);
 
+  const refreshUnreadCallInvites = useCallback(async () => {
+    try {
+      const payload = await getUnreadCallInviteSummary({ limit: 300 });
+      setCallInviteByChatId(payload?.byChat || {});
+    } catch (_error) {
+      // Ignore transient failures and recover on next poll/socket event.
+    }
+  }, []);
+
   useEffect(() => {
     refreshActiveCalls();
     const interval = setInterval(refreshActiveCalls, 15000);
@@ -117,19 +130,28 @@ export const useOverviewRealtime = ({
   }, [refreshUnreadMentions]);
 
   useEffect(() => {
+    refreshUnreadCallInvites();
+    const interval = setInterval(refreshUnreadCallInvites, 20000);
+    return () => clearInterval(interval);
+  }, [refreshUnreadCallInvites]);
+
+  useEffect(() => {
     const handleReceiveMessage = (payload) => {
       onReceiveMessageEvent?.(payload);
       refreshUnreadMentions();
+      refreshUnreadCallInvites();
     };
 
     const handleMessageRead = (payload) => {
       onMessageReadEvent?.(payload);
       refreshUnreadMentions();
+      refreshUnreadCallInvites();
     };
 
     const handleOverviewUpdate = (payload) => {
       onOverviewUpdateEvent?.(payload);
       refreshUnreadMentions();
+      refreshUnreadCallInvites();
     };
 
     const handleOverviewUnread = (payload) => {
@@ -171,6 +193,7 @@ export const useOverviewRealtime = ({
     onOverviewUpdateEvent,
     onOverviewUnreadEvent,
     refreshUnreadMentions,
+    refreshUnreadCallInvites,
     upsertActiveCall,
     removeActiveCall,
   ]);
@@ -178,8 +201,10 @@ export const useOverviewRealtime = ({
   return {
     activeCallsByChatId,
     mentionByChatId,
+    callInviteByChatId,
     refreshActiveCalls,
     refreshUnreadMentions,
+    refreshUnreadCallInvites,
     upsertActiveCall,
     removeActiveCall,
   };

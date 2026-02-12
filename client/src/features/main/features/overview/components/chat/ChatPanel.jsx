@@ -59,10 +59,14 @@ const ChatPanel = ({
         isAudioEnabled,
         isVideoEnabled,
         isScreenSharing,
+        connectionQuality,
+        activeSpeakerId,
+        invitingUserIds,
         startCall,
         joinCall,
         leaveCall,
         endCall,
+        inviteToCall,
         toggleAudio,
         toggleVideo,
         toggleScreenShare,
@@ -156,12 +160,16 @@ const ChatPanel = ({
                                         isAudioEnabled={isAudioEnabled}
                                         isVideoEnabled={isVideoEnabled}
                                         isScreenSharing={isScreenSharing}
+                                        connectionQuality={connectionQuality}
+                                        activeSpeakerId={activeSpeakerId}
                                         onToggleAudio={toggleAudio}
                                         onToggleVideo={toggleVideo}
                                         onToggleScreenShare={toggleScreenShare}
                                         onLeaveCall={leaveCall}
                                         onEndCall={endCall}
                                         onJoinCall={joinCall}
+                                        onInviteParticipant={inviteToCall}
+                                        invitingUserIds={invitingUserIds}
                                     />
                                 )}
                              </AnimatePresence>

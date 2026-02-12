@@ -161,6 +161,22 @@ export const getUnreadMentionSummary = async (params = {}) => {
 };
 
 /**
+ * GET /api/chat/call-invites/unread
+ * Get unread call invite summary grouped by chat
+ */
+export const getUnreadCallInviteSummary = async (params = {}) => {
+    try {
+        const response = await api.get(`${BASE}/call-invites/unread`, { params });
+        return response.data?.data || response.data || { invites: [], byChat: {}, totalUnreadInvites: 0 };
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch unread call invite summary",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
  * POST /api/chat/message
  * Send a new message
  */

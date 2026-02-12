@@ -109,6 +109,17 @@ export const onCallInitiated = (callback) =>
 export const onCallEnded = (callback) =>
     attachListener("call:ended", callback);
 
+export const onCallInvited = (callback) =>
+    attachListener("call:invited", callback);
+
+export const onCallInviteSent = (callback) =>
+    attachListener("call:invite:sent", callback);
+
+export const emitCallInvite = (callId, targetUserIds) => {
+    if (!socket) return;
+    socket.emit("call:invite", { callId, targetUserIds });
+};
+
 // ---------------- NOTIFICATION LISTENERS ----------------
 
 export const onNotificationNew = (callback) =>

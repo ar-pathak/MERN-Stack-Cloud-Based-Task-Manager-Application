@@ -161,6 +161,13 @@ const mentionSummarySchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Unread call invite summary - GET /call-invites/unread
+// ---------------------------------------------------------------------------
+const callInviteSummarySchema = z.object({
+    limit: z.coerce.number().int().min(1).max(500).default(200)
+});
+
+// ---------------------------------------------------------------------------
 // Chat-ID URL param — GET /:chatId/messages
 // ---------------------------------------------------------------------------
 const chatIdParamSchema = z.object({
@@ -188,6 +195,7 @@ module.exports = {
     paginationSchema,
     searchSchema,
     mentionSummarySchema,
+    callInviteSummarySchema,
     chatIdParamSchema,
     messageIdParamSchema
 };

@@ -33,6 +33,11 @@ const messageSchema = new mongoose.Schema(
             default: false,
             index: true
         },
+        // Metadata for system/activity payloads (call invites, workspace logs, etc.).
+        meta: {
+            type: mongoose.Schema.Types.Mixed,
+            default: {}
+        },
         // Mentioned users in the message content (@username)
         mentions: [{
             type: mongoose.Schema.Types.ObjectId,
@@ -107,6 +112,7 @@ messageSchema.index({ chatId: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, status: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, pinned: 1 });
 messageSchema.index({ chatId: 1, mentions: 1, createdAt: -1 });
+messageSchema.index({ chatId: 1, isSystem: 1, "meta.activityType": 1, createdAt: -1 });
 
 // Static method: Mark all messages up to a specific message as read by a user
 messageSchema.statics.markReadUpTo = async function (chatId, userId, lastReadMessageId) {

@@ -327,6 +327,72 @@ class ChatService {
     }
 
     // -----------------------------------------------------------------------
+    // 5c. Get Unread Call Invite Summary (grouped by chat)
+    // -----------------------------------------------------------------------
+    async getUnreadCallInviteSummary(userId, limit = 200) {
+        const userObjectId = new mongoose.Types.ObjectId(String(userId));
+        const chats = await Chat.find({ members: userObjectId }).select("_id").lean();
+        const chatIds = chats.map((chat) => chat._id);
+
+        if (!chatIds.length) {
+            return {
+                invites: [],
+                byChat: {},
+                totalUnreadInvites: 0
+            };
+        }
+
+        const summary = await Message.aggregate([
+            {
+                $match: {
+                    chatId: { $in: chatIds },
+                    senderId: { $ne: userObjectId },
+                    status: { $in: ["active", "edited"] },
+                    isSystem: true,
+                    mentions: userObjectId,
+                    "meta.activityType": "call_invite",
+                    "readBy.userId": { $ne: userObjectId }
+                }
+            },
+            { $sort: { createdAt: -1 } },
+            {
+                $group: {
+                    _id: "$chatId",
+                    unreadInviteCount: { $sum: 1 },
+                    nextInviteMessageId: { $first: "$_id" },
+                    nextInviteCreatedAt: { $first: "$createdAt" },
+                    nextInviteContent: { $first: "$content" },
+                    callId: { $first: "$meta.callId" }
+                }
+            },
+            { $sort: { nextInviteCreatedAt: -1 } },
+            { $limit: Math.min(500, Math.max(1, Number(limit) || 200)) }
+        ]);
+
+        const invites = summary.map((item) => ({
+            chatId: String(item._id),
+            unreadInviteCount: item.unreadInviteCount || 0,
+            nextInviteMessageId: item.nextInviteMessageId ? String(item.nextInviteMessageId) : null,
+            nextInviteCreatedAt: item.nextInviteCreatedAt || null,
+            nextInviteContent: item.nextInviteContent || "",
+            callId: item.callId ? String(item.callId) : null
+        }));
+
+        const byChat = {};
+        let totalUnreadInvites = 0;
+        invites.forEach((item) => {
+            byChat[item.chatId] = item;
+            totalUnreadInvites += Number(item.unreadInviteCount || 0);
+        });
+
+        return {
+            invites,
+            byChat,
+            totalUnreadInvites
+        };
+    }
+
+    // -----------------------------------------------------------------------
     // 6. Pin/Unpin Message
     // -----------------------------------------------------------------------
     async togglePinMessage(messageId, userId, chatId) {

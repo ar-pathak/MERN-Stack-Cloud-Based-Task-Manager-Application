@@ -110,7 +110,14 @@ module.exports = {
                 })
                     .populate("callerId", "name avatar")
                     .populate("participants.userId", "name avatar")
-                    .populate("chatId", "name type avatar members")
+                    .populate({
+                        path: "chatId",
+                        select: "name type avatar members",
+                        populate: {
+                            path: "members",
+                            select: "name username avatar isOnline"
+                        }
+                    })
                     .sort({ createdAt: -1 })
                     .lean();
             } else {
@@ -120,7 +127,14 @@ module.exports = {
                 })
                     .populate("callerId", "name avatar")
                     .populate("participants.userId", "name avatar")
-                    .populate("chatId", "name type avatar members")
+                    .populate({
+                        path: "chatId",
+                        select: "name type avatar members",
+                        populate: {
+                            path: "members",
+                            select: "name username avatar isOnline"
+                        }
+                    })
                     .sort({ createdAt: -1 })
                     .lean();
             }
@@ -164,7 +178,14 @@ module.exports = {
             })
                 .populate("callerId", "name avatar")
                 .populate("participants.userId", "name avatar")
-                .populate("chatId", "name type avatar")
+                .populate({
+                    path: "chatId",
+                    select: "name type avatar members",
+                    populate: {
+                        path: "members",
+                        select: "name username avatar isOnline"
+                    }
+                })
                 .sort({ createdAt: -1 })
                 .lean();
 

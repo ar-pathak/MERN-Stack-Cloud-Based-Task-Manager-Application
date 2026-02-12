@@ -1,5 +1,6 @@
 const Call = require("../../models/call");
 const Chat = require("../../models/chat");
+const Message = require("../../models/message");
 const { createNotifications } = require("../notification/notification.service");
 
 // ============================================================================
@@ -7,7 +8,7 @@ const { createNotifications } = require("../notification/notification.service");
 // ============================================================================
 
 async function loadAndAuthorize(socket, chatId, userId) {
-    const chat = await Chat.findById(chatId).populate("members", "name avatar isOnline");
+    const chat = await Chat.findById(chatId).populate("members", "name username avatar isOnline");
 
     if (!chat) {
         socket.emit("call:error", { reason: "Chat not found" });
@@ -38,13 +39,96 @@ function emitToMembers(io, chat, excludeUserId, event, payload) {
     });
 }
 
+function serializeChatMembers(chat) {
+    return (chat?.members || []).map((member) => ({
+        _id: member._id,
+        name: member.name || member.username || "User",
+        username: member.username || null,
+        avatar: member.avatar || null,
+        isOnline: Boolean(member.isOnline)
+    }));
+}
+
+function formatInviteContent(inviterName, invitedMembers, callType) {
+    const inviteeLabels = invitedMembers.map((member) =>
+        member?.username ? `@${member.username}` : (member?.name || "a member")
+    );
+
+    if (inviteeLabels.length === 1) {
+        return `${inviterName} invited ${inviteeLabels[0]} to join the ${callType} call.`;
+    }
+
+    if (inviteeLabels.length === 2) {
+        return `${inviterName} invited ${inviteeLabels[0]} and ${inviteeLabels[1]} to join the ${callType} call.`;
+    }
+
+    const head = inviteeLabels.slice(0, -1).join(", ");
+    const tail = inviteeLabels[inviteeLabels.length - 1];
+    return `${inviterName} invited ${head}, and ${tail} to join the ${callType} call.`;
+}
+
 function emitToAllMembers(io, chat, event, payload) {
     chat.members.forEach(member => {
         io.to(`user:${member._id}`).emit(event, payload);
     });
 }
 
-async function emitCallEnded(io, call, reason) {
+async function emitSystemMessageToChatMembers(io, chat, senderId, messageId) {
+    const populatedMessage = await Message.findById(messageId)
+        .populate("senderId", "name username avatar")
+        .populate("mentions", "name username avatar")
+        .lean();
+
+    if (!populatedMessage) {
+        return null;
+    }
+
+    chat.members.forEach((member) => {
+        const memberId = String(member._id);
+
+        io.to(`user:${memberId}`).emit("chat:receive", {
+            chatId: chat._id,
+            message: populatedMessage
+        });
+
+        io.to(`user:${memberId}`).emit("overview:update", {
+            entity: "chat",
+            chatId: chat._id,
+            lastMessage: populatedMessage
+        });
+
+        if (memberId !== String(senderId)) {
+            io.to(`user:${memberId}`).emit("overview:unread", {
+                chatId: chat._id,
+                incrementBy: 1
+            });
+        }
+    });
+
+    return populatedMessage;
+}
+
+function buildCallEndMessage(reason, endedByName = null) {
+    if (endedByName) {
+        return `${endedByName} ended the call.`;
+    }
+
+    if (reason === "host_ended") {
+        return "The host ended the call.";
+    }
+
+    if (reason === "timeout") {
+        return "Call ended because nobody joined.";
+    }
+
+    if (reason === "all_left") {
+        return "Call ended because everyone left.";
+    }
+
+    return "Call ended.";
+}
+
+async function emitCallEnded(io, call, reason, endedByUserId = null, endedByName = null) {
     const payload = {
         callId: call._id,
         chatId: call.chatId,
@@ -53,14 +137,55 @@ async function emitCallEnded(io, call, reason) {
 
     io.to(`call:${call._id}`).emit("call:ended", payload);
 
-    const chat = await Chat.findById(call.chatId).populate("members", "_id");
+    const chat = await Chat.findById(call.chatId).populate("members", "_id name username avatar");
     if (chat) {
+        const endedById = endedByUserId ? String(endedByUserId) : null;
+        let resolvedEndedByName = endedByName || null;
+        let messageSenderId = endedByUserId || call.callerId;
+
+        if (!resolvedEndedByName && endedById) {
+            const endedByMember = chat.members.find((member) => String(member._id) === endedById);
+            if (endedByMember) {
+                resolvedEndedByName = endedByMember.name || endedByMember.username || "A user";
+            }
+        }
+
+        if (!resolvedEndedByName && reason === "host_ended" && String(call.callerId)) {
+            const callerMember = chat.members.find((member) => String(member._id) === String(call.callerId));
+            if (callerMember) {
+                resolvedEndedByName = callerMember.name || callerMember.username || "A user";
+                messageSenderId = callerMember._id;
+            }
+        }
+
+        try {
+            const callEndMessage = await Message.create({
+                chatId: chat._id,
+                senderId: messageSenderId,
+                content: buildCallEndMessage(reason, resolvedEndedByName),
+                type: "text",
+                isSystem: true,
+                meta: {
+                    isActivity: true,
+                    activityType: "call_ended",
+                    callId: call._id,
+                    reason,
+                    endedBy: endedByUserId || null
+                }
+            });
+
+            await Chat.findByIdAndUpdate(chat._id, { lastMessage: callEndMessage._id });
+            await emitSystemMessageToChatMembers(io, chat, messageSenderId, callEndMessage._id);
+        } catch (messageError) {
+            console.error("call:end system message error", messageError);
+        }
+
         emitToAllMembers(io, chat, "call:ended", payload);
 
         const recipientIds = chat.members.map((member) => member._id);
         await createNotifications({
             recipientIds,
-            actorId: call.callerId,
+            actorId: endedByUserId || call.callerId,
             title: "Call ended",
             message: "An active call has ended.",
             type: "call",
@@ -131,6 +256,28 @@ module.exports = (io, socket) => {
             await newCall.populate("callerId", "name avatar");
             const callerName = newCall.callerId?.name || "A user";
 
+            try {
+                const callStartMessage = await Message.create({
+                    chatId: chat._id,
+                    senderId: userId,
+                    content: `${callerName} started a ${type} call.`,
+                    type: "text",
+                    isSystem: true,
+                    meta: {
+                        isActivity: true,
+                        activityType: "call_started",
+                        callId: newCall._id,
+                        callType: type,
+                        startedBy: userId
+                    }
+                });
+
+                await Chat.findByIdAndUpdate(chat._id, { lastMessage: callStartMessage._id });
+                await emitSystemMessageToChatMembers(io, chat, userId, callStartMessage._id);
+            } catch (messageError) {
+                console.error("call:start system message error", messageError);
+            }
+
             // ── CHANGE START ────────────────────────────────────────────────
             // IMPORTANT: Broadcast 'call:initiated' to the WHOLE ROOM.
             // This allows everyone in the chat to see the "Call Started" bar immediately.
@@ -138,7 +285,8 @@ module.exports = (io, socket) => {
                 callId: newCall._id,
                 call: newCall,
                 callerId: userId, // Send caller ID to identify host
-                chatId: chat._id
+                chatId: chat._id,
+                chatMembers: serializeChatMembers(chat)
             });
             // ── CHANGE END ──────────────────────────────────────────────────
 
@@ -226,7 +374,8 @@ module.exports = (io, socket) => {
             socket.emit("call:joined", {
                 callId,
                 call: updatedCall,
-                participants: updatedCall.participants.filter(p => !p.leftAt)
+                participants: updatedCall.participants.filter(p => !p.leftAt),
+                chatMembers: serializeChatMembers(chat)
             });
 
             // 2. Notify Others
@@ -240,6 +389,170 @@ module.exports = (io, socket) => {
         } catch (error) {
             console.error("call:join error", error);
             socket.emit("call:error", { reason: "Failed to join call" });
+        }
+    });
+
+    // ========================================================================
+    // 2B. INVITE USERS TO ACTIVE GROUP CALL
+    // ========================================================================
+    socket.on("call:invite", async ({ callId, targetUserId, targetUserIds = [] }) => {
+        try {
+            if (!callId) {
+                socket.emit("call:error", { reason: "Invalid call" });
+                return;
+            }
+
+            const call = await Call.findById(callId)
+                .populate("callerId", "name username avatar")
+                .populate("participants.userId", "name username avatar");
+
+            if (!call || !["ringing", "ongoing"].includes(call.status)) {
+                socket.emit("call:error", { reason: "Call ended or invalid" });
+                return;
+            }
+
+            if (call.mode !== "group") {
+                socket.emit("call:error", { reason: "Invites are only available in group calls" });
+                return;
+            }
+
+            const chat = await loadAndAuthorize(socket, call.chatId, userId);
+            if (!chat) return;
+
+            const activeParticipantIds = new Set(
+                (call.participants || [])
+                    .filter((participant) => !participant.leftAt)
+                    .map((participant) => String(participant.userId?._id || participant.userId))
+            );
+
+            if (!activeParticipantIds.has(String(userId))) {
+                socket.emit("call:error", { reason: "Join the call before inviting others" });
+                return;
+            }
+
+            const requestedTargetIds = [...(targetUserIds || []), targetUserId]
+                .filter(Boolean)
+                .map((id) => String(id));
+            const uniqueTargetIds = [...new Set(requestedTargetIds)];
+
+            if (!uniqueTargetIds.length) {
+                socket.emit("call:error", { reason: "Select at least one user to invite" });
+                return;
+            }
+
+            const chatMembersById = new Map(
+                (chat.members || []).map((member) => [String(member._id), member])
+            );
+
+            const eligibleTargetIds = uniqueTargetIds.filter((targetId) => {
+                if (targetId === String(userId)) return false;
+                if (!chatMembersById.has(targetId)) return false;
+                if (activeParticipantIds.has(targetId)) return false;
+                return true;
+            });
+
+            if (!eligibleTargetIds.length) {
+                socket.emit("call:error", { reason: "Selected users are already in call or not available" });
+                return;
+            }
+
+            const invitedMembers = eligibleTargetIds
+                .map((targetId) => chatMembersById.get(targetId))
+                .filter(Boolean);
+
+            const inviter = chatMembersById.get(String(userId));
+            const inviterName = inviter?.name || inviter?.username || call.callerId?.name || "A user";
+            const inviteMessageText = formatInviteContent(inviterName, invitedMembers, call.type || "video");
+
+            const inviteMessage = await Message.create({
+                chatId: chat._id,
+                senderId: userId,
+                content: inviteMessageText,
+                type: "text",
+                isSystem: true,
+                mentions: invitedMembers.map((member) => member._id),
+                meta: {
+                    isActivity: true,
+                    activityType: "call_invite",
+                    callId: call._id,
+                    invitedUserIds: invitedMembers.map((member) => member._id)
+                }
+            });
+
+            await Chat.findByIdAndUpdate(chat._id, { lastMessage: inviteMessage._id });
+            const populatedInviteMessage = await emitSystemMessageToChatMembers(
+                io,
+                chat,
+                userId,
+                inviteMessage._id
+            );
+
+            const refreshedCall = await Call.findById(callId)
+                .populate("callerId", "name username avatar")
+                .populate("participants.userId", "name username avatar")
+                .lean();
+
+            const invitePayloadBase = {
+                callId: call._id,
+                chatId: chat._id,
+                type: call.type,
+                mode: call.mode,
+                inviterId: userId,
+                inviterName,
+                chatName: chat.name || null,
+                call: refreshedCall,
+                chatMembers: serializeChatMembers(chat),
+                message: populatedInviteMessage
+            };
+
+            eligibleTargetIds.forEach((targetId) => {
+                io.to(`user:${targetId}`).emit("call:invited", {
+                    ...invitePayloadBase,
+                    targetUserId: targetId
+                });
+
+                io.to(`user:${targetId}`).emit("call:incoming", {
+                    callId: call._id,
+                    callerId: userId,
+                    callerName: inviterName,
+                    chatId: chat._id,
+                    chatName: chat.name,
+                    type: call.type,
+                    mode: call.mode,
+                    invitedBy: userId,
+                    invitedByName: inviterName
+                });
+            });
+
+            socket.emit("call:invite:sent", {
+                callId: call._id,
+                chatId: chat._id,
+                invitedUserIds: eligibleTargetIds,
+                messageId: inviteMessage._id
+            });
+
+            await createNotifications({
+                recipientIds: eligibleTargetIds,
+                actorId: userId,
+                title: "Call invitation",
+                message: `${inviterName} invited you to join a ${call.type} call${chat.name ? ` in "${chat.name}"` : ""}.`,
+                type: "call",
+                category: "call",
+                priority: "high",
+                entityType: "call",
+                entityId: call._id,
+                chatId: chat._id,
+                callId: call._id,
+                link: "/main",
+                metadata: {
+                    source: "call.invite",
+                    invitedUserIds: eligibleTargetIds
+                },
+                dedupeKey: `call:invite:${String(call._id)}:${String(userId)}:${eligibleTargetIds.join(",")}`
+            });
+        } catch (error) {
+            console.error("call:invite error", error);
+            socket.emit("call:error", { reason: "Failed to send call invite" });
         }
     });
 
@@ -288,7 +601,7 @@ module.exports = (io, socket) => {
                 call.status = "ended";
                 call.endedAt = new Date();
                 await call.save();
-                await emitCallEnded(io, call, "all_left");
+                await emitCallEnded(io, call, "all_left", userId);
             }
         }
     });
@@ -299,7 +612,7 @@ module.exports = (io, socket) => {
             call.status = "ended";
             call.endedAt = new Date();
             await call.save();
-            await emitCallEnded(io, call, "host_ended");
+            await emitCallEnded(io, call, "host_ended", userId);
         }
     });
 
@@ -314,7 +627,7 @@ module.exports = (io, socket) => {
                 call.status = "ended";
                 call.endedAt = new Date();
                 await call.save();
-                await emitCallEnded(io, call, "all_left");
+                await emitCallEnded(io, call, "all_left", userId);
             }
         }
     });
