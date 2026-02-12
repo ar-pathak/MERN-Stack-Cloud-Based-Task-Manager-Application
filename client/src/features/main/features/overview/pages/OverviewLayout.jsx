@@ -26,6 +26,7 @@ import {
   onCallEnded
 } from "../../../../../service/Chat.socket.service";
 import api from "../../../../../config/axios";
+import { getUnreadMentionSummary } from "../../../../../service/chat.service";
 
 // Components
 import WorkspaceItem from "../components/WorkspaceItem";
@@ -168,6 +169,8 @@ const OverviewLayout = () => {
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
   const [activeCallsByChatId, setActiveCallsByChatId] = useState({});
+  const [mentionByChatId, setMentionByChatId] = useState({});
+  const [pendingMentionJump, setPendingMentionJump] = useState(null);
 
   const { user } = useAuth();
 
@@ -264,11 +267,27 @@ const OverviewLayout = () => {
     }
   }, []);
 
+  const refreshUnreadMentions = useCallback(async () => {
+    try {
+      const payload = await getUnreadMentionSummary({ limit: 300 });
+      const byChat = payload?.byChat || {};
+      setMentionByChatId(byChat);
+    } catch (error) {
+      // Keep UI resilient during transient API errors.
+    }
+  }, []);
+
   useEffect(() => {
     refreshActiveCalls();
     const interval = setInterval(refreshActiveCalls, 15000);
     return () => clearInterval(interval);
   }, [refreshActiveCalls]);
+
+  useEffect(() => {
+    refreshUnreadMentions();
+    const interval = setInterval(refreshUnreadMentions, 20000);
+    return () => clearInterval(interval);
+  }, [refreshUnreadMentions]);
 
 
   const showToast = (message) => {
@@ -436,8 +455,15 @@ const OverviewLayout = () => {
     if (selectedItem) {
       const chatId = selectedItem.id || selectedItem._id;
       handleUnreadUpdate({ chatId, reset: true });
+
+      const timer = setTimeout(() => {
+        refreshUnreadMentions();
+      }, 400);
+
+      return () => clearTimeout(timer);
     }
-  }, [selectedItem, handleUnreadUpdate]);
+    return undefined;
+  }, [selectedItem, handleUnreadUpdate, refreshUnreadMentions]);
 
   const handleSendMessageWrapper = async (options) => {
     const contentToSend = chat.chatMessage;
@@ -463,9 +489,11 @@ const OverviewLayout = () => {
   useEffect(() => {
     const handleReceiveMessage = ({ chatId, message }) => {
       handleSidebarActivity(chatId, message);
+      refreshUnreadMentions();
     };
     const handleReadUpdate = ({ chatId }) => {
       handleUnreadUpdate({ chatId, reset: true });
+      refreshUnreadMentions();
     };
     const handleOverviewUpdate = (data) => {
       if (data && Array.isArray(data)) {
@@ -474,6 +502,7 @@ const OverviewLayout = () => {
       } else {
         refreshTimeline();
       }
+      refreshUnreadMentions();
     };
     const handleOverviewUnreadEvent = (data) => {
       handleUnreadUpdate(data);
@@ -512,6 +541,7 @@ const OverviewLayout = () => {
     handleSidebarActivity,
     refreshTimeline,
     handleUnreadUpdate,
+    refreshUnreadMentions,
     upsertActiveCall,
     removeActiveCall
   ]);
@@ -526,6 +556,27 @@ const OverviewLayout = () => {
     setExpandedItems(next);
   };
 
+  const handleOpenMentionFromChatItem = useCallback((chatItem) => {
+    const chatId = String(chatItem?.chatId || chatItem?.id || chatItem?._id || "");
+    const messageId = String(chatItem?.nextMentionMessageId || "");
+
+    setSelectedItem(chatItem);
+    if (chatId && messageId) {
+      setPendingMentionJump({ chatId, messageId });
+    }
+  }, []);
+
+  const handleMentionJumpHandled = useCallback((handledMessageId) => {
+    setPendingMentionJump((prev) => {
+      if (!prev) return null;
+      if (handledMessageId && String(prev.messageId) !== String(handledMessageId)) {
+        return prev;
+      }
+      return null;
+    });
+    refreshUnreadMentions();
+  }, [refreshUnreadMentions]);
+
   // ---------------- ENHANCED UNREAD LOGIC ----------------
   // This memoized calculation traverses the entire tree and adds 'hasChildUnread'
   // and 'deepUnreadCount' to every node (Workspace, Project, Task).
@@ -535,12 +586,14 @@ const OverviewLayout = () => {
       return items.map(item => {
         const newItem = { ...item };
         let deepUnreadSum = 0;
+        let deepMentionSum = 0;
         let deepActiveCallCount = 0;
 
         // Recurse Projects
         if (newItem.projects) {
           newItem.projects = recurseEnrich(newItem.projects);
           deepUnreadSum += newItem.projects.reduce((acc, p) => acc + (p.unreadCount || 0) + (p.deepUnreadCount || 0), 0);
+          deepMentionSum += newItem.projects.reduce((acc, p) => acc + (p.mentionUnreadCount || 0) + (p.deepMentionUnreadCount || 0), 0);
           deepActiveCallCount += newItem.projects.reduce((acc, p) => acc + (p.activeCallCount || 0) + (p.deepActiveCallCount || 0), 0);
         }
 
@@ -548,6 +601,7 @@ const OverviewLayout = () => {
         if (newItem.tasks) {
           newItem.tasks = recurseEnrich(newItem.tasks);
           deepUnreadSum += newItem.tasks.reduce((acc, t) => acc + (t.unreadCount || 0) + (t.deepUnreadCount || 0), 0);
+          deepMentionSum += newItem.tasks.reduce((acc, t) => acc + (t.mentionUnreadCount || 0) + (t.deepMentionUnreadCount || 0), 0);
           deepActiveCallCount += newItem.tasks.reduce((acc, t) => acc + (t.activeCallCount || 0) + (t.deepActiveCallCount || 0), 0);
         }
 
@@ -555,14 +609,22 @@ const OverviewLayout = () => {
         if (newItem.subtasks) {
           newItem.subtasks = recurseEnrich(newItem.subtasks);
           deepUnreadSum += newItem.subtasks.reduce((acc, s) => acc + (s.unreadCount || 0) + (s.deepUnreadCount || 0), 0);
+          deepMentionSum += newItem.subtasks.reduce((acc, s) => acc + (s.mentionUnreadCount || 0) + (s.deepMentionUnreadCount || 0), 0);
           deepActiveCallCount += newItem.subtasks.reduce((acc, s) => acc + (s.activeCallCount || 0) + (s.deepActiveCallCount || 0), 0);
         }
 
         const itemChatId = String(newItem.chatId || newItem.id || newItem._id || "");
+        const mentionInfo = mentionByChatId[itemChatId] || null;
         const ownActiveCall = newItem.type === "chat" ? activeCallsByChatId[itemChatId] : null;
 
         newItem.deepUnreadCount = deepUnreadSum;
         newItem.hasChildUnread = deepUnreadSum > 0;
+        newItem.mentionUnreadCount = mentionInfo?.unreadMentionCount || 0;
+        newItem.nextMentionMessageId = mentionInfo?.nextMentionMessageId || null;
+        newItem.nextMentionCreatedAt = mentionInfo?.nextMentionCreatedAt || null;
+        newItem.nextMentionContent = mentionInfo?.nextMentionContent || "";
+        newItem.deepMentionUnreadCount = deepMentionSum;
+        newItem.hasChildMentionUnread = deepMentionSum > 0;
         newItem.activeCall = ownActiveCall || null;
         newItem.hasActiveCall = !!ownActiveCall;
         newItem.activeCallCount = ownActiveCall ? 1 : 0;
@@ -574,7 +636,7 @@ const OverviewLayout = () => {
     };
 
     return recurseEnrich(timeline);
-  }, [timeline, activeCallsByChatId]);
+  }, [timeline, activeCallsByChatId, mentionByChatId]);
 
   const filteredItems = useMemo(() => {
     return (enrichedTimeline || []).filter((item) => {
@@ -651,6 +713,11 @@ const OverviewLayout = () => {
   const teams = [];
   const isTimelineEmpty = !loadingTimeline && timeline.length === 0;
   const hasFilteredResults = filteredItems.length > 0;
+  const selectedChatId = String(selectedItem?.chatId || selectedItem?.id || selectedItem?._id || "");
+  const jumpToMessageId =
+    pendingMentionJump && String(pendingMentionJump.chatId) === selectedChatId
+      ? pendingMentionJump.messageId
+      : null;
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden">
@@ -741,6 +808,7 @@ const OverviewLayout = () => {
                           chat={item}
                           selectedItem={selectedItem}
                           setSelectedItem={setSelectedItem}
+                          onOpenMention={handleOpenMentionFromChatItem}
                         />
                       </motion.div>
                     );
@@ -825,6 +893,8 @@ const OverviewLayout = () => {
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}
                 onUpdate={refreshTimeline}
+                jumpToMessageId={jumpToMessageId}
+                onMentionJumpHandled={handleMentionJumpHandled}
               />
             </motion.div>
           ) : (

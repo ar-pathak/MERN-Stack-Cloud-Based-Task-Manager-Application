@@ -36,6 +36,8 @@ const ChatPanel = ({
     setShowEmojiPicker,
     overview,
     onUpdate,
+    jumpToMessageId,
+    onMentionJumpHandled,
 }) => {
     const { user } = useAuth();
 
@@ -186,6 +188,8 @@ const ChatPanel = ({
                                 onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
                                 onReply={setReplyingTo}
                                 chatEndRef={chatEndRef}
+                                jumpToMessageId={jumpToMessageId}
+                                onJumpHandled={onMentionJumpHandled}
                             />
                         </div>
 

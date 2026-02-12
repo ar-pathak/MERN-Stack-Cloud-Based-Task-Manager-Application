@@ -202,7 +202,7 @@ export const useChatLogic = (selectedChat) => {
             setIsLoading(true);
             try {
                 const chatId = String(selectedChat.chatId || selectedChat.id || selectedChat._id);
-                const result = await chatService.getMessages(chatId);
+                const result = await chatService.getMessages(chatId, { page: 1, limit: 50 });
 
                 let messageList = [];
                 if (Array.isArray(result)) {

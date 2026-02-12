@@ -265,6 +265,68 @@ class ChatService {
     }
 
     // -----------------------------------------------------------------------
+    // 5b. Get Unread Mention Summary (grouped by chat)
+    // -----------------------------------------------------------------------
+    async getUnreadMentionSummary(userId, limit = 200) {
+        const userObjectId = new mongoose.Types.ObjectId(String(userId));
+        const chats = await Chat.find({ members: userObjectId }).select("_id").lean();
+        const chatIds = chats.map((chat) => chat._id);
+
+        if (!chatIds.length) {
+            return {
+                mentions: [],
+                byChat: {},
+                totalUnreadMentions: 0
+            };
+        }
+
+        const summary = await Message.aggregate([
+            {
+                $match: {
+                    chatId: { $in: chatIds },
+                    mentions: userObjectId,
+                    senderId: { $ne: userObjectId },
+                    status: { $in: ["active", "edited"] },
+                    "readBy.userId": { $ne: userObjectId }
+                }
+            },
+            { $sort: { createdAt: -1 } },
+            {
+                $group: {
+                    _id: "$chatId",
+                    unreadMentionCount: { $sum: 1 },
+                    nextMentionMessageId: { $first: "$_id" },
+                    nextMentionCreatedAt: { $first: "$createdAt" },
+                    nextMentionContent: { $first: "$content" }
+                }
+            },
+            { $sort: { nextMentionCreatedAt: -1 } },
+            { $limit: Math.min(500, Math.max(1, Number(limit) || 200)) }
+        ]);
+
+        const mentions = summary.map((item) => ({
+            chatId: String(item._id),
+            unreadMentionCount: item.unreadMentionCount || 0,
+            nextMentionMessageId: item.nextMentionMessageId ? String(item.nextMentionMessageId) : null,
+            nextMentionCreatedAt: item.nextMentionCreatedAt || null,
+            nextMentionContent: item.nextMentionContent || ""
+        }));
+
+        const byChat = {};
+        let totalUnreadMentions = 0;
+        mentions.forEach((item) => {
+            byChat[item.chatId] = item;
+            totalUnreadMentions += Number(item.unreadMentionCount || 0);
+        });
+
+        return {
+            mentions,
+            byChat,
+            totalUnreadMentions
+        };
+    }
+
+    // -----------------------------------------------------------------------
     // 6. Pin/Unpin Message
     // -----------------------------------------------------------------------
     async togglePinMessage(messageId, userId, chatId) {

@@ -128,6 +128,19 @@ module.exports = {
         }
     },
 
+    // â”€â”€ Unread mention summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    getUnreadMentionSummary: async (req, res) => {
+        try {
+            const result = await chatService.getUnreadMentionSummary(
+                req.user._id,
+                req.query.limit
+            );
+            sendSuccess(res, result);
+        } catch (e) {
+            handleError(e, res);
+        }
+    },
+
     // ── Send message ──────────────────────────────────────────────────────
     sendMessage: async (req, res) => {
         try {

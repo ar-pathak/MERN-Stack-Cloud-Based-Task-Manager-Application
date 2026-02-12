@@ -20,7 +20,9 @@ const MessageList = ({
   handleEditMessage,
   onReact,
   onReply,
-  chatEndRef
+  chatEndRef,
+  jumpToMessageId,
+  onJumpHandled
 }) => {
   const containerRef = useRef(null);
   const lastMsgCountRef = useRef(messages.length);
@@ -84,6 +86,22 @@ const MessageList = ({
       }
     }
   }, [messages.length, isNearBottom, scrollToBottom]);
+
+  // ---- Mention jump: open chat and jump to first unread mention message ----
+  useEffect(() => {
+    if (!jumpToMessageId || !messages.length) return;
+
+    const targetId = String(jumpToMessageId);
+    const exists = messages.some((msg) => String(msg.id || msg._id) === targetId);
+    if (!exists) return;
+
+    const timer = setTimeout(() => {
+      handleJumpToMessage(targetId);
+      onJumpHandled?.(targetId);
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [jumpToMessageId, messages, handleJumpToMessage, onJumpHandled]);
 
   // ---- Group messages by date + Improved Sequence Logic ----
   const messageGroups = useMemo(() => {

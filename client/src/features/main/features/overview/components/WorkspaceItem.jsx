@@ -9,7 +9,8 @@ import {
     CheckSquare,
     Plus,
     Flag,
-    Check
+    Check,
+    AtSign
 } from "lucide-react";
 import TaskItem from "./TaskItem";
 import { useAuth } from "../../../../../context/AuthContext";
@@ -40,6 +41,9 @@ const WorkspaceItem = ({
     const canCreateTaskInWs = workspace.permissions?.canCreateTask;
     const wsLastMsg = workspace.lastMessage;
     const activeCallCount = (workspace.activeCallCount || 0) + (workspace.deepActiveCallCount || 0);
+    const workspaceMentionCount = workspace.mentionUnreadCount || 0;
+    const hasWorkspaceMention = workspaceMentionCount > 0;
+    const hasWorkspaceChildMention = !hasWorkspaceMention && workspace.hasChildMentionUnread;
     const { user } = useAuth();
     return (
         <div key={workspaceId} className="mb-1">
@@ -89,6 +93,17 @@ const WorkspaceItem = ({
                         ) : workspace.hasChildUnread ? (
                             // Child Indicator (Dot)
                             <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-sky-500 border-2 border-slate-900"></div>
+                        ) : null}
+
+                        {hasWorkspaceMention ? (
+                            <div className="absolute -bottom-1 -left-1 min-h-4 min-w-4 px-1 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center shadow-md">
+                                <span className="text-[8px] font-bold text-white flex items-center gap-0.5">
+                                    <AtSign className="h-2 w-2" />
+                                    {workspaceMentionCount > 9 ? "9+" : workspaceMentionCount}
+                                </span>
+                            </div>
+                        ) : hasWorkspaceChildMention ? (
+                            <div className="absolute -bottom-1 -left-1 h-3 w-3 rounded-full bg-amber-400 border border-slate-900 shadow-sm" />
                         ) : null}
                     </div>
                 </div>
@@ -162,6 +177,9 @@ const WorkspaceItem = ({
                         const isProjectCompleted = project.status === 'completed';
                         const isProjectHighPriority = project.isHighPriority;
                         const projLastMsg = project.lastMessage;
+                        const projectMentionCount = project.mentionUnreadCount || 0;
+                        const hasProjectMention = projectMentionCount > 0;
+                        const hasProjectChildMention = !hasProjectMention && project.hasChildMentionUnread;
 
                         return (
                             <div key={project.id}>
@@ -213,6 +231,17 @@ const WorkspaceItem = ({
                                             </div>
                                         ) : project.hasChildUnread ? (
                                             <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-sky-500 border-2 border-slate-900"></div>
+                                        ) : null}
+
+                                        {hasProjectMention ? (
+                                            <div className="absolute -bottom-1 -left-1 min-h-3.5 min-w-3.5 px-0.5 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center shadow-sm">
+                                                <span className="text-[7px] font-bold text-white flex items-center gap-0.5">
+                                                    <AtSign className="h-2 w-2" />
+                                                    {projectMentionCount > 9 ? "9+" : projectMentionCount}
+                                                </span>
+                                            </div>
+                                        ) : hasProjectChildMention ? (
+                                            <div className="absolute -bottom-1 -left-1 h-2.5 w-2.5 rounded-full bg-amber-400 border border-slate-900 shadow-sm" />
                                         ) : null}
                                     </div>
 

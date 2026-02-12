@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Plus, ChevronRight, ChevronDown, CheckSquare, Flag, Check, MessageSquare } from 'lucide-react';
+import { Plus, ChevronRight, ChevronDown, CheckSquare, Flag, Check, MessageSquare, AtSign } from 'lucide-react';
 import { useDispatch } from "react-redux";
 import { setIsSubtaskPopupOpen } from "../../../../../store/slice/overviewSlice";
 import { usePermissions } from "../hook/usePermissions";
@@ -30,6 +30,9 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
     const isTaskCompleted = task.status === 'completed';
     const isTaskHighPriority = task.isHighPriority;
     const activeCallCount = (task.activeCallCount || 0) + (task.deepActiveCallCount || 0);
+    const taskMentionCount = task.mentionUnreadCount || 0;
+    const hasTaskMention = taskMentionCount > 0;
+    const hasTaskChildMention = !hasTaskMention && task.hasChildMentionUnread;
 
     const lastMsg = task.lastMessage;
     const senderName = user.username === lastMsg?.sender?.username ? 'You' : lastMsg?.sender?.username?.split(' ')[0] || 'User';
@@ -87,6 +90,17 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                                 </div>
                             ) : task.hasChildUnread ? (
                                 <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-sky-500 border-2 border-slate-900"></div>
+                            ) : null}
+
+                            {hasTaskMention ? (
+                                <div className="absolute -bottom-1 -left-1 min-h-4 min-w-4 px-1 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center shadow-sm">
+                                    <span className="text-[8px] font-bold text-white flex items-center gap-0.5">
+                                        <AtSign className="h-2 w-2" />
+                                        {taskMentionCount > 9 ? "9+" : taskMentionCount}
+                                    </span>
+                                </div>
+                            ) : hasTaskChildMention ? (
+                                <div className="absolute -bottom-1 -left-1 h-3 w-3 rounded-full bg-amber-400 border border-slate-900 shadow-sm" />
                             ) : null}
                         </div>
                     </div>
@@ -149,6 +163,8 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                         {task.subtasks.map(subtask => {
                             const isSubtaskSelected = selectedItem?.id === subtask.id;
                             const isSubtaskCompleted = subtask.status === 'completed' || subtask.completed;
+                            const subtaskMentionCount = subtask.mentionUnreadCount || 0;
+                            const hasSubtaskMention = subtaskMentionCount > 0;
 
                             return (
                                 <div
@@ -174,6 +190,11 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                                         {/* Subtask direct unread indicator */}
                                         {subtask.unreadCount > 0 && (
                                             <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-sky-500 border border-slate-900" />
+                                        )}
+                                        {hasSubtaskMention && (
+                                            <div className="absolute -bottom-1 -left-1 h-2.5 min-w-2.5 px-0.5 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center">
+                                                <AtSign className="h-1.5 w-1.5 text-white" />
+                                            </div>
                                         )}
                                     </div>
 
@@ -242,6 +263,17 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                     ) : task.hasChildUnread ? (
                         <div className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-sky-500 border-2 border-slate-900"></div>
                     ) : null}
+
+                    {hasTaskMention ? (
+                        <div className="absolute -bottom-1 -left-1 min-h-3.5 min-w-3.5 px-0.5 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center shadow-sm">
+                            <span className="text-[7px] font-bold text-white flex items-center gap-0.5">
+                                <AtSign className="h-2 w-2" />
+                                {taskMentionCount > 9 ? "9+" : taskMentionCount}
+                            </span>
+                        </div>
+                    ) : hasTaskChildMention ? (
+                        <div className="absolute -bottom-1 -left-1 h-2.5 w-2.5 rounded-full bg-amber-400 border border-slate-900 shadow-sm" />
+                    ) : null}
                 </div>
 
                 <div className="flex-1 min-w-0 pt-0.5">
@@ -302,6 +334,8 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                     {task.subtasks.map(subtask => {
                         const isSubtaskSelected = selectedItem?.id === subtask.id;
                         const isSubtaskCompleted = subtask.status === 'completed' || subtask.completed;
+                        const subtaskMentionCount = subtask.mentionUnreadCount || 0;
+                        const hasSubtaskMention = subtaskMentionCount > 0;
 
                         return (
                             <div
@@ -327,6 +361,11 @@ const TaskItem = ({ task, selectedItem, setSelectedItem, expandedItems, toggleEx
                                     {/* Subtask unread dot */}
                                     {subtask.unreadCount > 0 && (
                                         <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-sky-500 border border-slate-900" />
+                                    )}
+                                    {hasSubtaskMention && (
+                                        <div className="absolute -bottom-1 -left-1 h-2.5 min-w-2.5 px-0.5 rounded-full bg-fuchsia-500 border border-slate-900 flex items-center justify-center">
+                                            <AtSign className="h-1.5 w-1.5 text-white" />
+                                        </div>
                                     )}
                                 </div>
                                 <span className={`text-sm flex-1 truncate ${isSubtaskCompleted ? 'text-slate-500 line-through' : 'text-slate-300'

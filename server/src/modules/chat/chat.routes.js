@@ -51,6 +51,12 @@ router.post(
 // Messages
 // ---------------------------------------------------------------------------
 router.get(
+    "/mentions/unread",
+    validate(v.mentionSummarySchema, "query"),
+    controller.getUnreadMentionSummary
+);
+
+router.get(
     "/:chatId/messages",
     validate(v.chatIdParamSchema, "params"),
     validate(v.paginationSchema, "query"),

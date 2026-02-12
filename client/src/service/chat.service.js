@@ -145,6 +145,22 @@ export const getMessages = async (chatId, params = {}) => {
 };
 
 /**
+ * GET /api/chat/mentions/unread
+ * Get unread mention summary grouped by chat
+ */
+export const getUnreadMentionSummary = async (params = {}) => {
+    try {
+        const response = await api.get(`${BASE}/mentions/unread`, { params });
+        return response.data?.data || response.data || { mentions: [], byChat: {}, totalUnreadMentions: 0 };
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to fetch unread mention summary",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
  * POST /api/chat/message
  * Send a new message
  */

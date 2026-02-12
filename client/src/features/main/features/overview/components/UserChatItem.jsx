@@ -1,8 +1,8 @@
 import React from 'react';
-import { MessageSquare, Users, Phone } from 'lucide-react';
+import { MessageSquare, Users, Phone, AtSign } from 'lucide-react';
 import { useAuth } from "../../../../../context/AuthContext";
 
-const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
+const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenMention }) => {
     const isSelected = selectedItem?.id === chat.id;
     const isGroup = chat.chatType === 'group';
     const { user } = useAuth();
@@ -11,6 +11,8 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
     // 🔥 Get unread count
     const unreadCount = chat.unreadCount || 0;
     const hasUnread = unreadCount > 0;
+    const mentionUnreadCount = chat.mentionUnreadCount || 0;
+    const hasUnreadMention = mentionUnreadCount > 0;
 
     const formatActivityTime = (dateString) => {
         if (!dateString) return '';
@@ -26,8 +28,10 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
         <div
             className={`group flex items-start gap-3 px-3 py-3 mb-1 rounded-xl cursor-pointer transition-all ${isSelected
                 ? 'bg-slate-800/80 border-l-2 border-sky-500'
-                : hasActiveCall
+            : hasActiveCall
                     ? 'bg-emerald-900/15 hover:bg-emerald-900/25 border-l-2 border-emerald-500/60'
+                : hasUnreadMention
+                    ? 'bg-fuchsia-500/10 hover:bg-fuchsia-500/15 border-l-2 border-fuchsia-400/70'
                 : hasUnread
                     ? 'bg-slate-800/60 hover:bg-slate-800/80 border-l-2 border-sky-500/50'
                     : 'hover:bg-slate-800/40 border-l-2 border-transparent'
@@ -68,6 +72,15 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                         <Phone className="h-2.5 w-2.5 text-white" />
                     </div>
                 )}
+
+                {hasUnreadMention && (
+                    <div className="absolute -top-1 -left-1 min-h-5 min-w-5 px-1 rounded-full bg-fuchsia-500 border-2 border-slate-900 flex items-center justify-center shadow-md">
+                        <span className="text-[9px] font-bold text-white flex items-center gap-0.5">
+                            <AtSign className="h-2.5 w-2.5" />
+                            {mentionUnreadCount > 9 ? '9+' : mentionUnreadCount}
+                        </span>
+                    </div>
+                )}
             </div>
 
             {/* 2. CONTENT */}
@@ -89,6 +102,8 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                 <div className="flex items-center">
                     <p className={`text-xs truncate group-hover:text-slate-400 transition-colors ${hasActiveCall
                         ? 'text-emerald-300 font-semibold'
+                        : hasUnreadMention
+                            ? 'text-fuchsia-200 font-medium'
                         : hasUnread
                             ? 'text-slate-300 font-medium'
                             : 'text-slate-500'
@@ -111,6 +126,21 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem }) => {
                         {chat.description || chat.lastMessage?.content || "Start a conversation"}
                     </p>
                 </div>
+
+                {hasUnreadMention && (
+                    <div className="mt-1.5 flex items-center">
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenMention?.(chat);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full border border-fuchsia-400/40 bg-fuchsia-500/15 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-200 hover:bg-fuchsia-500/25 transition-colors"
+                        >
+                            <AtSign className="h-2.5 w-2.5" />
+                            {mentionUnreadCount} unread mention{mentionUnreadCount > 1 ? 's' : ''}
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );
