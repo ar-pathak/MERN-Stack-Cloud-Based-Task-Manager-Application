@@ -2,6 +2,8 @@ const mongoose = require('mongoose');
 const Like = require('../../models/like');
 const Post = require('../../models/post');
 const Comment = require('../../models/comment');
+const User = require('../../models/user');
+const notificationService = require('../notification/notification.service');
 
 class LikeService {
 
@@ -15,6 +17,8 @@ class LikeService {
     async likePost(userId, postId, reactionType = 'like') {
         const session = await mongoose.startSession();
         session.startTransaction();
+
+        let notificationPayload = null;
 
         try {
             // Check if post exists
@@ -54,9 +58,53 @@ class LikeService {
                 { session }
             );
 
-            // TODO: Send notification to post author
+            const postAuthorId = String(post.author || "");
+            const actorId = String(userId || "");
+            if (postAuthorId && actorId && postAuthorId !== actorId) {
+                const [postAuthor, actor] = await Promise.all([
+                    User.findById(post.author)
+                        .select("preferences.notifications.likes")
+                        .session(session)
+                        .lean(),
+                    User.findById(userId)
+                        .select("name username")
+                        .session(session)
+                        .lean()
+                ]);
+
+                if (postAuthor?.preferences?.notifications?.likes !== false) {
+                    const actorLabel = actor?.name || actor?.username || "Someone";
+                    notificationPayload = {
+                        recipientIds: [post.author],
+                        actorId: userId,
+                        title: "New like on your post",
+                        message: `${actorLabel} liked your post`,
+                        type: "activity",
+                        category: "social",
+                        priority: "normal",
+                        entityType: "none",
+                        entityId: postId,
+                        link: "/main/feed",
+                        metadata: {
+                            kind: "post_like",
+                            postId: String(postId),
+                            reactionType
+                        },
+                        dedupeKey: `social:post_like:${String(userId)}:${String(postId)}`
+                    };
+                }
+            }
 
             await session.commitTransaction();
+
+            if (notificationPayload) {
+                try {
+                    await notificationService.createNotifications(notificationPayload);
+                } catch (notificationError) {
+                    console.error("post like notification error", notificationError);
+                }
+            }
+
             return { success: true, message: 'Post liked successfully' };
         } catch (error) {
             await session.abortTransaction();
@@ -116,6 +164,8 @@ class LikeService {
         const session = await mongoose.startSession();
         session.startTransaction();
 
+        let notificationPayload = null;
+
         try {
             const comment = await Comment.findById(commentId).session(session);
             if (!comment || comment.status !== 'active') {
@@ -145,7 +195,52 @@ class LikeService {
                 { session }
             );
 
+            const commentAuthorId = String(comment.author || "");
+            const actorId = String(userId || "");
+            if (commentAuthorId && actorId && commentAuthorId !== actorId) {
+                const [commentAuthor, actor] = await Promise.all([
+                    User.findById(comment.author)
+                        .select("preferences.notifications.likes")
+                        .session(session)
+                        .lean(),
+                    User.findById(userId)
+                        .select("name username")
+                        .session(session)
+                        .lean()
+                ]);
+
+                if (commentAuthor?.preferences?.notifications?.likes !== false) {
+                    const actorLabel = actor?.name || actor?.username || "Someone";
+                    notificationPayload = {
+                        recipientIds: [comment.author],
+                        actorId: userId,
+                        title: "New like on your comment",
+                        message: `${actorLabel} liked your comment`,
+                        type: "activity",
+                        category: "social",
+                        priority: "normal",
+                        entityType: "none",
+                        entityId: commentId,
+                        link: "/main/feed",
+                        metadata: {
+                            kind: "comment_like",
+                            commentId: String(commentId)
+                        },
+                        dedupeKey: `social:comment_like:${String(userId)}:${String(commentId)}`
+                    };
+                }
+            }
+
             await session.commitTransaction();
+
+            if (notificationPayload) {
+                try {
+                    await notificationService.createNotifications(notificationPayload);
+                } catch (notificationError) {
+                    console.error("comment like notification error", notificationError);
+                }
+            }
+
             return { success: true, message: 'Comment liked successfully' };
         } catch (error) {
             await session.abortTransaction();

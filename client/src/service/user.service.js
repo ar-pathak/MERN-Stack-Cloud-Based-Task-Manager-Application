@@ -143,6 +143,57 @@ export const searchMentionCandidates = async (query = "", options = {}) => {
         };
     }
 };
+
+/**
+ * Get blocked users list for current user
+ * GET /me/blocks
+ * @param {Object} params - { page, limit }
+ */
+export const getBlockedUsers = async (params = {}) => {
+    try {
+        const response = await api.get(`${BASE_URL}/me/blocks`, { params });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to load blocked users",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Block a user
+ * POST /blocks/:id
+ * @param {String} userId
+ */
+export const blockUser = async (userId) => {
+    try {
+        const response = await api.post(`${BASE_URL}/blocks/${userId}`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to block user",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Unblock a user
+ * DELETE /blocks/:id
+ * @param {String} userId
+ */
+export const unblockUser = async (userId) => {
+    try {
+        const response = await api.delete(`${BASE_URL}/blocks/${userId}`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to unblock user",
+            status: error.response?.status,
+        };
+    }
+};
 /**
  * Get Popular / Trending Users
  * GET /popular

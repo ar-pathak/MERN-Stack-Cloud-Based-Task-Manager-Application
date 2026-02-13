@@ -45,6 +45,17 @@ export const AuthProvider = ({ children }) => {
         loadUser();
     }, [loadUser]);
 
+    useEffect(() => {
+        const handleSessionExpired = () => {
+            setUser(null);
+            localStorage.removeItem("user");
+            navigate('/home/auth', { replace: true });
+        };
+
+        window.addEventListener("auth:session-expired", handleSessionExpired);
+        return () => window.removeEventListener("auth:session-expired", handleSessionExpired);
+    }, [navigate]);
+
     // Wrapped login function that updates user state
     const login = useCallback(async (credentials) => {
         const response = await loginService(credentials);
@@ -78,7 +89,7 @@ export const AuthProvider = ({ children }) => {
             navigate('/home/auth', { replace: true });
             throw error;
         }
-    }, []);
+    }, [navigate]);
 
     return (
         <AuthContext.Provider

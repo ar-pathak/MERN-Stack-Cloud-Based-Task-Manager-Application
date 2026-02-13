@@ -10,6 +10,12 @@ import {
     markNotificationRead,
     markNotificationUnread
 } from "../../../../service/notification.service";
+import {
+    approveFollowRequest,
+    checkFollowStatus,
+    followUser,
+    rejectFollowRequest
+} from "../../../../service/follow.service";
 import * as socketService from "../../../../service/Chat.socket.service";
 
 const formatRelativeTime = (value) => {
@@ -39,6 +45,7 @@ const NotificationDropdown = () => {
     const [loading, setLoading] = useState(false);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [actionLoadingKey, setActionLoadingKey] = useState("");
 
     const unreadInList = useMemo(
         () => notifications.reduce((count, item) => count + (item.read ? 0 : 1), 0),
@@ -54,18 +61,60 @@ const NotificationDropdown = () => {
         }
     }, []);
 
+    const hydrateFollowBackStates = useCallback(async (items = []) => {
+        const list = Array.isArray(items) ? items : [];
+        const targets = list.filter(
+            (notification) =>
+                String(notification?.metadata?.kind || "") === "followed_you" &&
+                !notification?.metadata?.followActionState
+        );
+
+        if (!targets.length) return list;
+
+        const stateMap = new Map();
+        await Promise.all(
+            targets.map(async (notification) => {
+                const actorId = notification?.metadata?.actorId || notification?.actor?._id;
+                if (!actorId) return;
+                try {
+                    const status = await checkFollowStatus(actorId);
+                    const nextState = status?.isFollowing
+                        ? "following"
+                        : status?.isPending
+                            ? "requested"
+                            : "";
+                    stateMap.set(notification._id, nextState);
+                } catch {
+                    stateMap.set(notification._id, "");
+                }
+            })
+        );
+
+        return list.map((notification) => {
+            if (!stateMap.has(notification._id)) return notification;
+            return {
+                ...notification,
+                metadata: {
+                    ...(notification.metadata || {}),
+                    followActionState: stateMap.get(notification._id)
+                }
+            };
+        });
+    }, []);
+
     const loadNotifications = useCallback(async () => {
         setLoading(true);
         try {
             const payload = await getNotifications({ limit: 25 });
-            setNotifications(payload.notifications || []);
+            const hydrated = await hydrateFollowBackStates(payload.notifications || []);
+            setNotifications(hydrated);
             setUnreadCount(Number(payload.unreadCount || 0));
         } catch (error) {
             console.error("Failed to load notifications", error);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [hydrateFollowBackStates]);
 
     useEffect(() => {
         loadUnreadCount();
@@ -161,6 +210,79 @@ const NotificationDropdown = () => {
             setUnreadCount(0);
         } catch (error) {
             console.error("Failed to mark all notifications read", error);
+        }
+    };
+
+    const handleFollowBackAction = async (notification) => {
+        const notificationId = notification?._id;
+        const actorId = notification?.metadata?.actorId || notification?.actor?._id;
+        if (!notificationId || !actorId) return;
+
+        const actionKey = `follow:${notificationId}`;
+        setActionLoadingKey(actionKey);
+        try {
+            const result = await followUser(actorId);
+            await markNotificationRead(notificationId);
+            setNotifications((prev) =>
+                prev.map((item) =>
+                    item._id === notificationId
+                        ? {
+                            ...item,
+                            read: true,
+                            readAt: new Date().toISOString(),
+                              metadata: {
+                                  ...(item.metadata || {}),
+                                  followActionState: result?.isPending ? "requested" : "following"
+                              }
+                          }
+                        : item
+                )
+            );
+            loadUnreadCount();
+        } catch (error) {
+            console.error("Failed to follow from notification", error);
+        } finally {
+            setActionLoadingKey("");
+        }
+    };
+
+    const handleFollowRequestAction = async (notification, action) => {
+        const notificationId = notification?._id;
+        const requestId = notification?.metadata?.requestId;
+        if (!notificationId || !requestId) return;
+
+        const actionKey = `${action}:${notificationId}`;
+        setActionLoadingKey(actionKey);
+
+        try {
+            if (action === "approve") {
+                await approveFollowRequest(requestId);
+            } else {
+                await rejectFollowRequest(requestId);
+            }
+            await markNotificationRead(notificationId);
+
+            const updatedState = action === "approve" ? "approved" : "rejected";
+            setNotifications((prev) =>
+                prev.map((item) =>
+                    item._id === notificationId
+                        ? {
+                              ...item,
+                              read: true,
+                              readAt: new Date().toISOString(),
+                              metadata: {
+                                  ...(item.metadata || {}),
+                                  requestState: updatedState
+                              }
+                          }
+                        : item
+                )
+            );
+            loadUnreadCount();
+        } catch (error) {
+            console.error("Failed follow request action", error);
+        } finally {
+            setActionLoadingKey("");
         }
     };
 
@@ -262,6 +384,35 @@ const NotificationDropdown = () => {
                                             <Trash2 className="h-3 w-3" />
                                             Delete
                                         </button>
+                                        {String(notification?.metadata?.kind || "") === "follow_request" &&
+                                            !notification?.metadata?.requestState && (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleFollowRequestAction(notification, "approve")}
+                                                        disabled={actionLoadingKey === `approve:${notification._id}`}
+                                                        className="text-[11px] px-2 py-1 rounded-md border border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-60"
+                                                    >
+                                                        {actionLoadingKey === `approve:${notification._id}` ? "..." : "Approve"}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFollowRequestAction(notification, "reject")}
+                                                        disabled={actionLoadingKey === `reject:${notification._id}`}
+                                                        className="text-[11px] px-2 py-1 rounded-md border border-rose-500/35 text-rose-300 hover:bg-rose-500/15 disabled:opacity-60"
+                                                    >
+                                                        {actionLoadingKey === `reject:${notification._id}` ? "..." : "Reject"}
+                                                    </button>
+                                                </>
+                                            )}
+                                        {String(notification?.metadata?.kind || "") === "followed_you" &&
+                                            !notification?.metadata?.followActionState && (
+                                                <button
+                                                    onClick={() => handleFollowBackAction(notification)}
+                                                    disabled={actionLoadingKey === `follow:${notification._id}`}
+                                                    className="text-[11px] px-2 py-1 rounded-md border border-sky-500/35 text-sky-300 hover:bg-sky-500/15 disabled:opacity-60"
+                                                >
+                                                    {actionLoadingKey === `follow:${notification._id}` ? "..." : "Follow back"}
+                                                </button>
+                                            )}
                                     </div>
                                 </div>
                             ))}

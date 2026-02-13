@@ -206,9 +206,14 @@ const userSchema = new Schema({
             showEmail: { type: Boolean, default: false },
             showOnlineStatus: { type: Boolean, default: true },
             allowTagging: { type: Boolean, default: true },
-            allowMentions: { type: Boolean, default: true }
+            allowMentions: { type: Boolean, default: true },
+            disablePublicMessages: { type: Boolean, default: false }
         }
     },
+    blockedUsers: [{
+        type: Schema.Types.ObjectId,
+        ref: "User"
+    }],
 
     // --- Metadata ---
     metadata: {
@@ -232,6 +237,7 @@ userSchema.index({ username: 'text', name: 'text' }); // Text search
 userSchema.index({ createdAt: -1 }); // Recent users
 userSchema.index({ followersCount: -1 }); // Popular users
 userSchema.index({ accountStatus: 1, isVerified: 1 }); // Active verified users
+userSchema.index({ blockedUsers: 1 }); // Fast block-list lookups
 
 // --- Virtuals ---
 userSchema.virtual('profileUrl').get(function () {

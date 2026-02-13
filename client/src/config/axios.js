@@ -75,10 +75,10 @@ api.interceptors.response.use(
                 
                 // Clear user data on refresh failure
                 localStorage.removeItem("user");
-                
-                // Redirect to login if not already there
+
+                // Notify app shell to navigate without hard page reload
                 if (!window.location.pathname.includes('/auth')) {
-                    window.location.href = '/home/auth';
+                    window.dispatchEvent(new CustomEvent("auth:session-expired"));
                 }
                 
                 return Promise.reject(refreshError);

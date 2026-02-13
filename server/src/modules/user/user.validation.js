@@ -125,7 +125,8 @@ const preferencesSchema = z.object({
         showEmail: z.boolean().optional(),
         showOnlineStatus: z.boolean().optional(),
         allowTagging: z.boolean().optional(),
-        allowMentions: z.boolean().optional()
+        allowMentions: z.boolean().optional(),
+        disablePublicMessages: z.boolean().optional()
     }).optional()
 }).refine(
     (data) => Object.keys(data).length > 0,
@@ -151,6 +152,23 @@ const popularUsersSchema = z.object({
         .default(10)
 });
 
+/**
+ * Blocked users list query schema
+ */
+const blockedUsersQuerySchema = z.object({
+    page: z.coerce
+        .number()
+        .int()
+        .min(1, "Page must be at least 1")
+        .default(1),
+    limit: z.coerce
+        .number()
+        .int()
+        .min(1, "Limit must be at least 1")
+        .max(50, "Limit cannot exceed 50")
+        .default(20)
+});
+
 
 
 module.exports = {
@@ -164,6 +182,7 @@ module.exports = {
     preferencesSchema,
     activitySchema,
     popularUsersSchema,
+    blockedUsersQuerySchema,
 
 
 };

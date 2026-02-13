@@ -109,17 +109,6 @@ const UserMenu = ({ user }) => {
                         toast.info("Activity view coming soon");
                     }
                 },
-                {
-                    icon: Bell,
-                    label: "Notifications",
-                    description: "Manage notifications",
-                    color: "text-yellow-400",
-                    bgColor: "bg-yellow-500/10",
-                    action: () => {
-                        setIsOpen(false);
-                        toast.info("Notifications coming soon");
-                    }
-                }
             ]
         },
         {
@@ -132,7 +121,7 @@ const UserMenu = ({ user }) => {
                     bgColor: "bg-slate-500/10",
                     action: () => {
                         setIsOpen(false);
-                        toast.info("Settings coming soon");
+                        navigate("/main/settings");
                     }
                 },
                 {

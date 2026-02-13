@@ -17,7 +17,8 @@ const RelationshipModal = ({
     currentUserId,
     onClose,
     onLoadMore,
-    onToggleFollow
+    onToggleFollow,
+    onUserClick
 }) => {
     useEffect(() => {
         if (!open) return undefined;
@@ -68,7 +69,11 @@ const RelationshipModal = ({
                                     key={userId}
                                     className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/45 px-3 py-2"
                                 >
-                                    <div className="flex min-w-0 items-center gap-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => onUserClick?.(entry)}
+                                        className="flex min-w-0 items-center gap-2.5 rounded-lg text-left hover:bg-slate-800/50"
+                                    >
                                         <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-700 bg-slate-800">
                                             {entry?.avatar ? (
                                                 <img
@@ -90,7 +95,7 @@ const RelationshipModal = ({
                                                 {entry?.username ? `@${entry.username}` : ""}
                                             </p>
                                         </div>
-                                    </div>
+                                    </button>
 
                                     <button
                                         type="button"

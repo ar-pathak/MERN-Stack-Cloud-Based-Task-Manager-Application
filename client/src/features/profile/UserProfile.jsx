@@ -12,7 +12,9 @@ import {
     MapPin,
     MessageSquare,
     MoreHorizontal,
+    Settings,
     ShieldCheck,
+    UserX,
     UserPlus2,
     UserRound,
     Users
@@ -20,7 +22,12 @@ import {
 
 import { useAuth } from "../../context/AuthContext";
 import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
-import { getUserById, updateProfile as updateProfileRequest } from "../../service/user.service";
+import {
+    blockUser as blockUserRequest,
+    getUserById,
+    unblockUser as unblockUserRequest,
+    updateProfile as updateProfileRequest
+} from "../../service/user.service";
 import { getUserPosts } from "../../service/post.service";
 import {
     approveFollowRequest,
@@ -75,6 +82,7 @@ const UserProfile = () => {
 
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editSaving, setEditSaving] = useState(false);
+    const [blockActionLoading, setBlockActionLoading] = useState(false);
 
     const [graphModal, setGraphModal] = useState({ open: false, type: "followers" });
     const [graphUsers, setGraphUsers] = useState([]);
@@ -97,11 +105,24 @@ const UserProfile = () => {
     const currentUserId = toId(currentUser);
     const profileId = toId(profile) || String(id || "");
     const isOwnProfile = Boolean(currentUserId) && currentUserId === String(id || "");
-    const canViewProtectedContent = Boolean(
-        isOwnProfile || !profile?.isPrivate || profile?.relationship?.isFollowing
+    const isBlockedByMe = Boolean(profile?.relationship?.blockedByMe);
+    const isBlockedMe = Boolean(profile?.relationship?.blockedMe);
+    const hasPrivateProfileAccess = Boolean(
+        isOwnProfile ||
+            !profile?.isPrivate ||
+            profile?.relationship?.isFollowing ||
+            profile?.access?.canViewFullProfile
     );
+    const canViewProtectedContent = Boolean(
+        !isBlockedByMe && !isBlockedMe && hasPrivateProfileAccess
+    );
+    const canInteractWithProfile = !isBlockedByMe && !isBlockedMe;
+    const canMessageProfile = profile?.relationship?.canMessage !== false && canInteractWithProfile;
     const followButtonState = getFollowButtonState(profile?.relationship);
     const showOwnMobileMenu = isOwnProfile && isMobileViewport;
+    const visibleTabs = canViewProtectedContent
+        ? PROFILE_TABS
+        : PROFILE_TABS.filter((tab) => tab.id === "posts");
 
     const mediaPosts = useMemo(
         () =>
@@ -143,6 +164,12 @@ const UserProfile = () => {
         window.addEventListener("resize", onResize);
         return () => window.removeEventListener("resize", onResize);
     }, []);
+
+    useEffect(() => {
+        if (!canViewProtectedContent && activeTab !== "posts") {
+            setActiveTab("posts");
+        }
+    }, [activeTab, canViewProtectedContent]);
 
     useEffect(() => {
         const onClickOutside = (event) => {
@@ -209,7 +236,7 @@ const UserProfile = () => {
     }, [currentUserId]);
 
     const loadMutualFollowers = useCallback(async () => {
-        if (!id || !currentUserId || isOwnProfile) {
+        if (!id || !currentUserId || isOwnProfile || !canViewProtectedContent) {
             setMutualFollowers([]);
             return;
         }
@@ -220,7 +247,7 @@ const UserProfile = () => {
         } catch {
             setMutualFollowers([]);
         }
-    }, [currentUserId, id, isOwnProfile]);
+    }, [canViewProtectedContent, currentUserId, id, isOwnProfile]);
 
     const loadPendingRequestsList = useCallback(async () => {
         if (!isOwnProfile || !profile?.isPrivate) {
@@ -258,7 +285,7 @@ const UserProfile = () => {
 
     const loadGraphUsers = useCallback(
         async (type, page = 1, append = false) => {
-            if (!profileId) return;
+            if (!profileId || !canViewProtectedContent) return;
             setGraphLoading(true);
             try {
                 const payload =
@@ -276,7 +303,7 @@ const UserProfile = () => {
                 setGraphLoading(false);
             }
         },
-        [profileId]
+        [canViewProtectedContent, profileId]
     );
 
     const updateProfileRelationship = useCallback((patch, followersDelta = 0) => {
@@ -314,6 +341,10 @@ const UserProfile = () => {
 
     const handleFollowAction = async () => {
         if (!profile || isOwnProfile || followLoading) return;
+        if (!canInteractWithProfile) {
+            setFlash(isBlockedByMe ? "Unblock this user to follow" : "You cannot follow this user");
+            return;
+        }
         setFollowLoading(true);
         try {
             const next = await toggleFollowTarget(id, profile?.relationship || {});
@@ -400,6 +431,26 @@ const UserProfile = () => {
         }
     };
 
+    const handleToggleBlock = async () => {
+        if (!id || isOwnProfile || blockActionLoading) return;
+        const wasBlocked = isBlockedByMe;
+        setBlockActionLoading(true);
+        try {
+            if (wasBlocked) {
+                await unblockUserRequest(id);
+            } else {
+                await blockUserRequest(id);
+            }
+            setIsMenuOpen(false);
+            await loadProfile();
+            setFlash(wasBlocked ? "User unblocked" : "User blocked");
+        } catch (error) {
+            setFlash(error?.message || "Could not update block status");
+        } finally {
+            setBlockActionLoading(false);
+        }
+    };
+
     if (isLoading) {
         return (
             <div className="flex h-screen items-center justify-center bg-slate-950">
@@ -443,7 +494,7 @@ const UserProfile = () => {
                                     initial={{ opacity: 0, y: 6 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 6 }}
-                                    className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-slate-800 bg-slate-900 shadow-xl"
+                                    className="absolute right-0 top-full z-50 mt-2 w-48 rounded-xl border border-slate-800 bg-slate-900 shadow-xl"
                                 >
                                     <button
                                         type="button"
@@ -453,6 +504,32 @@ const UserProfile = () => {
                                         {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                                         Copy profile link
                                     </button>
+                                    {isOwnProfile && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsMenuOpen(false);
+                                                navigate("/main/settings");
+                                            }}
+                                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                        >
+                                            <Settings className="h-4 w-4" />
+                                            Settings
+                                        </button>
+                                    )}
+                                    {!isOwnProfile && (
+                                        <button
+                                            type="button"
+                                            onClick={handleToggleBlock}
+                                            disabled={blockActionLoading}
+                                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs hover:bg-slate-800 disabled:opacity-60 ${
+                                                isBlockedByMe ? "text-emerald-300" : "text-rose-300"
+                                            }`}
+                                        >
+                                            {blockActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
+                                            {isBlockedByMe ? "Unblock user" : "Block user"}
+                                        </button>
+                                    )}
                                 </motion.div>
                             )}
                         </AnimatePresence>
@@ -502,27 +579,41 @@ const UserProfile = () => {
                                 </button>
                             ) : (
                                 <>
-                                    <button
-                                        type="button"
-                                        onClick={handleFollowAction}
-                                        disabled={followLoading}
-                                        className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${
-                                            followButtonState.tone === "following"
-                                                ? "border-slate-700 bg-slate-900/85 text-slate-200"
-                                                : followButtonState.tone === "pending"
-                                                  ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
-                                                  : "border-sky-500/50 bg-sky-500/20 text-sky-200"
-                                        }`}
-                                    >
-                                        {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : followButtonState.label}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(`/chat/${id}`, { state: { targetUser: profile } })}
-                                        className="rounded-lg border border-slate-700 bg-slate-900/85 p-2 text-slate-200 hover:bg-slate-800"
-                                    >
-                                        <MessageSquare className="h-4 w-4" />
-                                    </button>
+                                    {isBlockedByMe ? (
+                                        <span className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200">
+                                            User blocked
+                                        </span>
+                                    ) : isBlockedMe ? (
+                                        <span className="rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-2 text-xs font-semibold text-slate-300">
+                                            You are blocked
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={handleFollowAction}
+                                                disabled={followLoading}
+                                                className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${
+                                                    followButtonState.tone === "following"
+                                                        ? "border-slate-700 bg-slate-900/85 text-slate-200"
+                                                        : followButtonState.tone === "pending"
+                                                          ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
+                                                          : "border-sky-500/50 bg-sky-500/20 text-sky-200"
+                                                }`}
+                                            >
+                                                {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : followButtonState.label}
+                                            </button>
+                                            {canMessageProfile && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate(`/chat/${id}`, { state: { targetUser: profile } })}
+                                                    className="rounded-lg border border-slate-700 bg-slate-900/85 p-2 text-slate-200 hover:bg-slate-800"
+                                                >
+                                                    <MessageSquare className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -530,20 +621,71 @@ const UserProfile = () => {
                 </div>
 
                 <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
-                    {profile?.headline && <p className="text-sm font-medium text-slate-200">{profile.headline}</p>}
-                    <p className="mt-1 text-sm text-slate-300">{profile?.bio || "No bio added yet."}</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
-                        {profile?.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{profile.location}</span>}
-                        {profile?.website && <a href={profile.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"><ExternalLink className="h-3.5 w-3.5" />{profile.website.replace(/^https?:\/\//, "")}</a>}
-                        <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Joined {getJoinedLabel(profile?.createdAt)}</span>
-                        {profile?.isPrivate && <span className="inline-flex items-center gap-1.5 text-amber-300"><Lock className="h-3.5 w-3.5" />Private account</span>}
-                    </div>
+                    {canViewProtectedContent ? (
+                        <>
+                            {profile?.headline && <p className="text-sm font-medium text-slate-200">{profile.headline}</p>}
+                            <p className="mt-1 text-sm text-slate-300">{profile?.bio || "No bio added yet."}</p>
+                            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
+                                {profile?.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{profile.location}</span>}
+                                {profile?.email && <span className="inline-flex items-center gap-1.5">{profile.email}</span>}
+                                {profile?.website && <a href={profile.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"><ExternalLink className="h-3.5 w-3.5" />{profile.website.replace(/^https?:\/\//, "")}</a>}
+                                <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Joined {getJoinedLabel(profile?.createdAt)}</span>
+                                {profile?.isPrivate && <span className="inline-flex items-center gap-1.5 text-amber-300"><Lock className="h-3.5 w-3.5" />Private account</span>}
+                                {!isOwnProfile && !canMessageProfile && !isBlockedByMe && !isBlockedMe && (
+                                    <span className="inline-flex items-center gap-1.5 text-slate-300">
+                                        <MessageSquare className="h-3.5 w-3.5" />
+                                        Messages restricted
+                                    </span>
+                                )}
+                            </div>
+                        </>
+                    ) : (
+                        <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 text-center">
+                            <Lock className="mx-auto h-5 w-5 text-slate-500" />
+                            <p className="mt-2 text-sm font-semibold text-slate-200">
+                                {isBlockedByMe
+                                    ? "You blocked this user"
+                                    : isBlockedMe
+                                      ? "You cannot view this profile"
+                                      : "This account is private"}
+                            </p>
+                            {!isBlockedByMe && !isBlockedMe && (
+                                <p className="mt-1 text-xs text-slate-400">
+                                    Follow this account to view full profile, posts, and connections.
+                                </p>
+                            )}
+                        </div>
+                    )}
                     <div className="mt-4 grid grid-cols-3 gap-2">
-                        <button type="button" onClick={() => { setGraphModal({ open: true, type: "followers" }); loadGraphUsers("followers", 1, false); }} className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left">
+                        <button
+                            type="button"
+                            disabled={!canViewProtectedContent}
+                            onClick={() => {
+                                if (!canViewProtectedContent) {
+                                    setFlash("Follow this account to view followers.");
+                                    return;
+                                }
+                                setGraphModal({ open: true, type: "followers" });
+                                loadGraphUsers("followers", 1, false);
+                            }}
+                            className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                        >
                             <p className="text-xs text-slate-400">Followers</p>
                             <p className="mt-0.5 text-sm font-semibold text-slate-100">{Number(profile?.followersCount || 0).toLocaleString()}</p>
                         </button>
-                        <button type="button" onClick={() => { setGraphModal({ open: true, type: "following" }); loadGraphUsers("following", 1, false); }} className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left">
+                        <button
+                            type="button"
+                            disabled={!canViewProtectedContent}
+                            onClick={() => {
+                                if (!canViewProtectedContent) {
+                                    setFlash("Follow this account to view following.");
+                                    return;
+                                }
+                                setGraphModal({ open: true, type: "following" });
+                                loadGraphUsers("following", 1, false);
+                            }}
+                            className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                        >
                             <p className="text-xs text-slate-400">Following</p>
                             <p className="mt-0.5 text-sm font-semibold text-slate-100">{Number(profile?.followingCount || 0).toLocaleString()}</p>
                         </button>
@@ -556,7 +698,7 @@ const UserProfile = () => {
 
                 <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55">
                     <div className="flex gap-2 overflow-x-auto border-b border-slate-800 px-2 py-1.5">
-                        {PROFILE_TABS.map((tab) => (
+                        {visibleTabs.map((tab) => (
                             <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm ${activeTab === tab.id ? "bg-sky-500/15 text-sky-300" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}>
                                 {tab.label}
                             </button>
@@ -566,7 +708,7 @@ const UserProfile = () => {
                         {activeTab === "posts" && (
                             <div className="space-y-3">
                                 {!canViewProtectedContent ? (
-                                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">This profile is private</p></div>
+                                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">{isBlockedByMe ? "You blocked this user" : isBlockedMe ? "You cannot view this profile" : "This profile is private"}</p></div>
                                 ) : posts.length === 0 ? (
                                     <p className="py-8 text-center text-sm text-slate-500">{postsAccessMessage || "No posts yet."}</p>
                                 ) : (
@@ -583,7 +725,7 @@ const UserProfile = () => {
                                 )}
                             </div>
                         )}
-                        {activeTab === "media" && <div>{!canViewProtectedContent ? <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">Media is hidden</p></div> : mediaPosts.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">No media posts yet.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{mediaPosts.map((media) => <div key={media.key} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={media.url} alt="Media" className="h-36 w-full object-cover" /></div>)}</div>}</div>}
+                        {activeTab === "media" && <div>{!canViewProtectedContent ? <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">{isBlockedByMe ? "You blocked this user" : isBlockedMe ? "You cannot view this profile" : "Media is hidden"}</p></div> : mediaPosts.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">No media posts yet.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{mediaPosts.map((media) => <div key={media.key} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={media.url} alt="Media" className="h-36 w-full object-cover" /></div>)}</div>}</div>}
                         {activeTab === "about" && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Profile Quality</p><p className="mt-1 text-2xl font-bold text-slate-100">{profileCompletion}%</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Type</p><p className="mt-1 text-sm font-semibold text-slate-200">{profile?.isPrivate ? "Private account" : "Public account"}</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Highlights</p><div className="mt-2 grid gap-2 text-sm text-slate-300 sm:grid-cols-2"><p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-400" />{profile?.isVerified ? "Verified profile" : "Standard profile"}</p><p className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-sky-400" />{Number(profile?.followersCount || 0).toLocaleString()} followers</p><p className="inline-flex items-center gap-2"><UserRound className="h-4 w-4 text-sky-400" />{Number(profile?.followingCount || 0).toLocaleString()} following</p><p className="inline-flex items-center gap-2"><Calendar className="h-4 w-4 text-sky-400" />Joined {getJoinedLabel(profile?.createdAt)}</p></div></div></div>}
                         {activeTab === "connections" && <div className="space-y-3"><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested For You</p><button type="button" onClick={loadSuggestions} className="text-xs font-medium text-sky-300 hover:text-sky-200">Refresh</button></div>{suggestionsLoading ? <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div> : suggestions.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No suggestions right now.</p> : <div className="mt-2 space-y-2">{suggestions.slice(0, 6).map((entry) => { const targetId = toId(entry); const state = getFollowButtonState(entry); return <div key={targetId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2"><div className="flex min-w-0 items-center gap-2"><div className="h-8 w-8 overflow-hidden rounded-full bg-slate-800">{entry?.avatar ? <img src={entry.avatar} alt={entry?.name || "User"} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-500"><UserRound className="h-3.5 w-3.5" /></div>}</div><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-200">{entry?.name || entry?.username}</p><p className="truncate text-[11px] text-slate-500">@{entry?.username || "user"}</p></div></div><button type="button" disabled={suggestionActionLoadingId === targetId} onClick={() => handleToggleSuggestionFollow(entry)} className={`inline-flex min-w-[5.2rem] items-center justify-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${state.tone === "following" ? "border-slate-700 bg-slate-800 text-slate-200" : state.tone === "pending" ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-sky-500/40 bg-sky-500/15 text-sky-300"}`}>{suggestionActionLoadingId === targetId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : state.label}</button></div>; })}</div>}</div>{isOwnProfile && profile?.isPrivate && <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Pending Follow Requests</p>{pendingLoading ? <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div> : pendingRequests.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No pending requests.</p> : <div className="mt-2 space-y-2">{pendingRequests.map((request) => { const requestId = toId(request?.requestId || request?._id); const loading = pendingActionLoadingId === requestId; return <div key={requestId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2"><div className="flex min-w-0 items-center gap-2"><div className="h-8 w-8 overflow-hidden rounded-full bg-slate-800">{request?.avatar ? <img src={request.avatar} alt={request?.name || "User"} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-500"><UserRound className="h-3.5 w-3.5" /></div>}</div><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-200">{request?.name || request?.username}</p><p className="truncate text-[11px] text-slate-500">@{request?.username || "user"}</p></div></div><div className="flex items-center gap-1.5"><button type="button" disabled={loading} onClick={async () => { setPendingActionLoadingId(requestId); try { await rejectFollowRequest(requestId); setPendingRequests((previous) => previous.filter((entry) => toId(entry?.requestId || entry?._id) !== requestId)); } finally { setPendingActionLoadingId(""); } }} className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-slate-800">Reject</button><button type="button" disabled={loading} onClick={async () => { setPendingActionLoadingId(requestId); try { await approveFollowRequest(requestId); setPendingRequests((previous) => previous.filter((entry) => toId(entry?.requestId || entry?._id) !== requestId)); setProfile((previous) => previous ? { ...previous, followersCount: Number(previous.followersCount || 0) + 1 } : previous); } finally { setPendingActionLoadingId(""); } }} className="inline-flex items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/15 px-2 py-1 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/25">{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus2 className="h-3 w-3" />}Approve</button></div></div>; })}</div>}</div>}</div>}
                     </div>
@@ -609,6 +751,12 @@ const UserProfile = () => {
                 onClose={() => setGraphModal((previous) => ({ ...previous, open: false }))}
                 onToggleFollow={handleToggleGraphConnection}
                 onLoadMore={() => loadGraphUsers(graphModal.type, Number(graphPagination?.page || 1) + 1, true)}
+                onUserClick={(entry) => {
+                    const targetId = toId(entry);
+                    if (!targetId) return;
+                    setGraphModal((previous) => ({ ...previous, open: false }));
+                    navigate(`/profile/${targetId}`);
+                }}
             />
 
             <ProfileEditModal

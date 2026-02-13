@@ -11,7 +11,8 @@ const {
     usernameParamSchema,
     preferencesSchema,
     activitySchema,
-    popularUsersSchema
+    popularUsersSchema,
+    blockedUsersQuerySchema
 } = require('./user.validation');
 
 // --- Public Routes (No Auth Required) ---
@@ -50,6 +51,13 @@ router.patch(
     userController.updatePreferences
 );
 
+// Get blocked users list
+router.get(
+    '/me/blocks',
+    validate(blockedUsersQuerySchema, 'query'),
+    userController.getBlockedUsers
+);
+
 // Update activity status
 router.post(
     '/me/activity',
@@ -72,6 +80,19 @@ router.get(
     '/mentions',
     validate(mentionSearchSchema, 'query'),
     userController.searchMentions
+);
+
+// Block / Unblock users
+router.post(
+    '/blocks/:id',
+    validate(userIdSchema, 'params'),
+    userController.blockUser
+);
+
+router.delete(
+    '/blocks/:id',
+    validate(userIdSchema, 'params'),
+    userController.unblockUser
 );
 // Get user statistics
 router.get(

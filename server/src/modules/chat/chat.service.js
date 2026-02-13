@@ -1,6 +1,8 @@
 // modules/chat/chat.service.js (ENHANCED VERSION)
 const Chat = require("../../models/chat");
 const Message = require("../../models/message");
+const User = require("../../models/user");
+const Follow = require("../../models/follow");
 const mongoose = require("mongoose");
 const {
     resolveMentionUsersFromText,
@@ -8,7 +10,69 @@ const {
     getMentionSnippet
 } = require("../utils/mentionService");
 
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (value?._id && value._id !== value) return toIdString(value._id);
+    if (typeof value?.toHexString === "function") return value.toHexString();
+    if (typeof value?.toString === "function") {
+        const normalized = value.toString();
+        return normalized && normalized !== "[object Object]" ? normalized : "";
+    }
+    return "";
+};
+
+const hasBlockedUser = (userDoc, targetId) => {
+    const targetIdString = toIdString(targetId);
+    if (!targetIdString) return false;
+    return (userDoc?.blockedUsers || []).some((entry) => toIdString(entry) === targetIdString);
+};
+
 class ChatService {
+
+    async assertCanMessageTarget(senderId, targetId) {
+        const [senderUser, targetUser, followStatus] = await Promise.all([
+            User.findById(senderId)
+                .select("blockedUsers accountStatus")
+                .lean(),
+            User.findById(targetId)
+                .select("blockedUsers accountStatus isPrivate preferences.privacy.disablePublicMessages")
+                .lean(),
+            Follow.checkRelationship(senderId, targetId)
+        ]);
+
+        if (!senderUser || senderUser.accountStatus !== "active") {
+            throw createError("Your account is not active", 403);
+        }
+        if (!targetUser || targetUser.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        if (hasBlockedUser(senderUser, targetId)) {
+            throw createError("Unblock this user before sending a message", 403);
+        }
+
+        if (hasBlockedUser(targetUser, senderId)) {
+            throw createError("You cannot message this user", 403);
+        }
+
+        const requiresFollowing = Boolean(
+            targetUser?.isPrivate || targetUser?.preferences?.privacy?.disablePublicMessages
+        );
+        if (requiresFollowing && !followStatus?.isFollowing) {
+            throw createError(
+                "This user accepts messages from followers only",
+                403
+            );
+        }
+    }
 
     // -----------------------------------------------------------------------
     //  Check Private Chat Exists
@@ -30,8 +94,10 @@ class ChatService {
     async getOrCreatePrivateChat(userA, userB) {
         // Guard: a user cannot open a private chat with themselves
         if (String(userA) === String(userB)) {
-            throw new Error("Cannot create a private chat with yourself");
+            throw createError("Cannot create a private chat with yourself", 400);
         }
+
+        await this.assertCanMessageTarget(userA, userB);
 
         let chat = await Chat.findOne({
             type: "private",
@@ -111,23 +177,30 @@ class ChatService {
             (!content || content.trim().length === 0) &&
             (!attachments || attachments.length === 0)
         ) {
-            throw new Error("Message must contain text or at least one attachment");
+            throw createError("Message must contain text or at least one attachment", 400);
         }
 
         // Verify the sender is actually a member of this chat
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(senderId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
+        }
+
+        if (chat.type === "private") {
+            const recipientId = chat.members.find((memberId) => String(memberId) !== String(senderId));
+            if (recipientId) {
+                await this.assertCanMessageTarget(senderId, recipientId);
+            }
         }
 
         // Verify replyTo message exists if provided
         if (replyTo) {
             const replyMessage = await Message.findById(replyTo);
             if (!replyMessage || String(replyMessage.chatId) !== String(chatId)) {
-                throw new Error("Invalid reply reference");
+                throw createError("Invalid reply reference", 400);
             }
         }
 

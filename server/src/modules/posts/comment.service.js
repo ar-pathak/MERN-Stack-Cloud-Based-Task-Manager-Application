@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Comment = require('../../models/comment');
 const Post = require('../../models/post');
 const User = require('../../models/user');
+const notificationService = require('../notification/notification.service');
 const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
 
 class CommentService {
@@ -20,6 +21,8 @@ class CommentService {
         session.startTransaction();
 
         let mentionUsers = [];
+        let parentComment = null;
+        const socialNotificationTargets = new Map();
 
         try {
             // Verify post exists and comments are enabled
@@ -35,7 +38,7 @@ class CommentService {
 
             // If replying to a comment, verify it exists
             if (parentCommentId) {
-                const parentComment = await Comment.findById(parentCommentId).session(session);
+                parentComment = await Comment.findById(parentCommentId).session(session);
 
                 if (!parentComment || parentComment.status !== "active") {
                     throw new Error("Parent comment not found");
@@ -61,16 +64,104 @@ class CommentService {
                 mentions: mentionUsers.map((user) => user._id)
             }], { session });
 
+            const commenterId = String(userId || "");
+            const postAuthorId = String(post.author || "");
+
+            if (postAuthorId && commenterId && postAuthorId !== commenterId) {
+                const postAuthor = await User.findById(post.author)
+                    .select("preferences.notifications.comments")
+                    .session(session)
+                    .lean();
+
+                if (postAuthor?.preferences?.notifications?.comments !== false) {
+                    socialNotificationTargets.set(postAuthorId, {
+                        recipientId: post.author,
+                        kind: "post_comment"
+                    });
+                }
+            }
+
+            if (parentComment?.author) {
+                const parentAuthorId = String(parentComment.author || "");
+                if (parentAuthorId && commenterId && parentAuthorId !== commenterId) {
+                    const parentAuthor = await User.findById(parentComment.author)
+                        .select("preferences.notifications.comments")
+                        .session(session)
+                        .lean();
+
+                    if (parentAuthor?.preferences?.notifications?.comments !== false) {
+                        socialNotificationTargets.set(parentAuthorId, {
+                            recipientId: parentComment.author,
+                            kind: "comment_reply"
+                        });
+                    }
+                }
+            }
+
             await session.commitTransaction();
 
             // Populate author + mentions info
             await comment.populate("author", "username name avatar isVerified");
             await comment.populate("mentions", "username name avatar");
 
-            if (mentionUsers.length > 0) {
-                const actor = await User.findById(userId).select("name username").lean();
-                const actorLabel = actor?.name || actor?.username || "Someone";
+            const actorLabel = comment?.author?.name || comment?.author?.username || "Someone";
 
+            if (socialNotificationTargets.size > 0) {
+                const socialPayloads = Array.from(socialNotificationTargets.values()).map((entry) => {
+                    if (entry.kind === "comment_reply") {
+                        return {
+                            recipientIds: [entry.recipientId],
+                            actorId: userId,
+                            title: "New reply to your comment",
+                            message: `${actorLabel} replied to your comment`,
+                            type: "activity",
+                            category: "social",
+                            priority: "normal",
+                            entityType: "none",
+                            entityId: comment._id,
+                            link: "/main/feed",
+                            metadata: {
+                                kind: "comment_reply",
+                                postId: String(postId),
+                                commentId: String(comment._id),
+                                parentCommentId: String(parentComment?._id || "")
+                            },
+                            dedupeKey: `social:comment_reply:${String(comment._id)}:${String(entry.recipientId)}`
+                        };
+                    }
+
+                    return {
+                        recipientIds: [entry.recipientId],
+                        actorId: userId,
+                        title: "New comment on your post",
+                        message: `${actorLabel} commented on your post`,
+                        type: "activity",
+                        category: "social",
+                        priority: "normal",
+                        entityType: "none",
+                        entityId: comment._id,
+                        link: "/main/feed",
+                        metadata: {
+                            kind: "post_comment",
+                            postId: String(postId),
+                            commentId: String(comment._id)
+                        },
+                        dedupeKey: `social:post_comment:${String(comment._id)}:${String(entry.recipientId)}`
+                    };
+                });
+
+                await Promise.all(
+                    socialPayloads.map(async (payload) => {
+                        try {
+                            await notificationService.createNotifications(payload);
+                        } catch (notificationError) {
+                            console.error("comment notification error", notificationError);
+                        }
+                    })
+                );
+            }
+
+            if (mentionUsers.length > 0) {
                 await notifyMentionedUsers({
                     actorId: userId,
                     mentionUsers,

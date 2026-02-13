@@ -94,7 +94,7 @@ class StoryService {
             explicitMentionUsers = await User.find({
                 _id: { $in: explicitMentionIds },
                 accountStatus: "active",
-                "preferences.privacy.allowMentions": { $ne: false }
+                "preferences.privacy.allowTagging": { $ne: false }
             })
                 .select("_id username name avatar")
                 .lean();

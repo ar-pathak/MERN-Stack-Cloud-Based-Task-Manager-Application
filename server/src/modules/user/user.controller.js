@@ -96,6 +96,50 @@ const userController = {
     },
 
     /**
+     * Get blocked users list
+     * GET /me/blocks
+     */
+    getBlockedUsers: async (req, res) => {
+        try {
+            const { page = 1, limit = 20 } = req.query;
+            const result = await userService.getBlockedUsers(
+                req.user._id,
+                parseInt(page, 10),
+                parseInt(limit, 10)
+            );
+            return sendSuccess(res, result, "Blocked users retrieved");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Block a user
+     * POST /blocks/:id
+     */
+    blockUser: async (req, res) => {
+        try {
+            const result = await userService.blockUser(req.user._id, req.params.id);
+            return sendSuccess(res, result, "User blocked successfully");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Unblock a user
+     * DELETE /blocks/:id
+     */
+    unblockUser: async (req, res) => {
+        try {
+            const result = await userService.unblockUser(req.user._id, req.params.id);
+            return sendSuccess(res, result, "User unblocked successfully");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
      * Check username availability
      * GET /check-username/:username
      */

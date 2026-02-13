@@ -57,8 +57,9 @@ followSchema.statics.checkRelationship = async function(followerId, followingId)
     }).lean();
     
     return {
-        isFollowing: !!relationship,
-        isApproved: relationship?.isApproved || false
+        isFollowing: Boolean(relationship?.isApproved),
+        isApproved: Boolean(relationship?.isApproved),
+        isPending: Boolean(relationship && !relationship.isApproved)
     };
 };
 

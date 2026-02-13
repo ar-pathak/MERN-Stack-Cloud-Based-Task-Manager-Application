@@ -5,6 +5,32 @@ const WorkspaceMember = require('../../models/workspaceMember');
 const Project = require('../../models/project');
 const Task = require('../../models/tasks');
 const Subtask = require('../../models/subtasks');
+const mongoose = require('mongoose');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (value?._id && value._id !== value) return toIdString(value._id);
+    if (typeof value?.toHexString === "function") return value.toHexString();
+    if (typeof value?.toString === "function") {
+        const normalized = value.toString();
+        return normalized && normalized !== "[object Object]" ? normalized : "";
+    }
+    return "";
+};
+
+const hasBlockedUser = (userDoc, targetId) => {
+    const targetIdString = toIdString(targetId);
+    if (!targetIdString) return false;
+    return (userDoc?.blockedUsers || []).some((entry) => toIdString(entry) === targetIdString);
+};
 
 class UserService {
     /**
@@ -35,7 +61,7 @@ class UserService {
      */
     async getPublicProfile(targetUserId, currentUserId = null) {
         const user = await User.findById(targetUserId)
-            .select("username name bio headline location website avatar coverImage followersCount followingCount postsCount isPrivate isVerified createdAt accountStatus");
+            .select("email username name bio headline location website avatar coverImage followersCount followingCount postsCount isPrivate isVerified isOnline lastSeen createdAt accountStatus preferences.privacy.disablePublicMessages preferences.privacy.showEmail preferences.privacy.showOnlineStatus blockedUsers");
 
         if (!user) {
             throw new Error("User not found");
@@ -46,19 +72,67 @@ class UserService {
         }
 
         const profile = user.toPublicJSON();
+        const isSelfView = Boolean(currentUserId) && String(currentUserId) === String(targetUserId);
+        let relationship = null;
 
         // Add relationship information if currentUserId is provided
-        if (currentUserId && currentUserId.toString() !== targetUserId.toString()) {
-            const [followStatus, reverseFollowStatus] = await Promise.all([
+        if (currentUserId && !isSelfView) {
+            const [currentUser, followStatus, reverseFollowStatus] = await Promise.all([
+                User.findById(currentUserId).select("blockedUsers").lean(),
                 Follow.checkRelationship(currentUserId, targetUserId),
                 Follow.checkRelationship(targetUserId, currentUserId)
             ]);
 
-            profile.relationship = {
-                isFollowing: followStatus.isFollowing,
-                isFollowedBy: reverseFollowStatus.isFollowing,
-                isPending: followStatus.isFollowing && !followStatus.isApproved
+            const blockedByMe = hasBlockedUser(currentUser, targetUserId);
+            const blockedMe = hasBlockedUser(user, currentUserId);
+            const requiresFollowForMessages = Boolean(
+                user?.isPrivate || user?.preferences?.privacy?.disablePublicMessages
+            );
+            const canMessage = !blockedByMe && !blockedMe && (
+                !requiresFollowForMessages || Boolean(followStatus?.isFollowing)
+            );
+
+            relationship = {
+                isFollowing: Boolean(followStatus?.isFollowing),
+                isFollowedBy: Boolean(reverseFollowStatus?.isFollowing),
+                isPending: Boolean(followStatus?.isPending),
+                blockedByMe,
+                blockedMe,
+                canMessage
             };
+            profile.relationship = relationship;
+        }
+
+        const isBlockedContext = Boolean(relationship?.blockedByMe || relationship?.blockedMe);
+        const canViewFullProfile = Boolean(
+            (isSelfView || !user?.isPrivate || relationship?.isFollowing) && !isBlockedContext
+        );
+
+        profile.access = {
+            canViewFullProfile
+        };
+
+        if (canViewFullProfile && (isSelfView || user?.preferences?.privacy?.showEmail)) {
+            profile.email = user.email || "";
+        }
+
+        if (canViewFullProfile && (isSelfView || user?.preferences?.privacy?.showOnlineStatus !== false)) {
+            profile.isOnline = Boolean(user?.isOnline);
+            profile.lastSeen = user?.lastSeen || null;
+        } else {
+            profile.isOnline = false;
+            profile.lastSeen = null;
+        }
+
+        if (!canViewFullProfile) {
+            profile.bio = "";
+            profile.headline = "";
+            profile.location = "";
+            profile.website = "";
+            profile.coverImage = "";
+            profile.followersCount = 0;
+            profile.followingCount = 0;
+            profile.postsCount = 0;
         }
 
         return profile;
@@ -304,7 +378,7 @@ class UserService {
         }
 
         const users = await User.find(filter)
-            .select("username name avatar isOnline")
+            .select("username name avatar isOnline preferences.privacy.showOnlineStatus")
             .limit(regex ? limit * 4 : limit)
             .lean();
 
@@ -335,7 +409,7 @@ class UserService {
                 username: user.username,
                 name: user.name,
                 avatar: user.avatar,
-                isOnline: user.isOnline
+                isOnline: user?.preferences?.privacy?.showOnlineStatus === false ? false : user.isOnline
             }));
 
         return { users: scored };
@@ -357,16 +431,18 @@ class UserService {
             'preferences.privacy.showEmail',
             'preferences.privacy.showOnlineStatus',
             'preferences.privacy.allowTagging',
-            'preferences.privacy.allowMentions'
+            'preferences.privacy.allowMentions',
+            'preferences.privacy.disablePublicMessages'
         ];
 
         const updates = {};
 
         // Flatten and filter preferences
         const flattenPreferences = (obj, prefix = '') => {
+            if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
             Object.keys(obj).forEach(key => {
                 const path = prefix ? `${prefix}.${key}` : key;
-                if (typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
+                if (obj[key] !== null && typeof obj[key] === 'object' && !Array.isArray(obj[key])) {
                     flattenPreferences(obj[key], path);
                 } else if (allowedPreferences.includes(path)) {
                     updates[path] = obj[key];
@@ -374,7 +450,16 @@ class UserService {
             });
         };
 
-        flattenPreferences(preferences);
+        // Accept both payload shapes:
+        // { notifications: {...}, privacy: {...} } and { preferences: {...} }
+        const normalizedRoot = preferences?.preferences && typeof preferences.preferences === 'object'
+            ? preferences.preferences
+            : preferences;
+        flattenPreferences(normalizedRoot, 'preferences');
+
+        if (Object.keys(updates).length === 0) {
+            throw createError("No valid preferences provided", 400);
+        }
 
         const user = await User.findByIdAndUpdate(
             userId,
@@ -505,15 +590,201 @@ class UserService {
     }
 
     /**
-     * Block a user (prevent them from seeing your content)
+     * Get blocked users list
+     * @param {ObjectId} userId - Current user ID
+     * @param {Number} page - Page number
+     * @param {Number} limit - Results per page
+     * @returns {Promise<Object>} Paginated blocked users
+     */
+    async getBlockedUsers(userId, page = 1, limit = 20) {
+        const safePage = Math.max(1, Number(page) || 1);
+        const safeLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+        const skip = (safePage - 1) * safeLimit;
+
+        const user = await User.findById(userId).select("blockedUsers").lean();
+        if (!user) {
+            throw createError("User not found", 404);
+        }
+
+        const blockedIds = Array.isArray(user.blockedUsers)
+            ? user.blockedUsers.map((entry) => toIdString(entry)).filter(Boolean)
+            : [];
+        const total = blockedIds.length;
+        const pagedIds = blockedIds.slice(skip, skip + safeLimit);
+
+        if (!pagedIds.length) {
+            return {
+                users: [],
+                pagination: {
+                    page: safePage,
+                    limit: safeLimit,
+                    total,
+                    pages: Math.max(1, Math.ceil(total / safeLimit)),
+                    hasMore: false
+                }
+            };
+        }
+
+        const blockedUsers = await User.find({
+            _id: { $in: pagedIds }
+        })
+            .select("username name avatar isVerified followersCount followingCount accountStatus")
+            .lean();
+
+        const orderMap = new Map(pagedIds.map((id, index) => [id, index]));
+        const normalizedUsers = blockedUsers
+            .map((entry) => ({
+                _id: entry._id,
+                username: entry.username,
+                name: entry.name,
+                avatar: entry.avatar,
+                isVerified: entry.isVerified,
+                followersCount: entry.followersCount,
+                followingCount: entry.followingCount,
+                accountStatus: entry.accountStatus
+            }))
+            .sort((a, b) => {
+                const aIndex = orderMap.get(toIdString(a._id)) ?? Number.MAX_SAFE_INTEGER;
+                const bIndex = orderMap.get(toIdString(b._id)) ?? Number.MAX_SAFE_INTEGER;
+                return aIndex - bIndex;
+            });
+
+        return {
+            users: normalizedUsers,
+            pagination: {
+                page: safePage,
+                limit: safeLimit,
+                total,
+                pages: Math.max(1, Math.ceil(total / safeLimit)),
+                hasMore: skip + normalizedUsers.length < total
+            }
+        };
+    }
+
+    /**
+     * Block a user (remove follow relationships and prevent future interactions)
      * @param {ObjectId} userId - Current user ID
      * @param {ObjectId} targetUserId - User to block
      * @returns {Promise<Object>} Result
      */
     async blockUser(userId, targetUserId) {
-        // TODO: Implement blocking system
-        // This would require a separate Block model or field
-        throw new Error("Block feature not yet implemented");
+        if (!userId || !targetUserId) {
+            throw createError("User IDs are required", 400);
+        }
+
+        if (String(userId) === String(targetUserId)) {
+            throw createError("You cannot block yourself", 400);
+        }
+
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            const [currentUser, targetUser] = await Promise.all([
+                User.findById(userId).select("blockedUsers").session(session),
+                User.findById(targetUserId).select("accountStatus").session(session)
+            ]);
+
+            if (!currentUser) throw createError("User not found", 404);
+            if (!targetUser || targetUser.accountStatus !== "active") {
+                throw createError("User not found", 404);
+            }
+
+            if (hasBlockedUser(currentUser, targetUserId)) {
+                await session.commitTransaction();
+                return { success: true, alreadyBlocked: true };
+            }
+
+            const relations = await Follow.find({
+                $or: [
+                    { follower: userId, following: targetUserId },
+                    { follower: targetUserId, following: userId }
+                ]
+            }).session(session);
+
+            let currentFollowingDelta = 0;
+            let currentFollowersDelta = 0;
+            let targetFollowingDelta = 0;
+            let targetFollowersDelta = 0;
+
+            relations.forEach((relation) => {
+                if (!relation?.isApproved) return;
+                const followerId = toIdString(relation.follower);
+                if (followerId === toIdString(userId)) {
+                    currentFollowingDelta -= 1;
+                    targetFollowersDelta -= 1;
+                } else {
+                    currentFollowersDelta -= 1;
+                    targetFollowingDelta -= 1;
+                }
+            });
+
+            if (relations.length) {
+                await Follow.deleteMany({
+                    _id: { $in: relations.map((relation) => relation._id) }
+                }).session(session);
+            }
+
+            const currentInc = {};
+            if (currentFollowersDelta) currentInc.followersCount = currentFollowersDelta;
+            if (currentFollowingDelta) currentInc.followingCount = currentFollowingDelta;
+
+            const currentUpdate = {
+                $addToSet: { blockedUsers: targetUserId }
+            };
+            if (Object.keys(currentInc).length > 0) {
+                currentUpdate.$inc = currentInc;
+            }
+
+            await User.findByIdAndUpdate(userId, currentUpdate, { session });
+
+            const targetInc = {};
+            if (targetFollowersDelta) targetInc.followersCount = targetFollowersDelta;
+            if (targetFollowingDelta) targetInc.followingCount = targetFollowingDelta;
+
+            if (Object.keys(targetInc).length > 0) {
+                await User.findByIdAndUpdate(targetUserId, { $inc: targetInc }, { session });
+            }
+
+            await session.commitTransaction();
+            return { success: true, alreadyBlocked: false };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+    }
+
+    /**
+     * Unblock a user
+     * @param {ObjectId} userId - Current user ID
+     * @param {ObjectId} targetUserId - User to unblock
+     * @returns {Promise<Object>} Result
+     */
+    async unblockUser(userId, targetUserId) {
+        if (!userId || !targetUserId) {
+            throw createError("User IDs are required", 400);
+        }
+
+        if (String(userId) === String(targetUserId)) {
+            throw createError("Invalid operation", 400);
+        }
+
+        const result = await User.updateOne(
+            { _id: userId },
+            { $pull: { blockedUsers: targetUserId } }
+        );
+
+        if (!result.matchedCount) {
+            throw createError("User not found", 404);
+        }
+
+        if (!result.modifiedCount) {
+            throw createError("User is not in your block list", 400);
+        }
+
+        return { success: true };
     }
 }
 

@@ -43,6 +43,9 @@ export const normalizeConnection = (entry = {}) => ({
     followingCount: Number(entry?.followingCount || 0),
     isFollowing: Boolean(entry?.isFollowing),
     isPending: Boolean(entry?.isPending),
+    isFollowedBy: Boolean(entry?.isFollowedBy),
+    blockedByMe: Boolean(entry?.blockedByMe),
+    blockedMe: Boolean(entry?.blockedMe),
     requestId: entry?.requestId ? toId(entry.requestId) : ""
 });
 
@@ -59,6 +62,7 @@ export const mergeConnections = (previous = [], incoming = []) => {
 export const getFollowButtonState = (relationship = {}) => {
     if (relationship?.isFollowing) return { label: "Following", tone: "following" };
     if (relationship?.isPending) return { label: "Requested", tone: "pending" };
+    if (relationship?.isFollowedBy) return { label: "Follow back", tone: "default" };
     return { label: "Follow", tone: "default" };
 };
 

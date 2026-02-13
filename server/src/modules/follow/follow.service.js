@@ -1,6 +1,32 @@
 const mongoose = require('mongoose');
 const Follow = require('../../models/follow');
 const User = require('../../models/user');
+const notificationService = require('../notification/notification.service');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (value?._id && value._id !== value) return toIdString(value._id);
+    if (typeof value?.toHexString === "function") return value.toHexString();
+    if (typeof value?.toString === "function") {
+        const normalized = value.toString();
+        return normalized && normalized !== "[object Object]" ? normalized : "";
+    }
+    return "";
+};
+
+const hasBlockedUser = (userDoc, targetId) => {
+    const targetIdString = toIdString(targetId);
+    if (!targetIdString) return false;
+    return (userDoc?.blockedUsers || []).some((entry) => toIdString(entry) === targetIdString);
+};
 
 class FollowService {
 
@@ -13,31 +39,58 @@ class FollowService {
     async followUser(currentUserId, targetUserId) {
         // Input validation
         if (!currentUserId || !targetUserId) {
-            throw new Error("User IDs are required");
+            throw createError("User IDs are required", 400);
         }
 
         if (currentUserId.toString() === targetUserId.toString()) {
-            throw new Error("You cannot follow yourself");
+            throw createError("You cannot follow yourself", 400);
         }
 
         const session = await mongoose.startSession();
         session.startTransaction();
 
-        try {
-            // Check if target user exists and is active
-            const targetUser = await User.findById(targetUserId)
-                .select('accountStatus isPrivate')
-                .session(session);
+        let notificationPayload = null;
 
+        try {
+            const [currentUser, targetUser] = await Promise.all([
+                User.findById(currentUserId)
+                    .select('name username blockedUsers accountStatus')
+                    .session(session),
+                User.findById(targetUserId)
+                    .select('name username accountStatus isPrivate blockedUsers preferences.notifications.follows')
+                    .session(session)
+            ]);
+
+            if (!currentUser) {
+                throw createError("User not found", 404);
+            }
             if (!targetUser) {
-                throw new Error("User not found");
+                throw createError("User not found", 404);
+            }
+
+            if (currentUser.accountStatus !== 'active') {
+                throw createError("Your account is not active", 403);
             }
 
             if (targetUser.accountStatus !== 'active') {
-                throw new Error("Cannot follow inactive user");
+                throw createError("Cannot follow inactive user", 403);
+            }
+
+            if (hasBlockedUser(currentUser, targetUserId)) {
+                throw createError("Unblock this user before following", 403);
+            }
+
+            if (hasBlockedUser(targetUser, currentUserId)) {
+                throw createError("You cannot follow this user", 403);
             }
 
             const shouldApprove = !targetUser.isPrivate;
+
+            const reverseFollowRelation = await Follow.findOne({
+                follower: targetUserId,
+                following: currentUserId,
+                status: 'active'
+            }).session(session);
 
             // Check if relationship already exists
             const existingFollow = await Follow.findOne({
@@ -47,14 +100,15 @@ class FollowService {
 
             let isPending = false;
             let shouldIncrementCounts = false;
+            let followRequestId = null;
 
             if (existingFollow) {
                 if (existingFollow.status === 'active') {
                     if (existingFollow.isApproved) {
-                        throw new Error("Already following this user");
+                        throw createError("Already following this user", 409);
                     }
 
-                    throw new Error("Follow request already pending");
+                    throw createError("Follow request already pending", 409);
                 } else {
                     // Reactivate relationship from inactive state.
                     existingFollow.status = 'active';
@@ -63,10 +117,11 @@ class FollowService {
 
                     isPending = !shouldApprove;
                     shouldIncrementCounts = shouldApprove;
+                    followRequestId = isPending ? existingFollow._id : null;
                 }
             } else {
                 // Create new follow relationship
-                await Follow.create([{
+                const [createdFollow] = await Follow.create([{
                     follower: currentUserId,
                     following: targetUserId,
                     status: 'active',
@@ -75,6 +130,7 @@ class FollowService {
 
                 isPending = !shouldApprove;
                 shouldIncrementCounts = shouldApprove;
+                followRequestId = isPending ? createdFollow?._id : null;
             }
 
             // Update counts only for approved follow relationships.
@@ -92,14 +148,63 @@ class FollowService {
                 );
             }
 
-            // TODO: Trigger notification
-            // if (!targetUser.isPrivate || existingFollow) {
-            //     await notificationService.send(targetUserId, 'NEW_FOLLOWER', currentUserId);
-            // } else {
-            //     await notificationService.send(targetUserId, 'FOLLOW_REQUEST', currentUserId);
-            // }
+            const actorLabel = currentUser?.name || currentUser?.username || "Someone";
+
+            if (targetUser?.preferences?.notifications?.follows !== false) {
+                if (isPending) {
+                    notificationPayload = {
+                        recipientIds: [targetUserId],
+                        actorId: currentUserId,
+                        title: "Follow request",
+                        message: `${actorLabel} requested to follow you`,
+                        type: "activity",
+                        category: "social",
+                        priority: "high",
+                        entityType: "user",
+                        entityId: currentUserId,
+                        link: `/profile/${currentUserId}`,
+                        metadata: {
+                            kind: "follow_request",
+                            actorId: toIdString(currentUserId),
+                            requestId: toIdString(followRequestId)
+                        },
+                        dedupeKey: `social:follow_request:${toIdString(currentUserId)}:${toIdString(targetUserId)}`
+                    };
+                } else {
+                    notificationPayload = {
+                        recipientIds: [targetUserId],
+                        actorId: currentUserId,
+                        title: "New follower",
+                        message: `${actorLabel} started following you`,
+                        type: "activity",
+                        category: "social",
+                        priority: "normal",
+                        entityType: "user",
+                        entityId: currentUserId,
+                        link: `/profile/${currentUserId}`,
+                        metadata: {
+                            kind: "followed_you",
+                            actorId: toIdString(currentUserId),
+                            followActionState: reverseFollowRelation?.isApproved
+                                ? "following"
+                                : reverseFollowRelation
+                                    ? "requested"
+                                    : ""
+                        },
+                        dedupeKey: `social:follow:${toIdString(currentUserId)}:${toIdString(targetUserId)}`
+                    };
+                }
+            }
 
             await session.commitTransaction();
+
+            if (notificationPayload) {
+                try {
+                    await notificationService.createNotifications(notificationPayload);
+                } catch (notificationError) {
+                    console.error("follow notification error", notificationError);
+                }
+            }
 
             return {
                 success: true,
@@ -172,6 +277,56 @@ class FollowService {
         }
     }
 
+    async assertCanViewConnections(targetUserId, requesterUserId) {
+        if (!targetUserId) {
+            throw createError("User not found", 404);
+        }
+
+        if (!requesterUserId) {
+            throw createError("Authentication required", 401);
+        }
+
+        if (toIdString(targetUserId) === toIdString(requesterUserId)) {
+            return;
+        }
+
+        const [targetUser, requesterUser] = await Promise.all([
+            User.findById(targetUserId)
+                .select("accountStatus isPrivate blockedUsers")
+                .lean(),
+            User.findById(requesterUserId)
+                .select("accountStatus blockedUsers")
+                .lean()
+        ]);
+
+        if (!targetUser || targetUser.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        if (!requesterUser || requesterUser.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        if (hasBlockedUser(targetUser, requesterUserId) || hasBlockedUser(requesterUser, targetUserId)) {
+            throw createError("You cannot view this profile", 403);
+        }
+
+        if (!targetUser.isPrivate) {
+            return;
+        }
+
+        const isApprovedFollower = await Follow.exists({
+            follower: requesterUserId,
+            following: targetUserId,
+            status: "active",
+            isApproved: true
+        });
+
+        if (!isApprovedFollower) {
+            throw createError("This account is private", 403);
+        }
+    }
+
     /**
      * Get list of followers for a user
      * @param {ObjectId} userId - User ID to get followers for
@@ -181,6 +336,8 @@ class FollowService {
      * @returns {Promise<Object>} Paginated followers list
      */
     async getFollowers(userId, currentUserId = null, page = 1, limit = 20) {
+        await this.assertCanViewConnections(userId, currentUserId);
+
         const skip = (page - 1) * limit;
 
         // Build query
@@ -206,6 +363,7 @@ class FollowService {
 
         // Check if current user is following each follower
         let followingStatus = {};
+        let followedByStatus = new Set();
         if (currentUserId) {
             const followerIds = followers
                 .map((entry) => entry?.follower?._id)
@@ -214,6 +372,20 @@ class FollowService {
                 currentUserId,
                 followerIds
             );
+
+            if (followerIds.length) {
+                const reverseRelationships = await Follow.find({
+                    follower: { $in: followerIds },
+                    following: currentUserId,
+                    status: 'active',
+                    isApproved: true
+                })
+                    .select('follower')
+                    .lean();
+                followedByStatus = new Set(
+                    reverseRelationships.map((entry) => toIdString(entry.follower))
+                );
+            }
         }
 
         // Transform data
@@ -224,6 +396,9 @@ class FollowService {
                 followedAt: entry.createdAt,
                 isFollowing: currentUserId
                     ? followingStatus[entry.follower._id.toString()]
+                    : undefined,
+                isFollowedBy: currentUserId
+                    ? followedByStatus.has(entry.follower._id.toString())
                     : undefined
             }));
 
@@ -248,6 +423,8 @@ class FollowService {
      * @returns {Promise<Object>} Paginated following list
      */
     async getFollowing(userId, currentUserId = null, page = 1, limit = 20) {
+        await this.assertCanViewConnections(userId, currentUserId);
+
         const skip = (page - 1) * limit;
 
         const query = {
@@ -270,14 +447,37 @@ class FollowService {
 
         // Check if current user is following each user
         let followingStatus = {};
-        if (currentUserId && currentUserId.toString() !== userId.toString()) {
+        let followedByStatus = new Set();
+        if (currentUserId) {
             const followingIds = following
                 .map((entry) => entry?.following?._id)
                 .filter(Boolean);
-            followingStatus = await Follow.checkMultipleRelationships(
-                currentUserId,
-                followingIds
-            );
+
+            if (currentUserId.toString() === userId.toString()) {
+                followingIds.forEach((entryId) => {
+                    const key = toIdString(entryId);
+                    if (key) followingStatus[key] = true;
+                });
+            } else {
+                followingStatus = await Follow.checkMultipleRelationships(
+                    currentUserId,
+                    followingIds
+                );
+            }
+
+            if (followingIds.length) {
+                const reverseRelationships = await Follow.find({
+                    follower: { $in: followingIds },
+                    following: currentUserId,
+                    status: 'active',
+                    isApproved: true
+                })
+                    .select('follower')
+                    .lean();
+                followedByStatus = new Set(
+                    reverseRelationships.map((entry) => toIdString(entry.follower))
+                );
+            }
         }
 
         const results = following
@@ -287,6 +487,9 @@ class FollowService {
                 followedAt: entry.createdAt,
                 isFollowing: currentUserId
                     ? followingStatus[entry.following._id.toString()]
+                    : undefined,
+                isFollowedBy: currentUserId
+                    ? followedByStatus.has(entry.following._id.toString())
                     : undefined
             }));
 
@@ -327,6 +530,8 @@ class FollowService {
      * @returns {Promise<Array>} List of mutual followers
      */
     async getMutualFollowers(userAId, userBId) {
+        await this.assertCanViewConnections(userBId, userAId);
+
         const userAFollowers = await Follow.find({
             following: userAId,
             status: 'active',
@@ -499,6 +704,8 @@ class FollowService {
         const session = await mongoose.startSession();
         session.startTransaction();
 
+        let notificationPayload = null;
+
         try {
             const followRequest = await Follow.findOne({
                 _id: requestId,
@@ -507,7 +714,24 @@ class FollowService {
             }).session(session);
 
             if (!followRequest) {
-                throw new Error("Follow request not found");
+                throw createError("Follow request not found", 404);
+            }
+
+            const [approverUser, requesterUser] = await Promise.all([
+                User.findById(userId)
+                    .select("name username blockedUsers")
+                    .session(session),
+                User.findById(followRequest.follower)
+                    .select("name username blockedUsers preferences.notifications.follows")
+                    .session(session)
+            ]);
+
+            if (!approverUser || !requesterUser) {
+                throw createError("User not found", 404);
+            }
+
+            if (hasBlockedUser(approverUser, followRequest.follower) || hasBlockedUser(requesterUser, userId)) {
+                throw createError("Cannot approve request because one of you has blocked the other", 403);
             }
 
             followRequest.isApproved = true;
@@ -523,13 +747,40 @@ class FollowService {
             await User.findByIdAndUpdate(
                 userId,
                 { $inc: { followersCount: 1 } },
-                { session }
-            );
+                    { session }
+                );
 
-            // TODO: Send approval notification
-            // await notificationService.send(followRequest.follower, 'FOLLOW_REQUEST_APPROVED', userId);
+            if (requesterUser?.preferences?.notifications?.follows !== false) {
+                const actorLabel = approverUser?.name || approverUser?.username || "Someone";
+                notificationPayload = {
+                    recipientIds: [followRequest.follower],
+                    actorId: userId,
+                    title: "Follow request accepted",
+                    message: `${actorLabel} accepted your follow request`,
+                    type: "activity",
+                    category: "social",
+                    priority: "normal",
+                    entityType: "user",
+                    entityId: userId,
+                    link: `/profile/${userId}`,
+                    metadata: {
+                        kind: "follow_request_accepted",
+                        actorId: toIdString(userId)
+                    },
+                    dedupeKey: `social:follow_request_accepted:${toIdString(userId)}:${toIdString(followRequest.follower)}`
+                };
+            }
 
             await session.commitTransaction();
+
+            if (notificationPayload) {
+                try {
+                    await notificationService.createNotifications(notificationPayload);
+                } catch (notificationError) {
+                    console.error("follow approval notification error", notificationError);
+                }
+            }
+
             return { success: true };
         } catch (error) {
             await session.abortTransaction();
