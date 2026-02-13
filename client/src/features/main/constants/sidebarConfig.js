@@ -3,8 +3,25 @@ export const NAV_ITEMS = [
         label: "Overview",
         icon: "Cloud",
         path: "/main",
+        exact: true,
         description: "Workspace overview",
         color: "sky"
+    },
+    {
+        label: "Feed",
+        icon: "Newspaper",
+        path: "/main/feed",
+        exact: true,
+        description: "Social feed",
+        color: "emerald"
+    },
+    {
+        label: "Create",
+        icon: "SquarePen",
+        path: "/main/create",
+        exact: true,
+        description: "Post and story",
+        color: "amber"
     }
 ];
 

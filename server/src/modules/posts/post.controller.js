@@ -233,6 +233,77 @@ const postController = {
     },
 
     /**
+     * Save a post
+     * POST /posts/:id/save
+     */
+    savePost: async (req, res) => {
+        try {
+            const result = await postService.savePost(req.user._id, req.params.id);
+            return sendSuccess(res, result, 'Post saved successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Unsave a post
+     * DELETE /posts/:id/save
+     */
+    unsavePost: async (req, res) => {
+        try {
+            const result = await postService.unsavePost(req.user._id, req.params.id);
+            return sendSuccess(res, result, 'Post removed from saved');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Get current user's bookmarked posts
+     * GET /posts/bookmarks
+     */
+    getBookmarkedPosts: async (req, res) => {
+        try {
+            const { page = 1, limit = 20 } = req.query;
+            const result = await postService.getBookmarkedPosts(
+                req.user._id,
+                parseInt(page, 10),
+                parseInt(limit, 10)
+            );
+            return sendSuccess(res, result, 'Bookmarked posts retrieved');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Track post share
+     * POST /posts/:id/share
+     */
+    sharePost: async (req, res) => {
+        try {
+            const { channel = 'copy_link' } = req.body;
+            const result = await postService.sharePost(req.params.id, channel);
+            return sendSuccess(res, result, 'Post shared successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
+     * Repost / quote repost
+     * POST /posts/:id/repost
+     */
+    repostPost: async (req, res) => {
+        try {
+            const post = await postService.repostPost(req.user._id, req.params.id, req.body);
+            return sendSuccess(res, { post }, 'Post reposted successfully', 201);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    /**
      * Add a comment to a post
      * POST /posts/:id/comments
      */

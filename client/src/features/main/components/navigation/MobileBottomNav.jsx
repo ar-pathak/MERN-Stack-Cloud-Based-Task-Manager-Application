@@ -1,0 +1,64 @@
+import { Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
+import { useNavigate } from "react-router";
+
+const ITEMS = [
+    { id: "overview", label: "Overview", icon: Grid2x2, path: "/main" },
+    { id: "feed", label: "Feed", icon: Newspaper, path: "/main/feed" },
+    { id: "create", label: "Create", icon: SquarePen, path: "/main/create" }
+];
+
+const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) => {
+    const navigate = useNavigate();
+
+    if (hidden) return null;
+
+    const handleMeNavigation = () => {
+        if (!profileId) return;
+        navigate(`/profile/${profileId}`);
+    };
+
+    return (
+        <div
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
+            style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
+        >
+            <div className="grid grid-cols-4 gap-1 px-2 pt-1.5">
+                {ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+
+                    return (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => navigate(item.path)}
+                            className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] ${
+                                isActive
+                                    ? "bg-sky-500/15 text-sky-300"
+                                    : "text-slate-400 hover:bg-slate-800/70"
+                            }`}
+                        >
+                            <Icon className="h-4 w-4" />
+                            {item.label}
+                        </button>
+                    );
+                })}
+
+                <button
+                    type="button"
+                    onClick={handleMeNavigation}
+                    className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] ${
+                        activeTab === "me"
+                            ? "bg-sky-500/15 text-sky-300"
+                            : "text-slate-400 hover:bg-slate-800/70"
+                    }`}
+                >
+                    <UserRound className="h-4 w-4" />
+                    Me
+                </button>
+            </div>
+        </div>
+    );
+};
+
+export default MobileBottomNav;

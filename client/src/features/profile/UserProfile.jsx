@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     MapPin, Link as LinkIcon, Calendar, MoreHorizontal,
     MessageSquare, Edit3, Grid, Image as ImageIcon, Info, Loader2,
-    Share2, Ban, Flag, Copy, Check, ArrowLeft, Grid2x2, Newspaper, SquarePen, UserRound
+    Share2, Ban, Flag, Copy, Check, ArrowLeft
 } from "lucide-react";
 
 // Services
@@ -12,6 +12,7 @@ import { getUserById } from "../../service/user.service";
 import { getUserPosts } from "../../service/post.service";
 import { followUser, unfollowUser } from "../../service/follow.service";
 import { useAuth } from "../../context/AuthContext";
+import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
 
 const UserProfile = () => {
     const { id } = useParams();
@@ -25,7 +26,6 @@ const UserProfile = () => {
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < 768 : false
     );
-    const [toast, setToast] = useState(null);
 
     // Action States
     const [followLoading, setFollowLoading] = useState(false);
@@ -79,11 +79,6 @@ const UserProfile = () => {
     }, [id]);
 
     // --- Handlers ---
-
-    const showToast = (message) => {
-        setToast(message);
-        setTimeout(() => setToast(null), 2000);
-    };
 
     const handleFollowAction = async () => {
         if (!profile) return;
@@ -331,64 +326,8 @@ const UserProfile = () => {
                 </div>
             </div>
 
-            {showOwnMobileMenu && (
-                <div
-                    className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
-                    style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
-                >
-                    <div className="grid grid-cols-4 gap-1 px-2 pt-1.5">
-                        <button
-                            type="button"
-                            onClick={() => navigate("/main")}
-                            className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-                        >
-                            <Grid2x2 className="h-4 w-4" />
-                            Overview
-                        </button>
+            {showOwnMobileMenu && <MobileBottomNav activeTab="me" profileId={id} />}
 
-                        <button
-                            type="button"
-                            onClick={() => showToast("Feed section is coming soon")}
-                            className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-                        >
-                            <Newspaper className="h-4 w-4" />
-                            Feed
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => showToast("Create post feature is coming soon")}
-                            className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-                        >
-                            <SquarePen className="h-4 w-4" />
-                            Create Post
-                        </button>
-
-                        <button
-                            type="button"
-                            className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl bg-sky-500/15 px-1.5 py-2 text-[10px] font-medium text-sky-300 transition-colors sm:px-2 sm:text-[11px]"
-                        >
-                            <UserRound className="h-4 w-4" />
-                            Me
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            <AnimatePresence>
-                {toast && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className={`fixed right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm ${
-                            showOwnMobileMenu ? "bottom-24 left-6" : "bottom-6"
-                        }`}
-                    >
-                        {toast}
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </div>
     );
 };

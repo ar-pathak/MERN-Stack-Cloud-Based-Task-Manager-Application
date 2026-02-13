@@ -1,0 +1,794 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router";
+
+import { useAuth } from "../../../../../context/AuthContext";
+import {
+    addComment,
+    getBookmarkedPosts,
+    getExploreFeed,
+    getPostComments,
+    getUserFeed,
+    likePost,
+    repostPost,
+    savePost,
+    sharePost,
+    unlikePost,
+    unsavePost
+} from "../../../../../service/post.service";
+import {
+    getStoryFeed,
+    markStoryViewed,
+    reactToStory,
+    deleteStory as deleteStoryRequest,
+    getStoryById as getStoryDetails
+} from "../../../../../service/story.service";
+import {
+    DEFAULT_PAGINATION,
+    MOBILE_BREAKPOINT,
+    PAGE_SIZE
+} from "../constants/feed.constants";
+import {
+    extractTopHashtags,
+    getStoryStats,
+    mergeUniquePosts,
+    normalizePagination,
+    postMatchesQuery,
+    scorePost
+} from "../utils/feed.helpers";
+
+const FEED_FETCHERS = {
+    following: getUserFeed,
+    explore: getExploreFeed,
+    bookmarks: getBookmarkedPosts
+};
+
+const useFeedPageLogic = () => {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+
+    const [isMobileViewport, setIsMobileViewport] = useState(() =>
+        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
+    );
+    const [activeTab, setActiveTab] = useState("following");
+    const [sortMode, setSortMode] = useState("latest");
+    const [searchTerm, setSearchTerm] = useState("");
+
+    const [posts, setPosts] = useState([]);
+    const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
+    const [feedLoading, setFeedLoading] = useState(true);
+    const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+
+    const [storiesLoading, setStoriesLoading] = useState(false);
+    const [storyGroups, setStoryGroups] = useState([]);
+    const [storyViewer, setStoryViewer] = useState(null);
+    const [storyAudienceLoading, setStoryAudienceLoading] = useState(false);
+    const [storyDeletingId, setStoryDeletingId] = useState("");
+
+    const [commentsByPost, setCommentsByPost] = useState({});
+    const [commentsLoadingByPost, setCommentsLoadingByPost] = useState({});
+    const [commentsSubmittingByPost, setCommentsSubmittingByPost] = useState({});
+    const [commentDrafts, setCommentDrafts] = useState({});
+    const [expandedCommentsPostId, setExpandedCommentsPostId] = useState(null);
+
+    const [actionState, setActionState] = useState({});
+    const [toast, setToast] = useState(null);
+
+    const [repostComposer, setRepostComposer] = useState({
+        postId: null,
+        quoteText: "",
+        visibility: "public",
+        submitting: false
+    });
+
+    const toastTimeoutRef = useRef(null);
+    const feedRequestRef = useRef(0);
+    const storyRequestRef = useRef(0);
+    const viewedStoryIdsRef = useRef(new Set());
+    const storyGroupsRef = useRef([]);
+
+    useEffect(() => {
+        const onResize = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
+        window.addEventListener("resize", onResize);
+        return () => window.removeEventListener("resize", onResize);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (toastTimeoutRef.current) {
+                clearTimeout(toastTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        storyGroupsRef.current = storyGroups;
+    }, [storyGroups]);
+
+    const showToast = useCallback((message, kind = "success") => {
+        if (toastTimeoutRef.current) {
+            clearTimeout(toastTimeoutRef.current);
+        }
+        setToast({ message, kind });
+        toastTimeoutRef.current = setTimeout(() => setToast(null), 2400);
+    }, []);
+
+    const patchPost = useCallback((postId, updater) => {
+        const key = String(postId);
+        setPosts((previous) =>
+            previous.map((post) => {
+                if (String(post?._id || "") === key) {
+                    return updater(post);
+                }
+
+                if (String(post?.originalPost?._id || "") === key) {
+                    return {
+                        ...post,
+                        originalPost: updater(post.originalPost)
+                    };
+                }
+
+                return post;
+            })
+        );
+    }, []);
+
+    const loadStories = useCallback(
+        async ({ silent = false } = {}) => {
+            const requestId = ++storyRequestRef.current;
+            if (!silent) setStoriesLoading(true);
+
+            try {
+                const payload = await getStoryFeed();
+                if (requestId !== storyRequestRef.current) return;
+
+                const groups = Array.isArray(payload?.stories) ? payload.stories : [];
+                setStoryGroups(groups);
+                const seenStoryIds = new Set();
+                groups.forEach((group) => {
+                    (group?.stories || []).forEach((story) => {
+                        if (!story?._id || !story?.hasViewed) return;
+                        seenStoryIds.add(String(story._id));
+                    });
+                });
+                viewedStoryIdsRef.current = seenStoryIds;
+            } catch (error) {
+                if (requestId !== storyRequestRef.current) return;
+                showToast(error?.message || "Failed to load stories", "error");
+            } finally {
+                if (requestId === storyRequestRef.current && !silent) {
+                    setStoriesLoading(false);
+                }
+            }
+        },
+        [showToast]
+    );
+
+    const loadFeed = useCallback(
+        async ({ page = 1, append = false } = {}) => {
+            const requestId = ++feedRequestRef.current;
+            if (append) {
+                setFeedLoadingMore(true);
+            } else {
+                setFeedLoading(true);
+            }
+
+            try {
+                const fetcher = FEED_FETCHERS[activeTab] || getUserFeed;
+                const payload = await fetcher({ page, limit: PAGE_SIZE });
+                if (requestId !== feedRequestRef.current) return;
+
+                const nextPosts = Array.isArray(payload?.posts) ? payload.posts : [];
+                const nextPagination = normalizePagination(payload?.pagination, page, nextPosts.length);
+
+                setPosts((previous) =>
+                    append ? mergeUniquePosts([...previous, ...nextPosts]) : nextPosts
+                );
+                setPagination(nextPagination);
+            } catch (error) {
+                if (requestId !== feedRequestRef.current) return;
+                if (!append) {
+                    setPosts([]);
+                    setPagination(DEFAULT_PAGINATION);
+                }
+                showToast(error?.message || "Failed to load feed", "error");
+            } finally {
+                if (requestId === feedRequestRef.current) {
+                    setFeedLoading(false);
+                    setFeedLoadingMore(false);
+                }
+            }
+        },
+        [activeTab, showToast]
+    );
+
+    useEffect(() => {
+        setExpandedCommentsPostId(null);
+        setCommentDrafts({});
+        setCommentsByPost({});
+        setCommentsLoadingByPost({});
+        loadFeed({ page: 1, append: false });
+    }, [activeTab, loadFeed]);
+
+    useEffect(() => {
+        loadStories();
+    }, [loadStories]);
+
+    const filteredPosts = useMemo(() => {
+        const filtered = posts.filter((post) => postMatchesQuery(post, searchTerm));
+        if (sortMode === "popular") {
+            return [...filtered].sort((a, b) => scorePost(b) - scorePost(a));
+        }
+        return [...filtered].sort(
+            (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+        );
+    }, [posts, searchTerm, sortMode]);
+
+    const topHashtags = useMemo(() => extractTopHashtags(filteredPosts), [filteredPosts]);
+    const storyStats = useMemo(() => getStoryStats(storyGroups), [storyGroups]);
+
+    const handleOpenStoryGroup = useCallback(
+        (groupIndex) => {
+            const group = storyGroups?.[groupIndex];
+            if (!group?.stories?.length) return;
+            const unseenIndex = group.stories.findIndex((story) => !story?.hasViewed);
+            setStoryViewer({
+                groupIndex,
+                storyIndex: unseenIndex >= 0 ? unseenIndex : 0
+            });
+        },
+        [storyGroups]
+    );
+
+    const handleNavigateStory = useCallback(
+        (direction) => {
+            setStoryViewer((previous) => {
+                if (!previous) return previous;
+
+                const currentGroup = storyGroups?.[previous.groupIndex];
+                if (!currentGroup?.stories?.length) return null;
+
+                if (direction > 0) {
+                    if (previous.storyIndex < currentGroup.stories.length - 1) {
+                        return {
+                            groupIndex: previous.groupIndex,
+                            storyIndex: previous.storyIndex + 1
+                        };
+                    }
+
+                    const nextGroupIndex = previous.groupIndex + 1;
+                    if (nextGroupIndex >= storyGroups.length) return null;
+
+                    const nextGroup = storyGroups[nextGroupIndex];
+                    const nextUnseen = nextGroup?.stories?.findIndex((story) => !story?.hasViewed);
+                    return {
+                        groupIndex: nextGroupIndex,
+                        storyIndex: nextUnseen >= 0 ? nextUnseen : 0
+                    };
+                }
+
+                if (previous.storyIndex > 0) {
+                    return {
+                        groupIndex: previous.groupIndex,
+                        storyIndex: previous.storyIndex - 1
+                    };
+                }
+
+                const previousGroupIndex = previous.groupIndex - 1;
+                if (previousGroupIndex < 0) return previous;
+                const prevGroup = storyGroups[previousGroupIndex];
+                return {
+                    groupIndex: previousGroupIndex,
+                    storyIndex: Math.max(0, (prevGroup?.stories?.length || 1) - 1)
+                };
+            });
+        },
+        [storyGroups]
+    );
+
+    const markStorySeenLocally = useCallback((groupIndex, storyIndex) => {
+        setStoryGroups((previous) =>
+            previous.map((group, groupPosition) => {
+                if (groupPosition !== groupIndex) return group;
+                const stories = (group?.stories || []).map((story, position) =>
+                    position === storyIndex ? { ...story, hasViewed: true } : story
+                );
+                const unseenCount = stories.reduce(
+                    (accumulator, story) => accumulator + (story?.hasViewed ? 0 : 1),
+                    0
+                );
+                return {
+                    ...group,
+                    stories,
+                    unseenCount,
+                    hasViewedAll: unseenCount === 0
+                };
+            })
+        );
+    }, []);
+
+    const handleMarkStoryViewed = useCallback(
+        async (groupIndex, storyIndex) => {
+            const story = storyGroups?.[groupIndex]?.stories?.[storyIndex];
+            if (!story?._id) return;
+
+            const storyId = String(story._id);
+            if (viewedStoryIdsRef.current.has(storyId)) return;
+
+            markStorySeenLocally(groupIndex, storyIndex);
+
+            viewedStoryIdsRef.current.add(storyId);
+
+            try {
+                const updated = await markStoryViewed(storyId);
+                if (!updated?._id) return;
+
+                setStoryGroups((previous) =>
+                    previous.map((group) => ({
+                        ...group,
+                        stories: (group?.stories || []).map((entry) =>
+                            String(entry?._id || "") === storyId
+                                ? { ...entry, ...updated, hasViewed: true }
+                                : entry
+                        )
+                    }))
+                );
+            } catch {
+                // Keep optimistic local state for smooth viewer flow.
+            }
+        },
+        [markStorySeenLocally, storyGroups]
+    );
+
+    const handleReactToStory = useCallback(
+        async (storyId, emoji) => {
+            if (!storyId || !emoji) return;
+            try {
+                const updated = await reactToStory(storyId, emoji);
+                if (updated?._id) {
+                    setStoryGroups((previous) =>
+                        previous.map((group) => ({
+                            ...group,
+                            stories: (group?.stories || []).map((entry) =>
+                                String(entry?._id || "") === String(updated?._id)
+                                    ? { ...entry, ...updated }
+                                    : entry
+                            )
+                        }))
+                    );
+                }
+                showToast(updated?.myReaction ? "Reaction sent" : "Reaction removed");
+            } catch (error) {
+                showToast(error?.message || "Could not react to story", "error");
+            }
+        },
+        [showToast]
+    );
+
+    const handleInspectStoryAudience = useCallback(
+        async (storyId) => {
+            if (!storyId) return;
+
+            setStoryAudienceLoading(true);
+            try {
+                const storyIdKey = String(storyId);
+                const updated = await getStoryDetails(storyIdKey);
+
+                if (!updated?._id) return;
+
+                const updatedStoryIdKey = String(updated._id);
+                setStoryGroups((previous) =>
+                    previous.map((group) => {
+                        const stories = (group?.stories || []).map((entry) => {
+                            if (String(entry?._id || "") !== updatedStoryIdKey) return entry;
+                            return {
+                                ...entry,
+                                ...updated,
+                                hasViewed: Boolean(entry?.hasViewed || updated?.hasViewed)
+                            };
+                        });
+
+                        const unseenCount = stories.reduce(
+                            (accumulator, story) => accumulator + (story?.hasViewed ? 0 : 1),
+                            0
+                        );
+
+                        return {
+                            ...group,
+                            stories,
+                            unseenCount,
+                            hasViewedAll: unseenCount === 0
+                        };
+                    })
+                );
+            } catch (error) {
+                showToast(error?.message || "Could not load story viewers", "error");
+            } finally {
+                setStoryAudienceLoading(false);
+            }
+        },
+        [showToast]
+    );
+
+    const handleDeleteStory = useCallback(
+        async (storyId) => {
+            if (!storyId || storyDeletingId === String(storyId)) return;
+
+            const storyIdKey = String(storyId);
+            setStoryDeletingId(storyIdKey);
+            try {
+                await deleteStoryRequest(storyIdKey);
+
+                const nextGroups = storyGroupsRef.current
+                    .map((group) => ({
+                        ...group,
+                        stories: (group?.stories || []).filter(
+                            (story) => String(story?._id || "") !== storyIdKey
+                        )
+                    }))
+                    .filter((group) => (group?.stories || []).length > 0)
+                    .map((group) => {
+                        const stories = group.stories || [];
+                        const unseenCount = stories.reduce(
+                            (accumulator, story) => accumulator + (story?.hasViewed ? 0 : 1),
+                            0
+                        );
+                        return {
+                            ...group,
+                            unseenCount,
+                            hasViewedAll: unseenCount === 0,
+                            lastStoryAt:
+                                stories[stories.length - 1]?.createdAt || group?.lastStoryAt
+                        };
+                    });
+
+                setStoryGroups(nextGroups);
+                storyGroupsRef.current = nextGroups;
+                viewedStoryIdsRef.current.delete(storyIdKey);
+
+                setStoryViewer((previous) => {
+                    if (!previous) return previous;
+                    if (!nextGroups.length) return null;
+
+                    const groupIndex = Math.min(previous.groupIndex, nextGroups.length - 1);
+                    const maxStoryIndex = (nextGroups[groupIndex]?.stories || []).length - 1;
+                    if (maxStoryIndex < 0) return null;
+
+                    return {
+                        groupIndex,
+                        storyIndex: Math.min(previous.storyIndex, maxStoryIndex)
+                    };
+                });
+
+                showToast("Story deleted");
+            } catch (error) {
+                showToast(error?.message || "Failed to delete story", "error");
+            } finally {
+                setStoryDeletingId("");
+            }
+        },
+        [showToast, storyDeletingId]
+    );
+
+    const setActionLoading = useCallback((key, value) => {
+        setActionState((previous) => ({ ...previous, [key]: value }));
+    }, []);
+
+    const handleToggleLike = useCallback(
+        async (post) => {
+            const postId = post?._id;
+            if (!postId) return;
+            const key = `like:${postId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            const currentlyLiked = Boolean(post?.userEngagement?.hasLiked);
+
+            try {
+                if (currentlyLiked) {
+                    await unlikePost(postId);
+                } else {
+                    await likePost(postId);
+                }
+
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    likesCount: Math.max(
+                        0,
+                        Number(entry?.likesCount || 0) + (currentlyLiked ? -1 : 1)
+                    ),
+                    userEngagement: {
+                        ...(entry?.userEngagement || {}),
+                        hasLiked: !currentlyLiked
+                    }
+                }));
+            } catch (error) {
+                showToast(error?.message || "Could not update like", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, patchPost, setActionLoading, showToast]
+    );
+
+    const handleToggleSave = useCallback(
+        async (post) => {
+            const postId = post?._id;
+            if (!postId) return;
+            const key = `save:${postId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            const currentlySaved = Boolean(post?.userEngagement?.hasSaved);
+
+            try {
+                if (currentlySaved) {
+                    await unsavePost(postId);
+                } else {
+                    await savePost(postId);
+                }
+
+                if (activeTab === "bookmarks" && currentlySaved) {
+                    setPosts((previous) =>
+                        previous.filter((entry) => String(entry?._id || "") !== String(postId))
+                    );
+                    setPagination((previous) => ({
+                        ...previous,
+                        total: Math.max(0, Number(previous?.total || 0) - 1)
+                    }));
+                } else {
+                    patchPost(postId, (entry) => ({
+                        ...entry,
+                        userEngagement: {
+                            ...(entry?.userEngagement || {}),
+                            hasSaved: !currentlySaved
+                        }
+                    }));
+                }
+
+                showToast(currentlySaved ? "Removed from saved" : "Saved post");
+            } catch (error) {
+                showToast(error?.message || "Could not update save state", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, activeTab, patchPost, setActionLoading, showToast]
+    );
+
+    const handleSharePost = useCallback(
+        async (post) => {
+            const postId = post?._id;
+            if (!postId) return;
+            const key = `share:${postId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            try {
+                await sharePost(postId, "copy_link");
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    sharesCount: Number(entry?.sharesCount || 0) + 1
+                }));
+
+                const shareUrl =
+                    typeof window !== "undefined"
+                        ? `${window.location.origin}/post/${postId}`
+                        : `/post/${postId}`;
+
+                if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(shareUrl);
+                }
+
+                showToast("Post link copied");
+            } catch (error) {
+                showToast(error?.message || "Could not share post", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, patchPost, setActionLoading, showToast]
+    );
+
+    const openRepostComposer = useCallback((post) => {
+        setRepostComposer({
+            postId: post?._id || null,
+            quoteText: "",
+            visibility: "public",
+            submitting: false
+        });
+    }, []);
+
+    const closeRepostComposer = useCallback(() => {
+        setRepostComposer({
+            postId: null,
+            quoteText: "",
+            visibility: "public",
+            submitting: false
+        });
+    }, []);
+
+    const repostTargetPost = useMemo(
+        () =>
+            posts.find(
+                (entry) => String(entry?._id || "") === String(repostComposer?.postId || "")
+            ) || null,
+        [posts, repostComposer?.postId]
+    );
+
+    const submitRepost = useCallback(
+        async (mode) => {
+            const postId = repostComposer?.postId;
+            if (!postId || repostComposer?.submitting) return;
+
+            const quoteText = String(repostComposer?.quoteText || "").trim();
+            if (mode === "quote" && !quoteText) {
+                showToast("Quote repost needs content", "error");
+                return;
+            }
+
+            setRepostComposer((previous) => ({ ...previous, submitting: true }));
+
+            try {
+                const created = await repostPost(postId, {
+                    mode,
+                    content: mode === "quote" ? quoteText : undefined,
+                    visibility: repostComposer?.visibility || "public"
+                });
+
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    repostsCount: Number(entry?.repostsCount || 0) + 1,
+                    userEngagement: {
+                        ...(entry?.userEngagement || {}),
+                        hasReposted: true
+                    }
+                }));
+
+                if (created?._id && activeTab !== "bookmarks") {
+                    setPosts((previous) => mergeUniquePosts([created, ...previous]));
+                }
+
+                showToast(mode === "quote" ? "Quote repost published" : "Reposted");
+                closeRepostComposer();
+            } catch (error) {
+                showToast(error?.message || "Could not repost", "error");
+                setRepostComposer((previous) => ({ ...previous, submitting: false }));
+            }
+        },
+        [activeTab, closeRepostComposer, patchPost, repostComposer, showToast]
+    );
+
+    const loadCommentsForPost = useCallback(
+        async (postId) => {
+            if (!postId) return;
+            setCommentsLoadingByPost((previous) => ({ ...previous, [postId]: true }));
+            try {
+                const result = await getPostComments(postId, {
+                    page: 1,
+                    limit: 8,
+                    sortBy: "recent"
+                });
+                setCommentsByPost((previous) => ({
+                    ...previous,
+                    [postId]: Array.isArray(result?.comments) ? result.comments : []
+                }));
+            } catch (error) {
+                showToast(error?.message || "Failed to load comments", "error");
+            } finally {
+                setCommentsLoadingByPost((previous) => ({ ...previous, [postId]: false }));
+            }
+        },
+        [showToast]
+    );
+
+    const handleToggleComments = useCallback(
+        async (postId) => {
+            const nextOpen = expandedCommentsPostId === postId ? null : postId;
+            setExpandedCommentsPostId(nextOpen);
+            if (!nextOpen) return;
+            if (!commentsByPost[postId]) {
+                await loadCommentsForPost(postId);
+            }
+        },
+        [commentsByPost, expandedCommentsPostId, loadCommentsForPost]
+    );
+
+    const handleSubmitComment = useCallback(
+        async (postId) => {
+            const value = String(commentDrafts?.[postId] || "").trim();
+            if (!value) return;
+
+            setCommentsSubmittingByPost((previous) => ({ ...previous, [postId]: true }));
+
+            try {
+                const comment = await addComment(postId, { content: value });
+                setCommentsByPost((previous) => ({
+                    ...previous,
+                    [postId]: [comment, ...(previous?.[postId] || [])]
+                }));
+                setCommentDrafts((previous) => ({ ...previous, [postId]: "" }));
+
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    commentsCount: Number(entry?.commentsCount || 0) + 1
+                }));
+            } catch (error) {
+                showToast(error?.message || "Failed to comment", "error");
+            } finally {
+                setCommentsSubmittingByPost((previous) => ({ ...previous, [postId]: false }));
+            }
+        },
+        [commentDrafts, patchPost, showToast]
+    );
+
+    const handleCommentDraftChange = useCallback((postId, value) => {
+        setCommentDrafts((previous) => ({ ...previous, [postId]: value }));
+    }, []);
+
+    const handleLoadMore = useCallback(() => {
+        if (!pagination?.hasMore || feedLoadingMore) return;
+        loadFeed({ page: Number(pagination?.page || 1) + 1, append: true });
+    }, [feedLoadingMore, loadFeed, pagination]);
+
+    const handleRefresh = useCallback(async () => {
+        await Promise.all([loadFeed({ page: 1, append: false }), loadStories()]);
+        showToast("Feed refreshed");
+    }, [loadFeed, loadStories, showToast]);
+
+    const profileId = user?._id || user?.id;
+    const shouldShowBottomNav = isMobileViewport;
+
+    return {
+        navigate,
+        user,
+        activeTab,
+        setActiveTab,
+        sortMode,
+        setSortMode,
+        searchTerm,
+        setSearchTerm,
+        pagination,
+        feedLoading,
+        feedLoadingMore,
+        storiesLoading,
+        storyGroups,
+        storyViewer,
+        setStoryViewer,
+        storyAudienceLoading,
+        storyDeletingId,
+        commentsByPost,
+        commentsLoadingByPost,
+        commentsSubmittingByPost,
+        commentDrafts,
+        expandedCommentsPostId,
+        actionState,
+        toast,
+        repostComposer,
+        setRepostComposer,
+        repostTargetPost,
+        filteredPosts,
+        topHashtags,
+        storyStats,
+        profileId,
+        shouldShowBottomNav,
+        handleOpenStoryGroup,
+        handleNavigateStory,
+        handleMarkStoryViewed,
+        handleReactToStory,
+        handleInspectStoryAudience,
+        handleDeleteStory,
+        handleToggleLike,
+        handleToggleSave,
+        handleSharePost,
+        openRepostComposer,
+        closeRepostComposer,
+        submitRepost,
+        handleToggleComments,
+        handleSubmitComment,
+        handleCommentDraftChange,
+        handleLoadMore,
+        handleRefresh
+    };
+};
+
+export default useFeedPageLogic;

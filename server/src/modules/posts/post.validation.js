@@ -218,6 +218,30 @@ const likeSchema = z.object({
 });
 
 /**
+ * Share Schema
+ */
+const sharePostSchema = z.object({
+    channel: z.enum(['copy_link', 'whatsapp', 'telegram', 'instagram', 'x', 'other'])
+        .default('copy_link')
+        .optional()
+});
+
+/**
+ * Repost Schema
+ */
+const repostPostSchema = z.object({
+    mode: z.enum(['repost', 'quote']).default('repost'),
+    content: z.string().max(5000).optional(),
+    visibility: z.enum(['public', 'followers', 'private', 'unlisted']).default('public').optional()
+}).refine(
+    (data) => {
+        if (data.mode !== 'quote') return true;
+        return Boolean(String(data.content || '').trim());
+    },
+    { message: 'Quote repost requires content' }
+);
+
+/**
  * Comment Schema
  */
 const commentSchema = z.object({
@@ -263,6 +287,8 @@ module.exports = {
     hashtagSchema,
     trendingSchema,
     likeSchema,
+    sharePostSchema,
+    repostPostSchema,
     commentSchema,
     updateCommentSchema,
     commentSortSchema,

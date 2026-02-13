@@ -125,10 +125,34 @@ const postSchema = new Schema({
 
     // --- Location ---
     location: {
-        name: String,
+        name: {
+            type: String,
+            trim: true,
+            maxLength: [120, 'Location name cannot exceed 120 characters']
+        },
         coordinates: {
-            type: { type: String, default: 'Point' },
-            coordinates: [Number] // [longitude, latitude]
+            type: {
+                type: String,
+                enum: ['Point']
+            },
+            coordinates: {
+                type: [Number], // [longitude, latitude]
+                validate: {
+                    validator: function (value) {
+                        if (value == null) return true;
+                        if (!Array.isArray(value) || value.length !== 2) return false;
+
+                        const [lng, lat] = value;
+                        return Number.isFinite(lng) &&
+                            Number.isFinite(lat) &&
+                            lng >= -180 &&
+                            lng <= 180 &&
+                            lat >= -90 &&
+                            lat <= 90;
+                    },
+                    message: 'Location coordinates must be [longitude, latitude]'
+                }
+            }
         }
     },
 
@@ -331,8 +355,31 @@ postSchema.statics.getTrendingPosts = async function (limit = 10, timeframe = 24
 
 // --- Pre-save Hooks ---
 
+// Normalize optional location payload to avoid partial geo objects that break 2dsphere indexing.
+postSchema.pre('validate', function () {
+    if (!this.location) return;
+
+    const geo = this.location.coordinates;
+    const coords = geo?.coordinates;
+    const hasValidPair = Array.isArray(coords) &&
+        coords.length === 2 &&
+        Number.isFinite(coords[0]) &&
+        Number.isFinite(coords[1]);
+
+    if (!hasValidPair) {
+        if (this.location.name) {
+            this.location.coordinates = undefined;
+        } else {
+            this.location = undefined;
+        }
+        return;
+    }
+
+    geo.type = 'Point';
+});
+
 // Auto-extract hashtags and mentions
-postSchema.pre('save', function (next) {
+postSchema.pre('save', function () {
     if (this.isModified('content')) {
         // Extract hashtags
         const extractedHashtags = this.extractHashtags();
@@ -343,16 +390,14 @@ postSchema.pre('save', function (next) {
         // Note: Mentions are extracted and validated in service layer
         // to ensure mentioned users exist
     }
-    next();
 });
 
 // Set edited flag
-postSchema.pre('save', function (next) {
+postSchema.pre('save', function () {
     if (!this.isNew && this.isModified('content')) {
         this.isEdited = true;
         this.editedAt = new Date();
     }
-    next();
 });
 
 // --- Post-save Hooks ---
@@ -382,8 +427,5 @@ postSchema.post('findOneAndDelete', async function (doc) {
         // await Comment.deleteMany({ post: doc._id });
     }
 });
-
-// --- Geospatial Index ---
-postSchema.index({ 'location.coordinates': '2dsphere' });
 
 module.exports = mongoose.model('Post', postSchema);

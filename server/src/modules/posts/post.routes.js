@@ -13,6 +13,8 @@ const {
     hashtagSchema,
     trendingSchema,
     likeSchema,
+    sharePostSchema,
+    repostPostSchema,
     commentSchema,
     updateCommentSchema,
     commentIdSchema,
@@ -51,13 +53,6 @@ router.get(
     postController.getHashtagPosts
 );
 
-// Get specific post (public)
-router.get(
-    '/:id',
-    validate(postIdSchema, 'params'),
-    postController.getPost
-);
-
 // Get user's posts (public profile)
 router.get(
     '/user/:userId',
@@ -67,11 +62,11 @@ router.get(
 );
 
 // --- Protected Routes (Auth Required) ---
-router.use(authMiddleware);
 
 // Create post
 router.post(
     '/',
+    authMiddleware,
     validate(createPostSchema),
     postController.createPost
 );
@@ -79,20 +74,72 @@ router.post(
 // Get personalized feed
 router.get(
     '/feed',
+    authMiddleware,
     validate(paginationSchema, 'query'),
     postController.getFeed
+);
+
+// Get bookmarked posts
+router.get(
+    '/bookmarks',
+    authMiddleware,
+    validate(paginationSchema, 'query'),
+    postController.getBookmarkedPosts
 );
 
 // Get liked posts
 router.get(
     '/liked',
+    authMiddleware,
     validate(paginationSchema, 'query'),
     postController.getLikedPosts
+);
+
+// Get specific post (public)
+// Placed after static paths so /feed, /liked, /bookmarks resolve correctly.
+router.get(
+    '/:id',
+    validate(postIdSchema, 'params'),
+    postController.getPost
+);
+
+// Share post
+router.post(
+    '/:id/share',
+    authMiddleware,
+    validate(postIdSchema, 'params'),
+    validate(sharePostSchema),
+    postController.sharePost
+);
+
+// Repost / quote repost
+router.post(
+    '/:id/repost',
+    authMiddleware,
+    validate(postIdSchema, 'params'),
+    validate(repostPostSchema),
+    postController.repostPost
+);
+
+// Save / unsave post
+router.post(
+    '/:id/save',
+    authMiddleware,
+    validate(postIdSchema, 'params'),
+    postController.savePost
+);
+
+router.delete(
+    '/:id/save',
+    authMiddleware,
+    validate(postIdSchema, 'params'),
+    postController.unsavePost
 );
 
 // Update post
 router.put(
     '/:id',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     validate(updatePostSchema),
     postController.updatePost
@@ -101,6 +148,7 @@ router.put(
 // Delete post
 router.delete(
     '/:id',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     postController.deletePost
 );
@@ -108,6 +156,7 @@ router.delete(
 // --- Like/Unlike Post ---
 router.post(
     '/:id/like',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     validate(likeSchema),
     postController.likePost
@@ -115,6 +164,7 @@ router.post(
 
 router.delete(
     '/:id/like',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     postController.unlikePost
 );
@@ -122,6 +172,7 @@ router.delete(
 // Get post likes
 router.get(
     '/:id/likes',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     validate(paginationSchema, 'query'),
     postController.getPostLikes
@@ -132,6 +183,7 @@ router.get(
 // Add comment to post
 router.post(
     '/:id/comments',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     validate(commentSchema),
     postController.addComment
@@ -140,6 +192,7 @@ router.post(
 // Get post comments
 router.get(
     '/:id/comments',
+    authMiddleware,
     validate(postIdSchema, 'params'),
     validate(commentSortSchema, 'query'),
     postController.getComments
@@ -148,6 +201,7 @@ router.get(
 // Update comment
 router.put(
     '/comments/:commentId',
+    authMiddleware,
     validate(commentIdSchema, 'params'),
     validate(updateCommentSchema),
     postController.updateComment
@@ -156,6 +210,7 @@ router.put(
 // Delete comment
 router.delete(
     '/comments/:commentId',
+    authMiddleware,
     validate(commentIdSchema, 'params'),
     postController.deleteComment
 );
@@ -163,6 +218,7 @@ router.delete(
 // Get comment replies
 router.get(
     '/comments/:commentId/replies',
+    authMiddleware,
     validate(commentIdSchema, 'params'),
     validate(paginationSchema, 'query'),
     postController.getCommentReplies
@@ -171,12 +227,14 @@ router.get(
 // Like/Unlike comment
 router.post(
     '/comments/:commentId/like',
+    authMiddleware,
     validate(commentIdSchema, 'params'),
     postController.likeComment
 );
 
 router.delete(
     '/comments/:commentId/like',
+    authMiddleware,
     validate(commentIdSchema, 'params'),
     postController.unlikeComment
 );

@@ -169,6 +169,88 @@ export const getLikedPosts = async (params = {}) => {
 };
 
 /**
+ * Get bookmarked posts for current user
+ * @param {Object} params - { page, limit }
+ */
+export const getBookmarkedPosts = async (params = {}) => {
+    try {
+        const response = await api.get(`${BASE_URL}/bookmarks`, { params });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to load bookmarked posts",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Save a post to bookmarks
+ * @param {String} postId
+ */
+export const savePost = async (postId) => {
+    try {
+        const response = await api.post(`${BASE_URL}/${postId}/save`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to save post",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Remove a post from bookmarks
+ * @param {String} postId
+ */
+export const unsavePost = async (postId) => {
+    try {
+        const response = await api.delete(`${BASE_URL}/${postId}/save`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to remove saved post",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Track share action for a post
+ * @param {String} postId
+ * @param {String} channel
+ */
+export const sharePost = async (postId, channel = "copy_link") => {
+    try {
+        const response = await api.post(`${BASE_URL}/${postId}/share`, { channel });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to share post",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * Repost or quote-repost a post
+ * @param {String} postId
+ * @param {Object} data - { mode: "repost"|"quote", content?, visibility? }
+ */
+export const repostPost = async (postId, data = {}) => {
+    try {
+        const response = await api.post(`${BASE_URL}/${postId}/repost`, data);
+        return response.data?.data?.post || response.data?.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to repost",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
  * Update Post
  * @param {String} postId 
  * @param {Object} updateData - { content, visibility, etc. }

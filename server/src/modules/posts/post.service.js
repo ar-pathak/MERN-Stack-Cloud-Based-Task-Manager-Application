@@ -2,9 +2,16 @@ const mongoose = require('mongoose');
 const Post = require('../../models/post');
 const Like = require('../../models/like');
 const Comment = require('../../models/comment');
+const PostSave = require('../../models/postSave');
 const Follow = require('../../models/follow');
 const User = require('../../models/user');
 const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
 
 class PostService {
 
@@ -138,8 +145,15 @@ class PostService {
 
         // Add user engagement data if logged in
         if (currentUserId) {
-            const [hasLiked, isFollowingAuthor] = await Promise.all([
+            const [hasLiked, hasSaved, hasReposted, isFollowingAuthor] = await Promise.all([
                 Like.checkUserLiked(currentUserId, postId),
+                PostSave.exists({ user: currentUserId, post: postId }),
+                Post.exists({
+                    author: currentUserId,
+                    originalPost: postId,
+                    postType: { $in: ["repost", "quote"] },
+                    status: "active"
+                }),
                 currentUserId.toString() !== post.author._id.toString()
                     ? Follow.checkRelationship(currentUserId, post.author._id)
                     : { isFollowing: false }
@@ -147,6 +161,8 @@ class PostService {
 
             post.userEngagement = {
                 hasLiked,
+                hasSaved: Boolean(hasSaved),
+                hasReposted: Boolean(hasReposted),
                 isFollowingAuthor: isFollowingAuthor.isFollowing
             };
         }
@@ -275,6 +291,157 @@ class PostService {
     }
 
     /**
+     * Save a post to user's bookmarks.
+     * @param {ObjectId} userId
+     * @param {ObjectId} postId
+     * @returns {Promise<Object>}
+     */
+    async savePost(userId, postId) {
+        const post = await Post.findById(postId).select("_id status");
+        if (!post || post.status !== "active") {
+            throw createError("Post not found", 404);
+        }
+
+        const existing = await PostSave.findOne({ user: userId, post: postId }).lean();
+        if (existing) {
+            return { saved: true };
+        }
+
+        await PostSave.create({ user: userId, post: postId });
+        return { saved: true };
+    }
+
+    /**
+     * Remove a post from bookmarks.
+     * @param {ObjectId} userId
+     * @param {ObjectId} postId
+     * @returns {Promise<Object>}
+     */
+    async unsavePost(userId, postId) {
+        await PostSave.deleteOne({ user: userId, post: postId });
+        return { saved: false };
+    }
+
+    /**
+     * Get bookmarked posts for current user.
+     * @param {ObjectId} userId
+     * @param {Number} page
+     * @param {Number} limit
+     * @returns {Promise<Object>}
+     */
+    async getBookmarkedPosts(userId, page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+
+        const [bookmarks, total] = await Promise.all([
+            PostSave.find({ user: userId })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .populate({
+                    path: "post",
+                    populate: [
+                        { path: "author", select: "username name avatar isVerified" },
+                        {
+                            path: "originalPost",
+                            populate: { path: "author", select: "username name avatar isVerified" }
+                        }
+                    ]
+                })
+                .lean(),
+            PostSave.countDocuments({ user: userId })
+        ]);
+
+        const posts = bookmarks
+            .map((entry) => entry.post)
+            .filter((post) => post && post.status === "active");
+
+        const postsWithEngagement = await this.addUserEngagementData(posts, userId);
+
+        return {
+            posts: postsWithEngagement,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit),
+                hasMore: page * limit < total
+            }
+        };
+    }
+
+    /**
+     * Track a post share action.
+     * @param {ObjectId} postId
+     * @param {String} channel
+     * @returns {Promise<Object>}
+     */
+    async sharePost(postId, channel = "copy_link") {
+        const post = await Post.findById(postId).select("_id status");
+        if (!post || post.status !== "active") {
+            throw createError("Post not found", 404);
+        }
+
+        await Post.findByIdAndUpdate(postId, { $inc: { sharesCount: 1 } });
+
+        return {
+            shared: true,
+            channel,
+            shareUrl: `/post/${postId}`
+        };
+    }
+
+    /**
+     * Repost or quote a post.
+     * @param {ObjectId} userId
+     * @param {ObjectId} postId
+     * @param {Object} payload
+     * @returns {Promise<Object>}
+     */
+    async repostPost(userId, postId, payload = {}) {
+        const originalPost = await Post.findById(postId)
+            .populate("author", "username")
+            .lean();
+
+        if (!originalPost || originalPost.status !== "active") {
+            throw createError("Original post not found", 404);
+        }
+
+        const mode = payload.mode === "quote" ? "quote" : "repost";
+        const visibility = payload.visibility || "public";
+        const rawContent = String(payload.content || "").trim();
+
+        if (mode === "repost") {
+            const existingRepost = await Post.findOne({
+                author: userId,
+                originalPost: postId,
+                postType: "repost",
+                status: "active"
+            });
+
+            if (existingRepost) {
+                return this.getPostById(existingRepost._id, userId);
+            }
+        }
+
+        if (mode === "quote" && !rawContent) {
+            throw createError("Quote repost requires content", 400);
+        }
+
+        const fallbackContent = `Reposted from @${originalPost.author?.username || "user"}`;
+        const repostPayload = {
+            content: rawContent || fallbackContent,
+            postType: mode,
+            originalPost: postId,
+            visibility
+        };
+
+        const repost = await this.createPost(userId, repostPayload);
+        await Post.findByIdAndUpdate(postId, { $inc: { repostsCount: 1 } });
+
+        return repost;
+    }
+
+    /**
      * Get user's feed (posts from followed users)
      * @param {ObjectId} userId - Current user ID
      * @param {Number} page - Page number
@@ -351,6 +518,10 @@ class PostService {
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
+                .populate({
+                    path: 'originalPost',
+                    populate: { path: 'author', select: 'username name avatar isVerified' }
+                })
                 .lean(),
             Post.countDocuments(query)
         ]);
@@ -430,6 +601,10 @@ class PostService {
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
+                .populate({
+                    path: 'originalPost',
+                    populate: { path: 'author', select: 'username name avatar isVerified' }
+                })
                 .lean(),
             Post.countDocuments(query)
         ]);
@@ -487,6 +662,10 @@ class PostService {
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
+                .populate({
+                    path: 'originalPost',
+                    populate: { path: 'author', select: 'username name avatar isVerified' }
+                })
                 .lean(),
             Post.countDocuments(query)
         ]);
@@ -525,6 +704,10 @@ class PostService {
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
+                .populate({
+                    path: 'originalPost',
+                    populate: { path: 'author', select: 'username name avatar isVerified' }
+                })
                 .lean(),
             Post.countDocuments(searchQuery)
         ]);
@@ -563,6 +746,10 @@ class PostService {
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
+                .populate({
+                    path: 'originalPost',
+                    populate: { path: 'author', select: 'username name avatar isVerified' }
+                })
                 .lean(),
             Post.countDocuments(query)
         ]);
@@ -589,22 +776,60 @@ class PostService {
     async addUserEngagementData(posts, userId) {
         if (!posts.length || !userId) return posts;
 
-        const postIds = posts.map(p => p._id);
+        const postIds = posts
+            .map((post) => post?._id)
+            .filter(Boolean);
 
-        // Check which posts user has liked
-        const likedMap = await Like.checkMultipleLikes(userId, postIds);
+        if (!postIds.length) return posts;
 
-        // Check which authors user is following
-        const authorIds = [...new Set(posts.map(p => p.author._id))];
-        const followingMap = await Follow.checkMultipleRelationships(userId, authorIds);
+        const authorIds = [
+            ...new Set(
+                posts
+                    .map((post) => post?.author?._id || post?.author)
+                    .filter(Boolean)
+                    .map((id) => String(id))
+            )
+        ];
 
-        return posts.map(post => ({
-            ...post,
-            userEngagement: {
-                hasLiked: likedMap[post._id.toString()],
-                isFollowingAuthor: followingMap[post.author._id.toString()]
-            }
-        }));
+        const [likedMap, savedMap, reposts, followingMap] = await Promise.all([
+            Like.checkMultipleLikes(userId, postIds),
+            PostSave.checkMultipleSaved(userId, postIds),
+            Post.find({
+                author: userId,
+                originalPost: { $in: postIds },
+                postType: { $in: ["repost", "quote"] },
+                status: "active"
+            })
+                .select("originalPost")
+                .lean(),
+            authorIds.length
+                ? Follow.checkMultipleRelationships(userId, authorIds)
+                : {}
+        ]);
+
+        const repostMap = {};
+        postIds.forEach((id) => {
+            repostMap[String(id)] = false;
+        });
+        reposts.forEach((post) => {
+            if (!post?.originalPost) return;
+            repostMap[String(post.originalPost)] = true;
+        });
+
+        return posts.map((post) => {
+            const postId = String(post?._id);
+            const authorId = String(post?.author?._id || post?.author || "");
+
+            return {
+                ...post,
+                userEngagement: {
+                    hasLiked: Boolean(likedMap[postId]),
+                    hasSaved: Boolean(savedMap[postId]),
+                    hasReposted: Boolean(repostMap[postId]),
+                    isFollowingAuthor: Boolean(followingMap[authorId])
+                }
+            };
+        });
     }
 }
 

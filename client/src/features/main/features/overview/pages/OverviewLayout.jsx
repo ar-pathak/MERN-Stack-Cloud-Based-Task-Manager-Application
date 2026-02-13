@@ -1,7 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
-import { useNavigate } from "react-router";
 
 import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
@@ -28,6 +26,7 @@ import WorkspacePopup from "../../../components/popup/WorkspacePopup";
 import TaskPopup from "../../../components/popup/TaskPopup";
 import SubtaskPopup from "../../../components/popup/SubtaskPopup";
 import ProjectPopup from "../../../components/popup/ProjectPopup";
+import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
 import { useChatLogic } from "../hook/useChatLogic";
 import { useOverviewRealtime } from "../hook/useOverviewRealtime";
@@ -62,7 +61,6 @@ const OverviewLayout = () => {
   const [mobilePane, setMobilePane] = useState("overview");
 
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const [taskCreationContext, setTaskCreationContext] = useState({
     level: "global",
@@ -476,56 +474,12 @@ const OverviewLayout = () => {
         </AnimatePresence>
       </div>
 
-      {shouldShowBottomMenu && (
-        <div
-          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
-          style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
-        >
-          <div className="grid grid-cols-4 gap-1 px-2 pt-1.5">
-            <button
-              type="button"
-              onClick={() => setMobilePane("overview")}
-              className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] ${
-                mobilePane === "overview"
-                  ? "bg-sky-500/15 text-sky-300"
-                  : "text-slate-400 hover:bg-slate-800/70"
-              }`}
-            >
-              <Grid2x2 className="h-4 w-4" />
-              Overview
-            </button>
-
-            <button
-              type="button"
-              onClick={() => showToast("Feed section is coming soon")}
-              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-            >
-              <Newspaper className="h-4 w-4" />
-              Feed
-            </button>
-
-            <button
-              type="button"
-              onClick={() => showToast("Create post feature is coming soon")}
-              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-            >
-              <SquarePen className="h-4 w-4" />
-              Create Post
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (!profileId) return;
-                navigate(`/profile/${profileId}`);
-              }}
-              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium text-slate-400 hover:bg-slate-800/70 transition-colors sm:px-2 sm:text-[11px]"
-            >
-              <UserRound className="h-4 w-4" />
-              Me
-            </button>
-          </div>
-        </div>
+      {isMobileViewport && (
+        <MobileBottomNav
+          activeTab="overview"
+          profileId={profileId}
+          hidden={mobilePane === "chat"}
+        />
       )}
 
       <TaskPopup
