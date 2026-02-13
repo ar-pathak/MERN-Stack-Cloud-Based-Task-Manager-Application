@@ -35,7 +35,7 @@ class UserService {
      */
     async getPublicProfile(targetUserId, currentUserId = null) {
         const user = await User.findById(targetUserId)
-            .select("username name bio avatar coverImage followersCount followingCount postsCount isPrivate isVerified createdAt accountStatus");
+            .select("username name bio headline location website avatar coverImage followersCount followingCount postsCount isPrivate isVerified createdAt accountStatus");
 
         if (!user) {
             throw new Error("User not found");
@@ -72,7 +72,16 @@ class UserService {
      */
     async updateProfile(userId, updateData) {
         // Fields that are allowed to be updated
-        const allowedUpdates = ['name', 'bio', 'avatar', 'coverImage', 'isPrivate'];
+        const allowedUpdates = [
+            'name',
+            'bio',
+            'headline',
+            'location',
+            'website',
+            'avatar',
+            'coverImage',
+            'isPrivate'
+        ];
         const updates = {};
 
         // Filter only allowed fields
@@ -85,6 +94,14 @@ class UserService {
         // Additional validation
         if (updates.bio && updates.bio.length > 160) {
             throw new Error("Bio cannot exceed 160 characters");
+        }
+
+        if (updates.headline && updates.headline.length > 80) {
+            throw new Error("Headline cannot exceed 80 characters");
+        }
+
+        if (updates.location && updates.location.length > 80) {
+            throw new Error("Location cannot exceed 80 characters");
         }
 
         if (updates.name && updates.name.length > 50) {

@@ -1,333 +1,625 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router";
-import { motion, AnimatePresence } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { AnimatePresence, motion } from "framer-motion";
 import {
-    MapPin, Link as LinkIcon, Calendar, MoreHorizontal,
-    MessageSquare, Edit3, Grid, Image as ImageIcon, Info, Loader2,
-    Share2, Ban, Flag, Copy, Check, ArrowLeft
+    ArrowLeft,
+    Calendar,
+    Check,
+    Copy,
+    ExternalLink,
+    Loader2,
+    Lock,
+    MapPin,
+    MessageSquare,
+    MoreHorizontal,
+    ShieldCheck,
+    UserPlus2,
+    UserRound,
+    Users
 } from "lucide-react";
 
-// Services
-import { getUserById } from "../../service/user.service";
-import { getUserPosts } from "../../service/post.service";
-import { followUser, unfollowUser } from "../../service/follow.service";
 import { useAuth } from "../../context/AuthContext";
 import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
+import { getUserById, updateProfile as updateProfileRequest } from "../../service/user.service";
+import { getUserPosts } from "../../service/post.service";
+import {
+    approveFollowRequest,
+    followUser,
+    getFollowers,
+    getFollowing,
+    getFollowSuggestions,
+    getMutualFollowers,
+    getPendingRequests,
+    rejectFollowRequest,
+    unfollowUser
+} from "../../service/follow.service";
+import ProfileEditModal from "./components/ProfileEditModal";
+import RelationshipModal from "./components/RelationshipModal";
+import {
+    FOLLOW_LIST_PAGE_SIZE,
+    MOBILE_BREAKPOINT,
+    POSTS_PAGE_SIZE,
+    PROFILE_TABS,
+    getFollowButtonState,
+    getJoinedLabel,
+    mergeConnections,
+    normalizeConnection,
+    normalizePagination,
+    toDisplayName,
+    toId
+} from "./utils/profile.helpers";
 
 const UserProfile = () => {
     const { id } = useParams();
-    const { user: currentUser } = useAuth();
     const navigate = useNavigate();
+    const { user: currentUser, refreshUser } = useAuth();
 
     const [profile, setProfile] = useState(null);
     const [posts, setPosts] = useState([]);
+    const [postsPagination, setPostsPagination] = useState(normalizePagination({}, 1, POSTS_PAGE_SIZE));
+    const [postsLoadingMore, setPostsLoadingMore] = useState(false);
+    const [postsAccessMessage, setPostsAccessMessage] = useState("");
+
     const [isLoading, setIsLoading] = useState(true);
+    const [errorMessage, setErrorMessage] = useState("");
+    const [flashMessage, setFlashMessage] = useState("");
     const [activeTab, setActiveTab] = useState("posts");
-    const [isMobileViewport, setIsMobileViewport] = useState(() =>
-        typeof window !== "undefined" ? window.innerWidth < 768 : false
+
+    const [followLoading, setFollowLoading] = useState(false);
+    const [isMobileViewport, setIsMobileViewport] = useState(
+        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
 
-    // Action States
-    const [followLoading, setFollowLoading] = useState(false);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
 
-    const menuRef = useRef(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editSaving, setEditSaving] = useState(false);
 
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (menuRef.current && !menuRef.current.contains(event.target)) {
-                setIsMenuOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+    const [graphModal, setGraphModal] = useState({ open: false, type: "followers" });
+    const [graphUsers, setGraphUsers] = useState([]);
+    const [graphPagination, setGraphPagination] = useState(normalizePagination({}, 1));
+    const [graphLoading, setGraphLoading] = useState(false);
+    const [graphActionLoadingId, setGraphActionLoadingId] = useState("");
+
+    const [suggestions, setSuggestions] = useState([]);
+    const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+    const [suggestionActionLoadingId, setSuggestionActionLoadingId] = useState("");
+
+    const [mutualFollowers, setMutualFollowers] = useState([]);
+    const [pendingRequests, setPendingRequests] = useState([]);
+    const [pendingLoading, setPendingLoading] = useState(false);
+    const [pendingActionLoadingId, setPendingActionLoadingId] = useState("");
+
+    const menuRef = useRef(null);
+    const flashTimeoutRef = useRef(null);
+
+    const currentUserId = toId(currentUser);
+    const profileId = toId(profile) || String(id || "");
+    const isOwnProfile = Boolean(currentUserId) && currentUserId === String(id || "");
+    const canViewProtectedContent = Boolean(
+        isOwnProfile || !profile?.isPrivate || profile?.relationship?.isFollowing
+    );
+    const followButtonState = getFollowButtonState(profile?.relationship);
+    const showOwnMobileMenu = isOwnProfile && isMobileViewport;
+
+    const mediaPosts = useMemo(
+        () =>
+            posts.flatMap((post) =>
+                (post?.media || []).map((mediaEntry, index) => ({
+                    key: `${toId(post)}:${index}`,
+                    url: mediaEntry?.url
+                }))
+            ),
+        [posts]
+    );
+
+    const profileCompletion = useMemo(() => {
+        const checks = [
+            Boolean(profile?.avatar),
+            Boolean(profile?.coverImage),
+            Boolean(profile?.bio),
+            Boolean(profile?.headline),
+            Boolean(profile?.location),
+            Boolean(profile?.website)
+        ];
+        return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    }, [profile]);
+
+    const setFlash = useCallback((message) => {
+        if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+        setFlashMessage(message);
+        flashTimeoutRef.current = setTimeout(() => setFlashMessage(""), 2500);
     }, []);
 
     useEffect(() => {
-        const onResize = () => {
-            setIsMobileViewport(window.innerWidth < 768);
+        return () => {
+            if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
         };
+    }, []);
 
+    useEffect(() => {
+        const onResize = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
         window.addEventListener("resize", onResize);
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
-    // Fetch Data
     useEffect(() => {
-        const fetchProfileData = async () => {
-            setIsLoading(true);
-            try {
-                const userRes = await getUserById(id);
-                const postsRes = await getUserPosts(id);
-
-                // Handle API variations (response.data vs direct data)
-                const userData = userRes.user || userRes;
-                const postsData = postsRes.posts || postsRes || [];
-
-                setProfile(userData);
-                setPosts(postsData);
-            } catch (error) {
-                console.error("Failed to load profile", error);
-            } finally {
-                setIsLoading(false);
+        const onClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setIsMenuOpen(false);
             }
         };
+        document.addEventListener("mousedown", onClickOutside);
+        return () => document.removeEventListener("mousedown", onClickOutside);
+    }, []);
 
-        if (id) fetchProfileData();
-    }, [id]);
+    const loadPosts = useCallback(
+        async (page = 1, append = false) => {
+            if (!id) return;
+            if (append) setPostsLoadingMore(true);
+            try {
+                const payload = await getUserPosts(id, { page, limit: POSTS_PAGE_SIZE });
+                const nextPosts = Array.isArray(payload?.posts) ? payload.posts : [];
+                setPosts((previous) => (append ? [...previous, ...nextPosts] : nextPosts));
+                setPostsPagination(normalizePagination(payload?.pagination, page, POSTS_PAGE_SIZE));
+            } catch (error) {
+                if (String(error?.message || "").toLowerCase().includes("private")) {
+                    setPostsAccessMessage(error?.message || "This profile is private.");
+                    setPosts([]);
+                } else {
+                    throw error;
+                }
+            } finally {
+                if (append) setPostsLoadingMore(false);
+            }
+        },
+        [id]
+    );
 
-    // --- Handlers ---
+    const loadProfile = useCallback(async () => {
+        if (!id) return;
+        setIsLoading(true);
+        setErrorMessage("");
+        try {
+            const payload = await getUserById(id);
+            setProfile(payload?.user || payload);
+            setPostsAccessMessage("");
+            await loadPosts(1, false);
+        } catch (error) {
+            setErrorMessage(error?.message || "Failed to load profile");
+        } finally {
+            setIsLoading(false);
+        }
+    }, [id, loadPosts]);
+
+    const loadSuggestions = useCallback(async () => {
+        setSuggestionsLoading(true);
+        try {
+            const payload = await getFollowSuggestions(8);
+            const raw = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+            setSuggestions(
+                raw.map((entry) => normalizeConnection(entry)).filter((entry) => entry._id !== currentUserId)
+            );
+        } catch {
+            setSuggestions([]);
+        } finally {
+            setSuggestionsLoading(false);
+        }
+    }, [currentUserId]);
+
+    const loadMutualFollowers = useCallback(async () => {
+        if (!id || !currentUserId || isOwnProfile) {
+            setMutualFollowers([]);
+            return;
+        }
+        try {
+            const payload = await getMutualFollowers(id);
+            const raw = Array.isArray(payload?.mutualFollowers) ? payload.mutualFollowers : [];
+            setMutualFollowers(raw.map((entry) => normalizeConnection(entry)));
+        } catch {
+            setMutualFollowers([]);
+        }
+    }, [currentUserId, id, isOwnProfile]);
+
+    const loadPendingRequestsList = useCallback(async () => {
+        if (!isOwnProfile || !profile?.isPrivate) {
+            setPendingRequests([]);
+            return;
+        }
+        setPendingLoading(true);
+        try {
+            const payload = await getPendingRequests({ page: 1, limit: 8 });
+            const raw = Array.isArray(payload?.requests) ? payload.requests : [];
+            setPendingRequests(raw.map((entry) => normalizeConnection(entry)));
+        } catch {
+            setPendingRequests([]);
+        } finally {
+            setPendingLoading(false);
+        }
+    }, [isOwnProfile, profile?.isPrivate]);
+
+    useEffect(() => {
+        loadProfile();
+    }, [loadProfile]);
+
+    useEffect(() => {
+        if (!currentUserId) return;
+        loadSuggestions();
+    }, [currentUserId, loadSuggestions]);
+
+    useEffect(() => {
+        loadMutualFollowers();
+    }, [loadMutualFollowers]);
+
+    useEffect(() => {
+        loadPendingRequestsList();
+    }, [loadPendingRequestsList]);
+
+    const loadGraphUsers = useCallback(
+        async (type, page = 1, append = false) => {
+            if (!profileId) return;
+            setGraphLoading(true);
+            try {
+                const payload =
+                    type === "followers"
+                        ? await getFollowers(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE })
+                        : await getFollowing(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
+
+                const raw = type === "followers" ? payload?.followers || [] : payload?.following || [];
+                const normalized = raw.map((entry) => normalizeConnection(entry));
+                setGraphUsers((previous) => (append ? mergeConnections(previous, normalized) : normalized));
+                setGraphPagination(normalizePagination(payload?.pagination, page));
+            } catch {
+                if (!append) setGraphUsers([]);
+            } finally {
+                setGraphLoading(false);
+            }
+        },
+        [profileId]
+    );
+
+    const updateProfileRelationship = useCallback((patch, followersDelta = 0) => {
+        setProfile((previous) =>
+            previous
+                ? {
+                      ...previous,
+                      followersCount: Math.max(0, Number(previous?.followersCount || 0) + followersDelta),
+                      relationship: { ...(previous?.relationship || {}), ...patch }
+                  }
+                : previous
+        );
+    }, []);
+
+    const toggleFollowTarget = useCallback(
+        async (targetId, relationship = {}) => {
+            const nextId = toId(targetId);
+            if (!nextId || nextId === currentUserId) return null;
+
+            if (relationship?.isFollowing || relationship?.isPending) {
+                await unfollowUser(nextId);
+                return {
+                    isFollowing: false,
+                    isPending: false,
+                    followersDelta: relationship?.isFollowing ? -1 : 0
+                };
+            }
+
+            const result = await followUser(nextId);
+            const isPending = Boolean(result?.isPending);
+            return { isFollowing: !isPending, isPending, followersDelta: isPending ? 0 : 1 };
+        },
+        [currentUserId]
+    );
 
     const handleFollowAction = async () => {
-        if (!profile) return;
+        if (!profile || isOwnProfile || followLoading) return;
         setFollowLoading(true);
         try {
-            const isFollowing = profile.relationship?.isFollowing;
-
-            if (isFollowing) {
-                await unfollowUser(id);
-                setProfile((prev) => ({
-                    ...prev,
-                    followersCount: Math.max(0, (prev.followersCount || 0) - 1),
-                    relationship: { ...prev.relationship, isFollowing: false, isPending: false }
-                }));
-            } else {
-                const res = await followUser(id);
-                const isPending = res.isPending;
-                setProfile((prev) => ({
-                    ...prev,
-                    followersCount: isPending ? prev.followersCount : (prev.followersCount || 0) + 1,
-                    relationship: { ...prev.relationship, isFollowing: !isPending, isPending: isPending }
-                }));
-            }
+            const next = await toggleFollowTarget(id, profile?.relationship || {});
+            if (!next) return;
+            updateProfileRelationship(
+                { isFollowing: next.isFollowing, isPending: next.isPending },
+                next.followersDelta
+            );
+            setFlash(
+                next.isFollowing
+                    ? "Now following user"
+                    : next.isPending
+                      ? "Follow request sent"
+                      : "Unfollowed"
+            );
+            loadMutualFollowers();
+            loadSuggestions();
         } catch (error) {
-            console.error("Follow action failed", error);
+            setFlash(error?.message || "Could not update follow status");
         } finally {
             setFollowLoading(false);
         }
     };
 
-    const handleMessage = () => {
-        // Navigate to chat route with this user selected
-        navigate(`/chat/${id}`, { state: { targetUser: profile } })
-    };
-
-    const handleCopyLink = () => {
-        navigator.clipboard.writeText(window.location.href);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2000);
-        setIsMenuOpen(false);
-    };
-
-    const handleBlockUser = async () => {
-        if (!window.confirm(`Are you sure you want to block ${profile.name}?`)) return;
-
+    const handleToggleGraphConnection = async (entry) => {
+        const targetId = toId(entry);
+        if (!targetId || graphActionLoadingId === targetId) return;
+        setGraphActionLoadingId(targetId);
         try {
-            // await blockUser(id);
-            // navigate("/feed"); // Redirect to feed after blocking
-            // You could also show a toast notification here
-
-            console.log(`you blocked ${profile.name}`)
+            const next = await toggleFollowTarget(targetId, entry);
+            if (!next) return;
+            setGraphUsers((previous) =>
+                previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user))
+            );
         } catch (error) {
-            console.error("Failed to block user", error);
-            alert("Could not block user. Try again later.");
+            setFlash(error?.message || "Action failed");
+        } finally {
+            setGraphActionLoadingId("");
         }
     };
 
-    const isOwnProfile = currentUser?._id === id;
-    const showOwnMobileMenu = isOwnProfile && isMobileViewport;
+    const handleToggleSuggestionFollow = async (entry) => {
+        const targetId = toId(entry);
+        if (!targetId || suggestionActionLoadingId === targetId) return;
+        setSuggestionActionLoadingId(targetId);
+        try {
+            const next = await toggleFollowTarget(targetId, entry);
+            if (!next) return;
+            setSuggestions((previous) =>
+                previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user))
+            );
+        } catch (error) {
+            setFlash(error?.message || "Could not update follow state");
+        } finally {
+            setSuggestionActionLoadingId("");
+        }
+    };
+
+    const handleCopyLink = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setCopiedLink(true);
+            setTimeout(() => setCopiedLink(false), 1500);
+            setFlash("Profile link copied");
+        } catch {
+            setFlash("Could not copy link");
+        }
+        setIsMenuOpen(false);
+    };
+
+    const handleSaveProfile = async (updates) => {
+        setEditSaving(true);
+        try {
+            const payload = await updateProfileRequest(updates);
+            const updated = payload?.user || payload;
+            setProfile((previous) => ({ ...(previous || {}), ...(updated || {}) }));
+            await refreshUser?.();
+            setIsEditModalOpen(false);
+            setFlash("Profile updated");
+        } catch (error) {
+            setFlash(error?.message || "Profile update failed");
+        } finally {
+            setEditSaving(false);
+        }
+    };
 
     if (isLoading) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-slate-950">
+            <div className="flex h-screen items-center justify-center bg-slate-950">
                 <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
             </div>
         );
     }
 
-    if (!profile) return null;
+    if (errorMessage || !profile) {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-slate-950 p-4">
+                <p className="text-sm text-slate-300">{errorMessage || "Profile not found"}</p>
+            </div>
+        );
+    }
 
     return (
-        <div className={`min-h-screen bg-slate-950 ${showOwnMobileMenu ? "pb-[5.25rem]" : "pb-20"}`}>
-            <button onClick={() => navigate(-1)} className="fixed top-4 left-4 z-50 p-2.5 rounded-full bg-slate-900/80 backdrop-blur-md text-slate-100 border border-slate-700/50 hover:bg-slate-800 transition-all">
-                <ArrowLeft className="h-5 w-5" />
-            </button>
-            {/* --- Cover Image --- */}
-            <div className="relative h-48 md:h-64 w-full bg-slate-900">
-                {profile.coverImage ? (
-                    <img src={profile.coverImage} alt="Cover" className="h-full w-full object-cover" />
-                ) : (
-                    <div className="h-full w-full bg-gradient-to-r from-slate-800 to-slate-900" />
-                )}
-                <button onClick={() => navigate(-1)} className="absolute left-4 top-4 rounded-full bg-black/40 p-2 text-white backdrop-blur-md hover:bg-black/60 md:hidden">
-                    {/* Simple Back Arrow SVG */}
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
-                </button>
+        <div className={`min-h-screen bg-slate-950 ${showOwnMobileMenu ? "pb-[5.25rem]" : "pb-10"}`}>
+            <div className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-xl">
+                <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-3 py-2.5 sm:px-4">
+                    <button
+                        type="button"
+                        onClick={() => navigate(-1)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900/70 px-2.5 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                    >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Back
+                    </button>
+                    <p className="text-xs font-medium text-slate-400">@{profile?.username || "profile"}</p>
+                    <div className="relative" ref={menuRef}>
+                        <button
+                            type="button"
+                            onClick={() => setIsMenuOpen((previous) => !previous)}
+                            className="rounded-lg border border-slate-700 bg-slate-900/70 p-2 text-slate-300 hover:bg-slate-800"
+                        >
+                            <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                        <AnimatePresence>
+                            {isMenuOpen && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 6 }}
+                                    className="absolute right-0 top-full z-50 mt-2 w-44 rounded-xl border border-slate-800 bg-slate-900 shadow-xl"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyLink}
+                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                    >
+                                        {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+                                        Copy profile link
+                                    </button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </div>
             </div>
 
-            <div className="mx-auto max-w-4xl px-4 sm:px-6">
-
-                {/* --- Profile Header Info --- */}
-                <div className="relative -mt-16 mb-6 flex flex-col items-start sm:flex-row sm:items-end sm:gap-6">
-
-                    {/* Avatar */}
-                    <div className="relative">
-                        <div className="h-32 w-32 overflow-hidden rounded-full border-4 border-slate-950 bg-slate-800 sm:h-40 sm:w-40">
-                            {profile.avatar ? (
-                                <img src={profile.avatar} alt={profile.name} className="h-full w-full object-cover" />
-                            ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-indigo-500 text-4xl font-bold text-white">
-                                    {profile.name?.charAt(0)}
+            <div className="mx-auto w-full max-w-5xl px-3 pt-3 sm:px-4 sm:pt-4">
+                <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
+                    {profile?.coverImage ? (
+                        <img src={profile.coverImage} alt="Cover" className="h-40 w-full object-cover sm:h-56" />
+                    ) : (
+                        <div className="h-40 w-full bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),_rgba(15,23,42,1)_60%)] sm:h-56" />
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-transparent" />
+                    <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between gap-3 sm:bottom-4 sm:left-4 sm:right-4">
+                        <div className="flex items-end gap-3">
+                            <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-slate-950 bg-slate-800 sm:h-28 sm:w-28">
+                                {profile?.avatar ? (
+                                    <img src={profile.avatar} alt={toDisplayName(profile)} className="h-full w-full object-cover" />
+                                ) : (
+                                    <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-slate-200">
+                                        {toDisplayName(profile).charAt(0)}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="pb-1">
+                                <div className="flex items-center gap-1.5">
+                                    <h1 className="text-lg font-bold text-slate-100 sm:text-2xl">{toDisplayName(profile)}</h1>
+                                    {profile?.isVerified && (
+                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white">
+                                            <Check className="h-3 w-3" />
+                                        </span>
+                                    )}
                                 </div>
+                                <p className="text-xs text-slate-300 sm:text-sm">@{profile?.username}</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {isOwnProfile ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setIsEditModalOpen(true)}
+                                    className="rounded-lg border border-slate-700 bg-slate-900/85 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800 sm:text-sm"
+                                >
+                                    Edit Profile
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleFollowAction}
+                                        disabled={followLoading}
+                                        className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${
+                                            followButtonState.tone === "following"
+                                                ? "border-slate-700 bg-slate-900/85 text-slate-200"
+                                                : followButtonState.tone === "pending"
+                                                  ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
+                                                  : "border-sky-500/50 bg-sky-500/20 text-sky-200"
+                                        }`}
+                                    >
+                                        {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : followButtonState.label}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/chat/${id}`, { state: { targetUser: profile } })}
+                                        className="rounded-lg border border-slate-700 bg-slate-900/85 p-2 text-slate-200 hover:bg-slate-800"
+                                    >
+                                        <MessageSquare className="h-4 w-4" />
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
+                </div>
 
-                    {/* Name & Actions */}
-                    <div className="mt-4 flex-1 w-full sm:mt-0 sm:pb-2">
-                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+                    {profile?.headline && <p className="text-sm font-medium text-slate-200">{profile.headline}</p>}
+                    <p className="mt-1 text-sm text-slate-300">{profile?.bio || "No bio added yet."}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
+                        {profile?.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{profile.location}</span>}
+                        {profile?.website && <a href={profile.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sky-300 hover:text-sky-200"><ExternalLink className="h-3.5 w-3.5" />{profile.website.replace(/^https?:\/\//, "")}</a>}
+                        <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />Joined {getJoinedLabel(profile?.createdAt)}</span>
+                        {profile?.isPrivate && <span className="inline-flex items-center gap-1.5 text-amber-300"><Lock className="h-3.5 w-3.5" />Private account</span>}
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2">
+                        <button type="button" onClick={() => { setGraphModal({ open: true, type: "followers" }); loadGraphUsers("followers", 1, false); }} className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left">
+                            <p className="text-xs text-slate-400">Followers</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-100">{Number(profile?.followersCount || 0).toLocaleString()}</p>
+                        </button>
+                        <button type="button" onClick={() => { setGraphModal({ open: true, type: "following" }); loadGraphUsers("following", 1, false); }} className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2 text-left">
+                            <p className="text-xs text-slate-400">Following</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-100">{Number(profile?.followingCount || 0).toLocaleString()}</p>
+                        </button>
+                        <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-2 py-2">
+                            <p className="text-xs text-slate-400">Posts</p>
+                            <p className="mt-0.5 text-sm font-semibold text-slate-100">{Number(profile?.postsCount || posts.length).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
 
-                            <div>
-                                <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-                                    {profile.name}
-                                    {profile.isVerified && (
-                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-[10px] text-white">✓</span>
-                                    )}
-                                </h1>
-                                <p className="text-sm font-medium text-slate-400">@{profile.username}</p>
-                            </div>
-
-                            {/* Action Buttons */}
-                            <div className="flex gap-2">
-                                {isOwnProfile ? (
-                                    <button onClick={() => navigate("/settings/profile")} className="flex items-center gap-2 rounded-xl bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700 transition-colors">
-                                        <Edit3 className="h-4 w-4" />
-                                        Edit Profile
-                                    </button>
+                <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55">
+                    <div className="flex gap-2 overflow-x-auto border-b border-slate-800 px-2 py-1.5">
+                        {PROFILE_TABS.map((tab) => (
+                            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`inline-flex items-center rounded-lg px-3 py-2 text-xs font-semibold sm:text-sm ${activeTab === tab.id ? "bg-sky-500/15 text-sky-300" : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"}`}>
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="p-3 sm:p-4">
+                        {activeTab === "posts" && (
+                            <div className="space-y-3">
+                                {!canViewProtectedContent ? (
+                                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">This profile is private</p></div>
+                                ) : posts.length === 0 ? (
+                                    <p className="py-8 text-center text-sm text-slate-500">{postsAccessMessage || "No posts yet."}</p>
                                 ) : (
                                     <>
-                                        {/* Follow Button */}
-                                        <button
-                                            onClick={handleFollowAction}
-                                            disabled={followLoading}
-                                            className={`flex min-w-[120px] items-center justify-center gap-2 rounded-xl px-6 py-2 text-sm font-semibold transition-all ${profile.relationship?.isFollowing
-                                                ? "bg-slate-800 text-slate-200 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50 border border-transparent"
-                                                : "bg-sky-500 text-white hover:bg-sky-600 shadow-lg shadow-sky-500/20"
-                                                }`}
-                                        >
-                                            {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (profile.relationship?.isFollowing ? "Following" : "Follow")}
-                                        </button>
-
-                                        {/* Message Button */}
-                                        <button
-                                            onClick={handleMessage}
-                                            className="flex items-center justify-center rounded-xl bg-slate-800 p-2.5 text-slate-200 hover:bg-sky-500/10 hover:text-sky-400 transition-colors"
-                                            title="Send Message"
-                                        >
-                                            <MessageSquare className="h-5 w-5" />
-                                        </button>
-
-                                        {/* Menu (Three Dots) Button */}
-                                        <div className="relative" ref={menuRef}>
-                                            <button
-                                                onClick={() => setIsMenuOpen(!isMenuOpen)}
-                                                className="flex items-center justify-center rounded-xl bg-slate-800 p-2.5 text-slate-200 hover:bg-slate-700 transition-colors"
-                                            >
-                                                <MoreHorizontal className="h-5 w-5" />
-                                            </button>
-
-                                            {/* Dropdown Menu */}
-                                            <AnimatePresence>
-                                                {isMenuOpen && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                        className="absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-800 bg-slate-900 shadow-xl z-50 overflow-hidden"
-                                                    >
-                                                        <div className="py-1">
-                                                            <button onClick={handleCopyLink} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-                                                                {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-                                                                {copiedLink ? "Copied!" : "Copy Link"}
-                                                            </button>
-
-                                                            <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
-                                                                <Share2 className="h-4 w-4" />
-                                                                Share Profile
-                                                            </button>
-
-                                                            <div className="h-px bg-slate-800 my-1" />
-
-                                                            <button
-                                                                onClick={handleBlockUser}
-                                                                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                                                            >
-                                                                <Ban className="h-4 w-4" />
-                                                                Block User
-                                                            </button>
-
-                                                            <button className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-yellow-400 hover:bg-yellow-500/10 transition-colors">
-                                                                <Flag className="h-4 w-4" />
-                                                                Report
-                                                            </button>
-                                                        </div>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
+                                        {posts.map((post) => (
+                                            <article key={toId(post)} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+                                                {post?.content && <p className="text-sm leading-6 text-slate-200">{post.content}</p>}
+                                                {(post?.media || []).length > 0 && <div className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={post.media[0]?.url} alt="Post media" className="h-56 w-full object-cover" /></div>}
+                                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500"><span>{Number(post?.likesCount || 0)} likes</span><span>{Number(post?.commentsCount || 0)} comments</span><span>{Number(post?.repostsCount || 0)} reposts</span></div>
+                                            </article>
+                                        ))}
+                                        {Boolean(postsPagination?.hasMore) && <button type="button" onClick={async () => { if (!postsLoadingMore) await loadPosts(Number(postsPagination?.page || 1) + 1, true); }} disabled={postsLoadingMore} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">{postsLoadingMore ? "Loading..." : "Load more posts"}</button>}
                                     </>
                                 )}
                             </div>
-                        </div>
+                        )}
+                        {activeTab === "media" && <div>{!canViewProtectedContent ? <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">Media is hidden</p></div> : mediaPosts.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">No media posts yet.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{mediaPosts.map((media) => <div key={media.key} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={media.url} alt="Media" className="h-36 w-full object-cover" /></div>)}</div>}</div>}
+                        {activeTab === "about" && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Profile Quality</p><p className="mt-1 text-2xl font-bold text-slate-100">{profileCompletion}%</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Type</p><p className="mt-1 text-sm font-semibold text-slate-200">{profile?.isPrivate ? "Private account" : "Public account"}</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Highlights</p><div className="mt-2 grid gap-2 text-sm text-slate-300 sm:grid-cols-2"><p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-400" />{profile?.isVerified ? "Verified profile" : "Standard profile"}</p><p className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-sky-400" />{Number(profile?.followersCount || 0).toLocaleString()} followers</p><p className="inline-flex items-center gap-2"><UserRound className="h-4 w-4 text-sky-400" />{Number(profile?.followingCount || 0).toLocaleString()} following</p><p className="inline-flex items-center gap-2"><Calendar className="h-4 w-4 text-sky-400" />Joined {getJoinedLabel(profile?.createdAt)}</p></div></div></div>}
+                        {activeTab === "connections" && <div className="space-y-3"><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3"><div className="flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Suggested For You</p><button type="button" onClick={loadSuggestions} className="text-xs font-medium text-sky-300 hover:text-sky-200">Refresh</button></div>{suggestionsLoading ? <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div> : suggestions.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No suggestions right now.</p> : <div className="mt-2 space-y-2">{suggestions.slice(0, 6).map((entry) => { const targetId = toId(entry); const state = getFollowButtonState(entry); return <div key={targetId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2"><div className="flex min-w-0 items-center gap-2"><div className="h-8 w-8 overflow-hidden rounded-full bg-slate-800">{entry?.avatar ? <img src={entry.avatar} alt={entry?.name || "User"} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-500"><UserRound className="h-3.5 w-3.5" /></div>}</div><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-200">{entry?.name || entry?.username}</p><p className="truncate text-[11px] text-slate-500">@{entry?.username || "user"}</p></div></div><button type="button" disabled={suggestionActionLoadingId === targetId} onClick={() => handleToggleSuggestionFollow(entry)} className={`inline-flex min-w-[5.2rem] items-center justify-center rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${state.tone === "following" ? "border-slate-700 bg-slate-800 text-slate-200" : state.tone === "pending" ? "border-amber-500/40 bg-amber-500/10 text-amber-200" : "border-sky-500/40 bg-sky-500/15 text-sky-300"}`}>{suggestionActionLoadingId === targetId ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : state.label}</button></div>; })}</div>}</div>{isOwnProfile && profile?.isPrivate && <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Pending Follow Requests</p>{pendingLoading ? <div className="flex items-center justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-slate-500" /></div> : pendingRequests.length === 0 ? <p className="py-5 text-center text-xs text-slate-500">No pending requests.</p> : <div className="mt-2 space-y-2">{pendingRequests.map((request) => { const requestId = toId(request?.requestId || request?._id); const loading = pendingActionLoadingId === requestId; return <div key={requestId} className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-2"><div className="flex min-w-0 items-center gap-2"><div className="h-8 w-8 overflow-hidden rounded-full bg-slate-800">{request?.avatar ? <img src={request.avatar} alt={request?.name || "User"} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-slate-500"><UserRound className="h-3.5 w-3.5" /></div>}</div><div className="min-w-0"><p className="truncate text-xs font-medium text-slate-200">{request?.name || request?.username}</p><p className="truncate text-[11px] text-slate-500">@{request?.username || "user"}</p></div></div><div className="flex items-center gap-1.5"><button type="button" disabled={loading} onClick={async () => { setPendingActionLoadingId(requestId); try { await rejectFollowRequest(requestId); setPendingRequests((previous) => previous.filter((entry) => toId(entry?.requestId || entry?._id) !== requestId)); } finally { setPendingActionLoadingId(""); } }} className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-300 hover:bg-slate-800">Reject</button><button type="button" disabled={loading} onClick={async () => { setPendingActionLoadingId(requestId); try { await approveFollowRequest(requestId); setPendingRequests((previous) => previous.filter((entry) => toId(entry?.requestId || entry?._id) !== requestId)); setProfile((previous) => previous ? { ...previous, followersCount: Number(previous.followersCount || 0) + 1 } : previous); } finally { setPendingActionLoadingId(""); } }} className="inline-flex items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/15 px-2 py-1 text-[11px] font-semibold text-sky-300 hover:bg-sky-500/25">{loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserPlus2 className="h-3 w-3" />}Approve</button></div></div>; })}</div>}</div>}</div>}
                     </div>
-                </div>
-
-                {/* --- Bio & Metadata --- */}
-                <div className="mb-8 space-y-4">
-                    {profile.bio && <p className="text-base text-slate-300 max-w-2xl leading-relaxed">{profile.bio}</p>}
-                    <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
-                        {profile.location && <div className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /><span>{profile.location}</span></div>}
-                        {profile.website && <div className="flex items-center gap-1.5"><LinkIcon className="h-4 w-4" /><a href={profile.website} target="_blank" rel="noreferrer" className="text-sky-400 hover:underline">{profile.website.replace(/^https?:\/\//, '')}</a></div>}
-                        <div className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /><span>Joined {new Date(profile.createdAt).toLocaleDateString()}</span></div>
-                    </div>
-                    <div className="flex items-center gap-6 border-y border-slate-800/50 py-3">
-                        {/* Stats Counters (Same as before) */}
-                        <div className="flex items-center gap-1.5"><span className="font-bold text-slate-100">{profile.postsCount || posts.length}</span><span className="text-slate-500">Posts</span></div>
-                        <div className="flex items-center gap-1.5"><span className="font-bold text-slate-100">{profile.followersCount || 0}</span><span className="text-slate-500">Followers</span></div>
-                        <div className="flex items-center gap-1.5"><span className="font-bold text-slate-100">{profile.followingCount || 0}</span><span className="text-slate-500">Following</span></div>
-                    </div>
-                </div>
-
-                {/* --- Tabs & Content (Same as before) --- */}
-                <div className="mb-6 border-b border-slate-800">
-                    <div className="flex gap-8">
-                        <button onClick={() => setActiveTab("posts")} className={`flex items-center gap-2 border-b-2 pb-3 text-sm font-medium transition-colors ${activeTab === "posts" ? "border-sky-500 text-sky-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}><Grid className="h-4 w-4" />Posts</button>
-                        <button onClick={() => setActiveTab("media")} className={`flex items-center gap-2 border-b-2 pb-3 text-sm font-medium transition-colors ${activeTab === "media" ? "border-sky-500 text-sky-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}><ImageIcon className="h-4 w-4" />Media</button>
-                        <button onClick={() => setActiveTab("about")} className={`flex items-center gap-2 border-b-2 pb-3 text-sm font-medium transition-colors ${activeTab === "about" ? "border-sky-500 text-sky-400" : "border-transparent text-slate-500 hover:text-slate-300"}`}><Info className="h-4 w-4" />About</button>
-                    </div>
-                </div>
-
-                {/* --- Tab Content --- */}
-                <div className="min-h-[200px]">
-                    {activeTab === "posts" && (
-                        <div className="space-y-4">
-                            {posts.length > 0 ? (
-                                posts.map((post) => (
-                                    <div key={post._id} onClick={() => navigate(`/post/${post._id}`)} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 hover:border-slate-700 transition-colors cursor-pointer">
-                                        <p className="text-sm text-slate-300 mb-2 line-clamp-3">{post.content}</p>
-                                        {post.media?.length > 0 && <div className="h-48 w-full rounded-lg bg-slate-800 overflow-hidden"><img src={post.media[0].url} alt="" className="h-full w-full object-cover" /></div>}
-                                    </div>
-                                ))
-                            ) : (<div className="text-center text-slate-500 py-10">No posts yet</div>)}
-                        </div>
-                    )}
                 </div>
             </div>
 
-            {showOwnMobileMenu && <MobileBottomNav activeTab="me" profileId={id} />}
+            <AnimatePresence>
+                {flashMessage && (
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className={`fixed z-50 rounded-lg border border-sky-500/35 bg-slate-900/95 px-3 py-2 text-xs font-semibold text-sky-200 shadow-xl ${showOwnMobileMenu ? "bottom-[5.7rem] left-1/2 -translate-x-1/2" : "bottom-5 left-1/2 -translate-x-1/2"}`}>
+                        {flashMessage}
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
+            <RelationshipModal
+                open={graphModal.open}
+                title={graphModal.type === "followers" ? "Followers" : "Following"}
+                users={graphUsers}
+                loading={graphLoading}
+                pagination={graphPagination}
+                actionLoadingId={graphActionLoadingId}
+                currentUserId={currentUserId}
+                onClose={() => setGraphModal((previous) => ({ ...previous, open: false }))}
+                onToggleFollow={handleToggleGraphConnection}
+                onLoadMore={() => loadGraphUsers(graphModal.type, Number(graphPagination?.page || 1) + 1, true)}
+            />
+
+            <ProfileEditModal
+                open={isEditModalOpen}
+                profile={profile}
+                saving={editSaving}
+                onClose={() => setIsEditModalOpen(false)}
+                onSave={handleSaveProfile}
+            />
+
+            {showOwnMobileMenu && <MobileBottomNav activeTab="me" profileId={profileId} />}
         </div>
     );
 };

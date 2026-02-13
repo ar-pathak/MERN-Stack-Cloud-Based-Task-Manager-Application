@@ -41,6 +41,29 @@ const userSchema = new Schema({
         maxLength: [160, 'Bio cannot exceed 160 characters'],
         default: ""
     },
+    headline: {
+        type: String,
+        trim: true,
+        maxLength: [80, 'Headline cannot exceed 80 characters'],
+        default: ""
+    },
+    location: {
+        type: String,
+        trim: true,
+        maxLength: [80, 'Location cannot exceed 80 characters'],
+        default: ""
+    },
+    website: {
+        type: String,
+        default: "",
+        validate: {
+            validator: function (v) {
+                if (!v) return true;
+                return /^https?:\/\/.+/.test(v);
+            },
+            message: 'Website must be a valid URL'
+        }
+    },
     avatar: {
         type: String,
         default: "",
@@ -228,6 +251,9 @@ userSchema.methods.toPublicJSON = function () {
         username: this.username,
         name: this.name,
         bio: this.bio,
+        headline: this.headline,
+        location: this.location,
+        website: this.website,
         avatar: this.avatar,
         coverImage: this.coverImage,
         isVerified: this.isVerified,

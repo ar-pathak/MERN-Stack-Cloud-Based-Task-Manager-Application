@@ -37,20 +37,32 @@ class FollowService {
                 throw new Error("Cannot follow inactive user");
             }
 
-            // Check if already following
+            const shouldApprove = !targetUser.isPrivate;
+
+            // Check if relationship already exists
             const existingFollow = await Follow.findOne({
                 follower: currentUserId,
                 following: targetUserId
             }).session(session);
 
+            let isPending = false;
+            let shouldIncrementCounts = false;
+
             if (existingFollow) {
                 if (existingFollow.status === 'active') {
-                    throw new Error("Already following this user");
+                    if (existingFollow.isApproved) {
+                        throw new Error("Already following this user");
+                    }
+
+                    throw new Error("Follow request already pending");
                 } else {
-                    // Reactivate follow if it was blocked/muted
+                    // Reactivate relationship from inactive state.
                     existingFollow.status = 'active';
-                    existingFollow.isApproved = !targetUser.isPrivate;
+                    existingFollow.isApproved = shouldApprove;
                     await existingFollow.save({ session });
+
+                    isPending = !shouldApprove;
+                    shouldIncrementCounts = shouldApprove;
                 }
             } else {
                 // Create new follow relationship
@@ -58,12 +70,15 @@ class FollowService {
                     follower: currentUserId,
                     following: targetUserId,
                     status: 'active',
-                    isApproved: !targetUser.isPrivate // Auto-approve for public accounts
+                    isApproved: shouldApprove // Auto-approve for public accounts
                 }], { session });
+
+                isPending = !shouldApprove;
+                shouldIncrementCounts = shouldApprove;
             }
 
-            // Update counts only if approved (public account or existing relationship)
-            if (!targetUser.isPrivate || existingFollow) {
+            // Update counts only for approved follow relationships.
+            if (shouldIncrementCounts) {
                 await User.findByIdAndUpdate(
                     currentUserId,
                     { $inc: { followingCount: 1 } },
@@ -88,7 +103,7 @@ class FollowService {
 
             return {
                 success: true,
-                isPending: targetUser.isPrivate && !existingFollow
+                isPending
             };
         } catch (error) {
             await session.abortTransaction();
@@ -192,7 +207,9 @@ class FollowService {
         // Check if current user is following each follower
         let followingStatus = {};
         if (currentUserId) {
-            const followerIds = followers.map(f => f.follower._id);
+            const followerIds = followers
+                .map((entry) => entry?.follower?._id)
+                .filter(Boolean);
             followingStatus = await Follow.checkMultipleRelationships(
                 currentUserId,
                 followerIds
@@ -200,11 +217,15 @@ class FollowService {
         }
 
         // Transform data
-        const results = followers.map(f => ({
-            ...f.follower,
-            followedAt: f.createdAt,
-            isFollowing: currentUserId ? followingStatus[f.follower._id.toString()] : undefined
-        }));
+        const results = followers
+            .filter((entry) => Boolean(entry?.follower?._id))
+            .map((entry) => ({
+                ...entry.follower,
+                followedAt: entry.createdAt,
+                isFollowing: currentUserId
+                    ? followingStatus[entry.follower._id.toString()]
+                    : undefined
+            }));
 
         return {
             followers: results,
@@ -250,18 +271,24 @@ class FollowService {
         // Check if current user is following each user
         let followingStatus = {};
         if (currentUserId && currentUserId.toString() !== userId.toString()) {
-            const followingIds = following.map(f => f.following._id);
+            const followingIds = following
+                .map((entry) => entry?.following?._id)
+                .filter(Boolean);
             followingStatus = await Follow.checkMultipleRelationships(
                 currentUserId,
                 followingIds
             );
         }
 
-        const results = following.map(f => ({
-            ...f.following,
-            followedAt: f.createdAt,
-            isFollowing: currentUserId ? followingStatus[f.following._id.toString()] : undefined
-        }));
+        const results = following
+            .filter((entry) => Boolean(entry?.following?._id))
+            .map((entry) => ({
+                ...entry.following,
+                followedAt: entry.createdAt,
+                isFollowing: currentUserId
+                    ? followingStatus[entry.following._id.toString()]
+                    : undefined
+            }));
 
         return {
             following: results,
@@ -328,7 +355,8 @@ class FollowService {
         // Get users that current user is following
         const following = await Follow.find({
             follower: userId,
-            status: 'active'
+            status: 'active',
+            isApproved: true
         }).distinct('following');
 
         // Get users followed by those users (2nd degree connections)

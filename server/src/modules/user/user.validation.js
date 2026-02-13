@@ -34,6 +34,15 @@ const updateProfileSchema = z.object({
         .max(160, "Bio cannot exceed 160 characters")
         .optional()
         .or(z.literal("")),
+    headline: z.string()
+        .max(80, "Headline cannot exceed 80 characters")
+        .optional()
+        .or(z.literal("")),
+    location: z.string()
+        .max(80, "Location cannot exceed 80 characters")
+        .optional()
+        .or(z.literal("")),
+    website: urlOrEmpty.optional(),
     avatar: urlOrEmpty.optional(),
     coverImage: urlOrEmpty.optional(),
     isPrivate: z.boolean().optional()

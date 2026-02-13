@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LogOut, User, Settings, ChevronDown, Crown, Activity, Moon, Sun, Bell, HelpCircle, Palette } from "lucide-react";
+import { useNavigate } from "react-router";
 import { useAuth } from "../../../../context/AuthContext";
 import { toast } from "sonner";
 
@@ -8,7 +9,8 @@ const UserMenu = ({ user }) => {
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef(null);
     const buttonRef = useRef(null);
-    const { logout } = useAuth();
+    const navigate = useNavigate();
+    const { logout, user: authUser } = useAuth();
 
     // Get user initials for avatar
     const getInitials = (name) => {
@@ -76,6 +78,7 @@ const UserMenu = ({ user }) => {
     const userName = user?.name || "User";
     const userEmail = user?.email || "";
     const userRole = user?.role || "Member";
+    const profileId = user?._id || user?.id || authUser?._id || authUser?.id || "";
 
     const menuSections = [
         {
@@ -88,7 +91,11 @@ const UserMenu = ({ user }) => {
                     bgColor: "bg-blue-500/10",
                     action: () => {
                         setIsOpen(false);
-                        toast.info("Profile settings coming soon");
+                        if (!profileId) {
+                            toast.error("Profile not available");
+                            return;
+                        }
+                        navigate(`/profile/${profileId}`);
                     }
                 },
                 {
