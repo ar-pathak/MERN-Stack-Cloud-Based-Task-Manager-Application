@@ -13,7 +13,142 @@ const createError = (message, statusCode = 400) => {
     return error;
 };
 
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (value?._id && value._id !== value) return toIdString(value._id);
+    if (typeof value?.toHexString === "function") return value.toHexString();
+    if (typeof value?.toString === "function") {
+        const normalized = value.toString();
+        return normalized && normalized !== "[object Object]" ? normalized : "";
+    }
+    return "";
+};
+
+const hasBlockedUser = (userDoc, targetId) => {
+    const targetIdString = toIdString(targetId);
+    if (!targetIdString) return false;
+    return (userDoc?.blockedUsers || []).some((entry) => toIdString(entry) === targetIdString);
+};
+
 class PostService {
+    async resolveAuthorAccess(authorId, currentUserId = null) {
+        const author = await User.findById(authorId)
+            .select("accountStatus isPrivate blockedUsers")
+            .lean();
+
+        if (!author || author.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        const authorIdString = toIdString(authorId);
+        const currentUserIdString = toIdString(currentUserId);
+        const isOwner = Boolean(currentUserIdString) && currentUserIdString === authorIdString;
+
+        if (isOwner) {
+            return {
+                isOwner: true,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: false
+            };
+        }
+
+        if (!currentUserIdString) {
+            return {
+                isOwner: false,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: false
+            };
+        }
+
+        const viewer = await User.findById(currentUserId)
+            .select("accountStatus blockedUsers")
+            .lean();
+
+        if (!viewer || viewer.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        const isBlockedContext = hasBlockedUser(author, currentUserId) || hasBlockedUser(viewer, authorId);
+        if (isBlockedContext) {
+            return {
+                isOwner: false,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: true
+            };
+        }
+
+        const followStatus = await Follow.checkRelationship(currentUserId, authorId);
+        const isApprovedFollower = Boolean(followStatus?.isFollowing && followStatus?.isApproved);
+
+        return {
+            isOwner: false,
+            isPrivate: Boolean(author.isPrivate),
+            isApprovedFollower,
+            isBlockedContext: false
+        };
+    }
+
+    async getAccessibleAuthorIds(currentUserId = null) {
+        if (!currentUserId) {
+            return User.find({
+                accountStatus: "active",
+                isPrivate: false
+            }).distinct("_id");
+        }
+
+        const [viewer, publicAuthorIds, approvedFollowingIds, blockedMeIds] = await Promise.all([
+            User.findById(currentUserId)
+                .select("accountStatus blockedUsers")
+                .lean(),
+            User.find({
+                accountStatus: "active",
+                isPrivate: false
+            }).distinct("_id"),
+            Follow.find({
+                follower: currentUserId,
+                status: "active",
+                isApproved: true
+            }).distinct("following"),
+            User.find({
+                accountStatus: "active",
+                blockedUsers: currentUserId
+            }).distinct("_id")
+        ]);
+
+        if (!viewer || viewer.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        const activeFollowingIds = approvedFollowingIds.length
+            ? await User.find({
+                _id: { $in: approvedFollowingIds },
+                accountStatus: "active"
+            }).distinct("_id")
+            : [];
+
+        const blockedByMeIds = Array.isArray(viewer.blockedUsers)
+            ? viewer.blockedUsers.map((entry) => toIdString(entry)).filter(Boolean)
+            : [];
+
+        const blockedIds = new Set([
+            ...blockedByMeIds,
+            ...blockedMeIds.map((entry) => toIdString(entry)).filter(Boolean)
+        ]);
+
+        const allowedIds = new Set(
+            [...publicAuthorIds, ...activeFollowingIds, currentUserId]
+                .map((entry) => toIdString(entry))
+                .filter(Boolean)
+        );
+
+        blockedIds.forEach((entry) => allowedIds.delete(entry));
+        return Array.from(allowedIds);
+    }
 
     /**
      * Create a new post
@@ -119,28 +254,30 @@ class PostService {
             .lean();
 
         if (!post) {
-            throw new Error('Post not found');
+            throw createError('Post not found', 404);
         }
 
-        // Check visibility permissions
-        const canView = post.author._id.toString() === currentUserId?.toString() ||
+        const authorId = post?.author?._id || post?.author;
+        const authorAccess = await this.resolveAuthorAccess(authorId, currentUserId);
+
+        if (authorAccess.isBlockedContext) {
+            throw createError("You cannot view this profile", 403);
+        }
+
+        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+            throw createError("This profile is private", 403);
+        }
+
+        let canView = Boolean(authorAccess.isOwner) ||
             post.visibility === 'public' ||
             post.visibility === 'unlisted';
 
-        if (!canView && post.visibility === 'followers' && currentUserId) {
-            // Check if current user follows the author
-            const isFollowing = await Follow.exists({
-                follower: currentUserId,
-                following: post.author._id,
-                status: 'active',
-                isApproved: true
-            });
+        if (!canView && post.visibility === 'followers') {
+            canView = Boolean(authorAccess.isApprovedFollower);
+        }
 
-            if (!isFollowing) {
-                throw new Error('You do not have permission to view this post');
-            }
-        } else if (!canView) {
-            throw new Error('You do not have permission to view this post');
+        if (!canView) {
+            throw createError('You do not have permission to view this post', 403);
         }
 
         // Add user engagement data if logged in
@@ -506,10 +643,25 @@ class PostService {
      */
     async getPublicFeed(currentUserId = null, page = 1, limit = 20) {
         const skip = (page - 1) * limit;
+        const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
+
+        if (!accessibleAuthorIds.length) {
+            return {
+                posts: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
 
         const query = {
             status: 'active',
-            visibility: 'public'
+            visibility: 'public',
+            author: { $in: accessibleAuthorIds }
         };
 
         const [posts, total] = await Promise.all([
@@ -553,13 +705,7 @@ class PostService {
      */
     async getUserPosts(userId, currentUserId = null, page = 1, limit = 20) {
         const skip = (page - 1) * limit;
-
-        // Check if profile is private and if current user can view
-        const user = await User.findById(userId).select('isPrivate');
-
-        if (!user) {
-            throw new Error('User not found');
-        }
+        const authorAccess = await this.resolveAuthorAccess(userId, currentUserId);
 
         // Build query based on permissions
         let query = {
@@ -567,31 +713,30 @@ class PostService {
             status: 'active'
         };
 
-        // If viewing own profile, show all posts
-        if (currentUserId && currentUserId.toString() === userId.toString()) {
-            // Show all posts including private
+        if (authorAccess.isBlockedContext) {
+            throw createError("You cannot view this profile", 403);
         }
-        // If profile is private, check follow status
-        else if (user.isPrivate) {
-            if (!currentUserId) {
-                throw new Error('This profile is private');
-            }
 
-            const isFollowing = await Follow.exists({
-                follower: currentUserId,
-                following: userId,
-                status: 'active',
-                isApproved: true
-            });
+        // For private profiles without access, return an empty list instead of throwing.
+        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+            return {
+                posts: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
 
-            if (!isFollowing) {
-                throw new Error('This profile is private');
-            }
-
+        // If viewing own profile, show all posts (including private).
+        if (authorAccess.isOwner) {
+            // no visibility filter
+        } else if (authorAccess.isApprovedFollower) {
             query.visibility = { $in: ['public', 'followers'] };
-        }
-        // Public profile
-        else {
+        } else {
             query.visibility = 'public';
         }
 
@@ -632,8 +777,22 @@ class PostService {
      * @param {String} timeframe - 'day', 'week', 'month'
      * @returns {Promise<Object>} Trending posts
      */
-    async getTrendingPosts(page = 1, limit = 20, timeframe = 'day') {
+    async getTrendingPosts(page = 1, limit = 20, timeframe = 'day', currentUserId = null) {
         const skip = (page - 1) * limit;
+        const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
+
+        if (!accessibleAuthorIds.length) {
+            return {
+                posts: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
 
         // Calculate time range
         const timeRanges = {
@@ -648,6 +807,7 @@ class PostService {
         const query = {
             status: 'active',
             visibility: 'public',
+            author: { $in: accessibleAuthorIds },
             createdAt: { $gte: since }
         };
 
@@ -689,12 +849,27 @@ class PostService {
      * @param {Number} limit - Results per page
      * @returns {Promise<Object>} Search results
      */
-    async searchPosts(query, page = 1, limit = 20) {
+    async searchPosts(query, page = 1, limit = 20, currentUserId = null) {
         const skip = (page - 1) * limit;
+        const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
+
+        if (!accessibleAuthorIds.length) {
+            return {
+                posts: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
 
         const searchQuery = {
             status: 'active',
             visibility: 'public',
+            author: { $in: accessibleAuthorIds },
             $text: { $search: query }
         };
 
@@ -731,12 +906,28 @@ class PostService {
      * @param {Number} limit - Posts per page
      * @returns {Promise<Object>} Posts with hashtag
      */
-    async getPostsByHashtag(hashtag, page = 1, limit = 20) {
+    async getPostsByHashtag(hashtag, page = 1, limit = 20, currentUserId = null) {
         const skip = (page - 1) * limit;
+        const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
+
+        if (!accessibleAuthorIds.length) {
+            return {
+                hashtag: `#${hashtag}`,
+                posts: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
 
         const query = {
             status: 'active',
             visibility: 'public',
+            author: { $in: accessibleAuthorIds },
             hashtags: hashtag.toLowerCase()
         };
 

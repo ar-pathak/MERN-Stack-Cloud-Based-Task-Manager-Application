@@ -39,7 +39,7 @@ export const updateProfile = async (updateData) => {
         // Note: 'avatar' and 'coverImage' should be URLs. 
         // Upload files separately using a media/upload service first if needed.
         const response = await api.put(`${BASE_URL}/me`, updateData);
-        return response.data?.data?.user || response.data?.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update profile",

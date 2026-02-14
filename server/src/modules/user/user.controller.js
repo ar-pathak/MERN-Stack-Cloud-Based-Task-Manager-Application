@@ -21,8 +21,13 @@ const userController = {
      */
     updateProfile: async (req, res) => {
         try {
-            const user = await userService.updateProfile(req.user._id, req.body);
-            return sendSuccess(res, { user }, 'Profile updated successfully');
+            const result = await userService.updateProfile(req.user._id, req.body);
+
+            if (result?.user) {
+                return sendSuccess(res, result, 'Profile updated successfully');
+            }
+
+            return sendSuccess(res, { user: result }, 'Profile updated successfully');
         } catch (error) {
             return handleError(error, res);
         }

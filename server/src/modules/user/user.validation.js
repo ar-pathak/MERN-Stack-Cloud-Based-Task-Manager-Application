@@ -112,24 +112,49 @@ const usernameParamSchema = z.object({
 /**
  * Preferences Schema
  */
-const preferencesSchema = z.object({
+const notificationPreferencesSchema = z.object({
+    email: z.boolean().optional(),
+    push: z.boolean().optional(),
+    follows: z.boolean().optional(),
+    comments: z.boolean().optional(),
+    likes: z.boolean().optional()
+});
+
+const privacyPreferencesSchema = z.object({
+    showEmail: z.boolean().optional(),
+    showOnlineStatus: z.boolean().optional(),
+    allowTagging: z.boolean().optional(),
+    allowMentions: z.boolean().optional(),
+    disablePublicMessages: z.boolean().optional()
+});
+
+const preferenceFieldsSchema = z.object({
     language: z.string().optional(),
-    notifications: z.object({
-        email: z.boolean().optional(),
-        push: z.boolean().optional(),
-        follows: z.boolean().optional(),
-        comments: z.boolean().optional(),
-        likes: z.boolean().optional()
-    }).optional(),
-    privacy: z.object({
-        showEmail: z.boolean().optional(),
-        showOnlineStatus: z.boolean().optional(),
-        allowTagging: z.boolean().optional(),
-        allowMentions: z.boolean().optional(),
-        disablePublicMessages: z.boolean().optional()
-    }).optional()
+    notifications: notificationPreferencesSchema.optional(),
+    privacy: privacyPreferencesSchema.optional()
+});
+
+const preferencesSchema = preferenceFieldsSchema.extend({
+    preferences: preferenceFieldsSchema.optional()
 }).refine(
-    (data) => Object.keys(data).length > 0,
+    (data) => {
+        const hasRootPayload =
+            data.language !== undefined
+            || data.notifications !== undefined
+            || data.privacy !== undefined;
+
+        const nested = data.preferences;
+        const hasNestedPayload = Boolean(
+            nested
+            && (
+                nested.language !== undefined
+                || nested.notifications !== undefined
+                || nested.privacy !== undefined
+            )
+        );
+
+        return hasRootPayload || hasNestedPayload;
+    },
     { message: "At least one preference must be provided" }
 );
 

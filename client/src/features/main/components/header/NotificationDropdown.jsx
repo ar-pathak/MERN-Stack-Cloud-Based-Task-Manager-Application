@@ -280,6 +280,33 @@ const NotificationDropdown = () => {
             );
             loadUnreadCount();
         } catch (error) {
+            const notFound = Number(error?.status) === 404 ||
+                String(error?.message || "").toLowerCase().includes("not found");
+            if (notFound) {
+                try {
+                    await markNotificationRead(notificationId);
+                } catch {
+                    // noop
+                }
+
+                setNotifications((prev) =>
+                    prev.map((item) =>
+                        item._id === notificationId
+                            ? {
+                                  ...item,
+                                  read: true,
+                                  readAt: new Date().toISOString(),
+                                  metadata: {
+                                      ...(item.metadata || {}),
+                                      requestState: "expired"
+                                  }
+                              }
+                            : item
+                    )
+                );
+                loadUnreadCount();
+                return;
+            }
             console.error("Failed follow request action", error);
         } finally {
             setActionLoadingKey("");
@@ -385,7 +412,9 @@ const NotificationDropdown = () => {
                                             Delete
                                         </button>
                                         {String(notification?.metadata?.kind || "") === "follow_request" &&
-                                            !notification?.metadata?.requestState && (
+                                            !notification?.read &&
+                                            !notification?.metadata?.requestState &&
+                                            Boolean(notification?.metadata?.requestId) && (
                                                 <>
                                                     <button
                                                         onClick={() => handleFollowRequestAction(notification, "approve")}

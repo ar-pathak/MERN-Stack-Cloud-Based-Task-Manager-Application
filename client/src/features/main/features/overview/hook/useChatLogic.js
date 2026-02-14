@@ -87,28 +87,55 @@ export const useChatLogic = (selectedChat) => {
 
         // Listener: Message Read (Update read status)
         const unsubRead = socketService.onMessageRead((payload) => {
-            const { chatId: readChatId, lastReadMessageId, userId } = payload;
+            const {
+                chatId: readChatId,
+                lastReadMessageId,
+                userId,
+                readBy,
+                lastReadAt
+            } = payload || {};
+            const readerId = userId || readBy;
+
+            if (!readerId) return;
 
             if (String(readChatId) === chatId) {
-                setMessages(prev => prev.map(msg => {
-                    const msgId = msg._id || msg.id;
+                setMessages((prev) => {
+                    const targetMessage = prev.find(
+                        (msg) => String(msg._id || msg.id) === String(lastReadMessageId)
+                    );
 
-                    // Mark message as read and add to readBy array
-                    if (msgId === lastReadMessageId ||
-                        (msg.createdAt && new Date(msg.createdAt) <= new Date())) {
-                        const readBy = msg.readBy || [];
-                        const alreadyRead = readBy.some(r => String(r.userId || r) === String(userId));
+                    const targetTimestamp = lastReadAt
+                        ? new Date(lastReadAt).getTime()
+                        : targetMessage?.createdAt
+                            ? new Date(targetMessage.createdAt).getTime()
+                            : null;
 
-                        if (!alreadyRead) {
-                            return {
-                                ...msg,
-                                isRead: true,
-                                readBy: [...readBy, { userId, readAt: new Date() }]
-                            };
-                        }
-                    }
-                    return msg;
-                }));
+                    return prev.map((msg) => {
+                        const msgId = msg._id || msg.id;
+                        const msgTimestamp = msg.createdAt ? new Date(msg.createdAt).getTime() : null;
+
+                        const shouldMarkRead =
+                            String(msgId) === String(lastReadMessageId) ||
+                            (Number.isFinite(targetTimestamp) &&
+                                Number.isFinite(msgTimestamp) &&
+                                msgTimestamp <= targetTimestamp);
+
+                        if (!shouldMarkRead) return msg;
+
+                        const readEntries = Array.isArray(msg.readBy) ? msg.readBy : [];
+                        const alreadyRead = readEntries.some(
+                            (entry) => String(entry?.userId || entry) === String(readerId)
+                        );
+
+                        if (alreadyRead) return msg;
+
+                        return {
+                            ...msg,
+                            isRead: true,
+                            readBy: [...readEntries, { userId: readerId, readAt: new Date() }]
+                        };
+                    });
+                });
             }
         });
 
@@ -388,9 +415,6 @@ export const useChatLogic = (selectedChat) => {
 
             // Optimistic update
             setMessages(prev => prev.filter(m => (m.id || m._id) !== messageId));
-
-            // Emit socket event
-            socketService.emitMessageDeleted?.(chatId, messageId);
         } catch (error) {
             console.error("Delete failed", error);
             // Reload messages on error
@@ -424,9 +448,6 @@ export const useChatLogic = (selectedChat) => {
                     ? { ...m, content: newContent, text: newContent, edited: true }
                     : m
             ));
-
-            // Emit socket event
-            socketService.emitMessageEdited?.(chatId, messageId, newContent);
         } catch (error) {
             console.error("Edit failed", error);
             alert("Failed to edit message.");

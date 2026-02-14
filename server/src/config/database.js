@@ -1,5 +1,26 @@
 const mongoose = require('mongoose')
 
+let shutdownHooksRegistered = false
+
+const registerShutdownHooks = () => {
+    if (shutdownHooksRegistered) return
+    shutdownHooksRegistered = true
+
+    const closeConnection = async (signal) => {
+        try {
+            await mongoose.connection.close()
+            console.log(`MongoDB connection closed after ${signal}`)
+            process.exit(0)
+        } catch (error) {
+            console.error(`Error closing MongoDB connection after ${signal}:`, error)
+            process.exit(1)
+        }
+    }
+
+    process.once('SIGINT', () => closeConnection('SIGINT'))
+    process.once('SIGTERM', () => closeConnection('SIGTERM'))
+}
+
 const connectDB = async () => {
     try {
         if (!process.env.MONGO_URL) {
@@ -22,12 +43,7 @@ const connectDB = async () => {
             console.warn('⚠️ MongoDB disconnected')
         })
 
-        // Graceful shutdown
-        process.on('SIGINT', async () => {
-            await mongoose.connection.close()
-            console.log('MongoDB connection closed through app termination')
-            process.exit(0)
-        })
+        registerShutdownHooks()
 
         return conn
     } catch (error) {

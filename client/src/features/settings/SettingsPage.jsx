@@ -97,7 +97,17 @@ const SettingsPage = () => {
         try {
             const payload = await getBlockedUsers({ page, limit: 20 });
             const users = Array.isArray(payload?.users) ? payload.users : [];
-            setBlockedUsers((previous) => (append ? [...previous, ...users] : users));
+            setBlockedUsers((previous) => {
+                const merged = append ? [...previous, ...users] : users;
+                const seen = new Set();
+
+                return merged.filter((entry) => {
+                    const id = String(entry?._id || "");
+                    if (!id || seen.has(id)) return false;
+                    seen.add(id);
+                    return true;
+                });
+            });
             setBlockedPagination({
                 page: Number(payload?.pagination?.page || page),
                 limit: Number(payload?.pagination?.limit || 20),
@@ -151,12 +161,32 @@ const SettingsPage = () => {
 
     const updatePrivateProfile = async () => {
         const nextValue = !isPrivate;
+
+        if (!nextValue && isPrivate) {
+            const shouldProceed = window.confirm(
+                "Switching to Public will automatically approve all pending follow requests. Continue?"
+            );
+            if (!shouldProceed) return;
+        }
+
         setSavingKey("profile.private");
         try {
-            await updateProfile({ isPrivate: nextValue });
-            setIsPrivate(nextValue);
+            const result = await updateProfile({ isPrivate: nextValue });
+            const updatedProfile = result?.user || result;
+            const autoApproved = Number(result?.privacySync?.autoApprovedFollowRequests || 0);
+
+            setIsPrivate(Boolean(updatedProfile?.isPrivate ?? nextValue));
             await refreshUser?.();
-            toast.success(nextValue ? "Private account enabled" : "Private account disabled");
+
+            if (nextValue) {
+                toast.success("Private account enabled");
+            } else if (autoApproved > 0) {
+                toast.success(
+                    `Public account enabled. ${autoApproved} follow request${autoApproved === 1 ? "" : "s"} auto-approved.`
+                );
+            } else {
+                toast.success("Public account enabled");
+            }
         } catch (error) {
             toast.error(error?.message || "Failed to update privacy");
         } finally {

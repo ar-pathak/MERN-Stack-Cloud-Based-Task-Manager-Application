@@ -621,10 +621,16 @@ const UserProfile = () => {
                 </div>
 
                 <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4">
+                    <>
+                        {canViewProtectedContent && profile?.headline && (
+                            <p className="text-sm font-medium text-slate-200">{profile.headline}</p>
+                        )}
+                        <p className="mt-1 text-sm text-slate-300">
+                            {profile?.bio || (isBlockedByMe || isBlockedMe ? "Profile details are hidden." : "No bio added yet.")}
+                        </p>
+                    </>
                     {canViewProtectedContent ? (
                         <>
-                            {profile?.headline && <p className="text-sm font-medium text-slate-200">{profile.headline}</p>}
-                            <p className="mt-1 text-sm text-slate-300">{profile?.bio || "No bio added yet."}</p>
                             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-400">
                                 {profile?.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5" />{profile.location}</span>}
                                 {profile?.email && <span className="inline-flex items-center gap-1.5">{profile.email}</span>}

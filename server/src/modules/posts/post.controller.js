@@ -106,7 +106,8 @@ const postController = {
             const result = await postService.getTrendingPosts(
                 parseInt(page),
                 parseInt(limit),
-                timeframe
+                timeframe,
+                req.user?._id
             );
             return sendSuccess(res, result, 'Trending posts retrieved successfully');
         } catch (error) {
@@ -143,7 +144,8 @@ const postController = {
             const result = await postService.searchPosts(
                 query,
                 parseInt(page),
-                parseInt(limit)
+                parseInt(limit),
+                req.user?._id
             );
             return sendSuccess(res, result, 'Search results retrieved');
         } catch (error) {
@@ -161,7 +163,8 @@ const postController = {
             const result = await postService.getPostsByHashtag(
                 req.params.hashtag,
                 parseInt(page),
-                parseInt(limit)
+                parseInt(limit),
+                req.user?._id
             );
             return sendSuccess(res, result, 'Hashtag posts retrieved successfully');
         } catch (error) {

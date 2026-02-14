@@ -52,14 +52,12 @@ class FollowService {
         let notificationPayload = null;
 
         try {
-            const [currentUser, targetUser] = await Promise.all([
-                User.findById(currentUserId)
-                    .select('name username blockedUsers accountStatus')
-                    .session(session),
-                User.findById(targetUserId)
-                    .select('name username accountStatus isPrivate blockedUsers preferences.notifications.follows')
-                    .session(session)
-            ]);
+            const currentUser = await User.findById(currentUserId)
+                .select('name username blockedUsers accountStatus')
+                .session(session);
+            const targetUser = await User.findById(targetUserId)
+                .select('name username accountStatus isPrivate blockedUsers preferences.notifications.follows')
+                .session(session);
 
             if (!currentUser) {
                 throw createError("User not found", 404);
@@ -168,7 +166,7 @@ class FollowService {
                             actorId: toIdString(currentUserId),
                             requestId: toIdString(followRequestId)
                         },
-                        dedupeKey: `social:follow_request:${toIdString(currentUserId)}:${toIdString(targetUserId)}`
+                        dedupeKey: `social:follow_request:${toIdString(followRequestId)}`
                     };
                 } else {
                     notificationPayload = {
@@ -235,6 +233,7 @@ class FollowService {
 
         const session = await mongoose.startSession();
         session.startTransaction();
+        let removedPendingRequestId = null;
 
         try {
             const followRelation = await Follow.findOne({
@@ -248,6 +247,9 @@ class FollowService {
 
             // Delete the follow relationship
             await Follow.findByIdAndDelete(followRelation._id).session(session);
+            if (!followRelation.isApproved) {
+                removedPendingRequestId = followRelation._id;
+            }
 
             // Decrement counts only if the follow was approved
             if (followRelation.isApproved) {
@@ -268,6 +270,20 @@ class FollowService {
             // await notificationService.remove(targetUserId, 'NEW_FOLLOWER', currentUserId);
 
             await session.commitTransaction();
+
+            if (removedPendingRequestId) {
+                try {
+                    await notificationService.setFollowRequestNotificationState({
+                        recipientUserId: targetUserId,
+                        requestId: removedPendingRequestId,
+                        requestState: "cancelled",
+                        read: true
+                    });
+                } catch (notificationError) {
+                    console.error("follow request cancellation notification update error", notificationError);
+                }
+            }
+
             return { success: true };
         } catch (error) {
             await session.abortTransaction();
@@ -530,7 +546,16 @@ class FollowService {
      * @returns {Promise<Array>} List of mutual followers
      */
     async getMutualFollowers(userAId, userBId) {
-        await this.assertCanViewConnections(userBId, userAId);
+        try {
+            await this.assertCanViewConnections(userBId, userAId);
+        } catch (error) {
+            const isPrivateAccessError = Number(error?.statusCode) === 403 &&
+                String(error?.message || "").toLowerCase().includes("private");
+            if (isPrivateAccessError) {
+                return [];
+            }
+            throw error;
+        }
 
         const userAFollowers = await Follow.find({
             following: userAId,
@@ -661,6 +686,27 @@ class FollowService {
      * @returns {Promise<Object>} Paginated pending requests
      */
     async getPendingRequests(userId, page = 1, limit = 20) {
+        const user = await User.findById(userId)
+            .select("accountStatus isPrivate")
+            .lean();
+
+        if (!user || user.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        if (!user.isPrivate) {
+            return {
+                requests: [],
+                pagination: {
+                    page,
+                    limit,
+                    total: 0,
+                    pages: 1,
+                    hasMore: false
+                }
+            };
+        }
+
         const skip = (page - 1) * limit;
 
         const query = {
@@ -717,14 +763,12 @@ class FollowService {
                 throw createError("Follow request not found", 404);
             }
 
-            const [approverUser, requesterUser] = await Promise.all([
-                User.findById(userId)
-                    .select("name username blockedUsers")
-                    .session(session),
-                User.findById(followRequest.follower)
-                    .select("name username blockedUsers preferences.notifications.follows")
-                    .session(session)
-            ]);
+            const approverUser = await User.findById(userId)
+                .select("name username blockedUsers")
+                .session(session);
+            const requesterUser = await User.findById(followRequest.follower)
+                .select("name username blockedUsers preferences.notifications.follows")
+                .session(session);
 
             if (!approverUser || !requesterUser) {
                 throw createError("User not found", 404);
@@ -773,6 +817,17 @@ class FollowService {
 
             await session.commitTransaction();
 
+            try {
+                await notificationService.setFollowRequestNotificationState({
+                    recipientUserId: userId,
+                    requestId: followRequest._id,
+                    requestState: "approved",
+                    read: true
+                });
+            } catch (notificationError) {
+                console.error("follow request notification state update error", notificationError);
+            }
+
             if (notificationPayload) {
                 try {
                     await notificationService.createNotifications(notificationPayload);
@@ -808,6 +863,17 @@ class FollowService {
         }
 
         await Follow.findByIdAndDelete(requestId);
+
+        try {
+            await notificationService.setFollowRequestNotificationState({
+                recipientUserId: userId,
+                requestId: followRequest._id,
+                requestState: "rejected",
+                read: true
+            });
+        } catch (notificationError) {
+            console.error("follow request rejection notification update error", notificationError);
+        }
 
         return { success: true };
     }

@@ -44,6 +44,12 @@ const toIdString = (value) => {
     return "";
 };
 
+const hasBlockedUser = (userDoc, targetId) => {
+    const targetIdString = toIdString(targetId);
+    if (!targetIdString) return false;
+    return (userDoc?.blockedUsers || []).some((entry) => toIdString(entry) === targetIdString);
+};
+
 const extractUserReactionEmoji = (reactions, currentUserKey) => {
     if (!currentUserKey || !Array.isArray(reactions)) return null;
 
@@ -77,6 +83,66 @@ const normalizeStory = (story, currentUserId, options = {}) => {
 };
 
 class StoryService {
+    async resolveAuthorAccess(authorId, currentUserId = null) {
+        const author = await User.findById(authorId)
+            .select("accountStatus isPrivate blockedUsers")
+            .lean();
+
+        if (!author || author.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        const authorIdString = toIdString(authorId);
+        const viewerIdString = toIdString(currentUserId);
+        const isOwner = Boolean(viewerIdString) && viewerIdString === authorIdString;
+
+        if (isOwner) {
+            return {
+                isOwner: true,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: false
+            };
+        }
+
+        if (!viewerIdString) {
+            return {
+                isOwner: false,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: false
+            };
+        }
+
+        const viewer = await User.findById(currentUserId)
+            .select("accountStatus blockedUsers")
+            .lean();
+
+        if (!viewer || viewer.accountStatus !== "active") {
+            throw createError("User not found", 404);
+        }
+
+        const isBlockedContext = hasBlockedUser(author, currentUserId) || hasBlockedUser(viewer, authorId);
+        if (isBlockedContext) {
+            return {
+                isOwner: false,
+                isPrivate: Boolean(author.isPrivate),
+                isApprovedFollower: false,
+                isBlockedContext: true
+            };
+        }
+
+        const relation = await Follow.checkRelationship(currentUserId, authorId);
+        const isApprovedFollower = Boolean(relation?.isFollowing && relation?.isApproved);
+
+        return {
+            isOwner: false,
+            isPrivate: Boolean(author.isPrivate),
+            isApprovedFollower,
+            isBlockedContext: false
+        };
+    }
+
     async createStory(userId, payload = {}) {
         const author = await User.findById(userId).select("name username accountStatus").lean();
         if (!author || author.accountStatus !== "active") {
@@ -307,6 +373,15 @@ class StoryService {
     }
 
     async getUserStories(userId, currentUserId) {
+        const authorAccess = await this.resolveAuthorAccess(userId, currentUserId);
+        if (authorAccess.isBlockedContext) {
+            throw createError("You cannot view this profile", 403);
+        }
+
+        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+            throw createError("This profile is private", 403);
+        }
+
         const stories = await Story.find({
             author: userId,
             status: "active",
@@ -318,22 +393,16 @@ class StoryService {
             .populate("reactions.user", "username name avatar")
             .lean();
 
-        const requesterId = toIdString(currentUserId);
-        const targetUserId = toIdString(userId);
-        const isOwner = Boolean(requesterId) && requesterId === targetUserId;
-
-        let canViewFollowerStories = false;
-        if (!isOwner && requesterId) {
-            const relation = await Follow.checkRelationship(currentUserId, targetUserId);
-            canViewFollowerStories = Boolean(relation?.isFollowing && relation?.isApproved);
-        }
+        const isOwner = authorAccess.isOwner;
+        const canViewFollowerStories = authorAccess.isApprovedFollower;
 
         const filtered = stories
             .filter((story) => {
+                if (isOwner) return true;
                 if (story.visibility === "public") {
                     return true;
                 }
-                return isOwner || canViewFollowerStories;
+                return canViewFollowerStories;
             })
             .map((story) =>
                 normalizeStory(story, currentUserId, { includeAudience: isOwner })
@@ -362,18 +431,17 @@ class StoryService {
         const storyAuthorId = toIdString(story.author);
         if (!storyAuthorId) return false;
 
-        if (userId && storyAuthorId === toIdString(userId)) {
-            return true;
+        const authorAccess = await this.resolveAuthorAccess(storyAuthorId, userId);
+        if (authorAccess.isBlockedContext) return false;
+
+        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+            return false;
         }
 
-        if (story.visibility === "public") {
-            return true;
-        }
+        if (authorAccess.isOwner) return true;
+        if (story.visibility === "public") return true;
 
-        if (!userId) return false;
-
-        const relation = await Follow.checkRelationship(userId, storyAuthorId);
-        return Boolean(relation?.isFollowing && relation?.isApproved);
+        return Boolean(userId) && Boolean(authorAccess.isApprovedFollower);
     }
 }
 

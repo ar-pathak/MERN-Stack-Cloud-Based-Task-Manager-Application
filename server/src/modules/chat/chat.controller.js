@@ -1,6 +1,38 @@
 // modules/chat/chat.controller.js (ENHANCED VERSION)
 const chatService = require("./chat.service");
+const Chat = require("../../models/chat");
+const { getIO } = require("../utils/socketStore");
 const { sendSuccess, handleError } = require("../../helpers/responseHelper");
+
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number") return String(value);
+    if (value?._id && value._id !== value) return toIdString(value._id);
+    if (typeof value?.toHexString === "function") return value.toHexString();
+    if (typeof value?.toString === "function") return value.toString();
+    return "";
+};
+
+const emitToChatMembers = async ({
+    chatId,
+    actorId,
+    eventName,
+    payload
+}) => {
+    const io = getIO();
+    if (!io || !chatId || !eventName) return;
+
+    const chat = await Chat.findById(chatId).select("members").lean();
+    if (!chat?.members?.length) return;
+
+    const actorIdString = toIdString(actorId);
+    chat.members.forEach((memberId) => {
+        const memberIdString = toIdString(memberId);
+        if (!memberIdString || memberIdString === actorIdString) return;
+        io.to(`user:${memberIdString}`).emit(eventName, payload);
+    });
+};
 
 module.exports = {
 
@@ -191,6 +223,17 @@ module.exports = {
                 req.user._id,
                 req.body.chatId
             );
+
+            await emitToChatMembers({
+                chatId: req.body.chatId,
+                actorId: req.user._id,
+                eventName: "chat:message_deleted",
+                payload: {
+                    chatId: req.body.chatId,
+                    messageId: req.params.messageId
+                }
+            });
+
             sendSuccess(res, msg);
         } catch (e) {
             handleError(e, res);
@@ -206,6 +249,19 @@ module.exports = {
                 req.body.chatId,
                 req.body.content
             );
+
+            await emitToChatMembers({
+                chatId: req.body.chatId,
+                actorId: req.user._id,
+                eventName: "chat:message_edited",
+                payload: {
+                    chatId: req.body.chatId,
+                    messageId: req.params.messageId,
+                    content: msg?.content || req.body.content,
+                    message: msg
+                }
+            });
+
             sendSuccess(res, msg);
         } catch (e) {
             handleError(e, res);
@@ -221,6 +277,18 @@ module.exports = {
                 req.body.emoji,
                 req.body.chatId
             );
+
+            await emitToChatMembers({
+                chatId: req.body.chatId,
+                actorId: req.user._id,
+                eventName: "chat:reaction_updated",
+                payload: {
+                    chatId: req.body.chatId,
+                    messageId: req.params.messageId,
+                    reactions: msg?.reactions || []
+                }
+            });
+
             sendSuccess(res, msg);
         } catch (e) {
             handleError(e, res);
@@ -236,6 +304,18 @@ module.exports = {
                 req.body.emoji,
                 req.body.chatId
             );
+
+            await emitToChatMembers({
+                chatId: req.body.chatId,
+                actorId: req.user._id,
+                eventName: "chat:reaction_updated",
+                payload: {
+                    chatId: req.body.chatId,
+                    messageId: req.params.messageId,
+                    reactions: msg?.reactions || []
+                }
+            });
+
             sendSuccess(res, msg);
         } catch (e) {
             handleError(e, res);

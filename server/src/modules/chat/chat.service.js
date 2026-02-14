@@ -323,7 +323,10 @@ class ChatService {
             .lean();
 
         // Get total count for pagination info
-        const total = await Message.countDocuments({ chatId, status: "active" });
+        const total = await Message.countDocuments({
+            chatId,
+            status: { $in: ["active", "edited"] }
+        });
 
         return {
             messages,
@@ -623,9 +626,16 @@ class ChatService {
         if (!message) {
             throw new Error("Message not found");
         }
+        if (String(message.chatId) !== String(chatId)) {
+            throw new Error("Message does not belong to this chat");
+        }
 
         await message.addReaction(userId, emoji);
-        return message;
+        return Message.findById(message._id)
+            .populate("senderId", "name username avatar")
+            .populate("reactions.userId", "name username avatar")
+            .populate("mentions", "username name avatar")
+            .lean();
     }
 
     // -----------------------------------------------------------------------
@@ -645,9 +655,16 @@ class ChatService {
         if (!message) {
             throw new Error("Message not found");
         }
+        if (String(message.chatId) !== String(chatId)) {
+            throw new Error("Message does not belong to this chat");
+        }
 
         await message.removeReaction(userId, emoji);
-        return message;
+        return Message.findById(message._id)
+            .populate("senderId", "name username avatar")
+            .populate("reactions.userId", "name username avatar")
+            .populate("mentions", "username name avatar")
+            .lean();
     }
 
     // -----------------------------------------------------------------------

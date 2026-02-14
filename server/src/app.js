@@ -40,12 +40,37 @@ const { setIO } = require("./modules/utils/socketStore");
 const app = express();
 const port = process.env.PORT || 3000;   // fallback so listen() never gets undefined
 
+const requiredEnvVars = ["MONGO_URL", "JWT_SECRET", "REFRESH_SECRET"];
+const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
+if (missingEnvVars.length > 0) {
+    console.error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
+    process.exit(1);
+}
+
+const allowedOrigins = String(process.env.FRONTEND_URL || "http://localhost:5173")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+const corsOrigin = (origin, callback) => {
+    // Allow non-browser requests (curl, health checks) with no Origin header.
+    if (!origin) return callback(null, true);
+
+    const normalizedOrigin = String(origin).trim().replace(/\/+$/, "");
+
+    if (allowedOrigins.includes(normalizedOrigin)) {
+        return callback(null, true);
+    }
+
+    return callback(new Error(`CORS origin not allowed: ${origin}`));
+};
+
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
 
 // ── CORS ──────────────────────────────────────────────────────────────────
 app.use(cors({
-    origin: process.env.FRONTEND_URL,
+    origin: corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -132,6 +157,13 @@ app.use((err, req, res, next) => {                     // eslint-disable-line no
         });
     }
 
+    if (typeof err.message === "string" && err.message.startsWith("CORS origin not allowed")) {
+        return res.status(403).json({
+            success: false,
+            message: err.message
+        });
+    }
+
     // Mongoose / MongoDB errors
     if (err.name === "MongoServerError" || err.name === "MongooseError" || err.name === "ValidationError") {
         return res.status(500).json({
@@ -155,7 +187,7 @@ const httpServer = http.createServer(app);
 
 const io = new Server(httpServer, {
     cors: {
-        origin: process.env.FRONTEND_URL,
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     },

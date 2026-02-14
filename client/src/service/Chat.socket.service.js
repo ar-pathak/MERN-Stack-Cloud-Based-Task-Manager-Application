@@ -1,16 +1,21 @@
 import { io } from "socket.io-client";
 
-const SOCKET_URL = import.meta.env?.VITE_API_URL || "http://localhost:3000";
+const normalizeBaseUrl = (value) =>
+    String(value || "http://localhost:3000").replace(/\/+$/, "");
+
+const SOCKET_URL = normalizeBaseUrl(import.meta.env?.VITE_API_URL);
 
 let socket = null;
 
 export const getSocket = () => socket;
 
-export const connectSocket = (token) => {
+export const connectSocket = (token = null) => {
     if (socket) return socket;
 
+    const authPayload = token ? { token } : undefined;
+
     socket = io(SOCKET_URL, {
-        auth: { token },
+        auth: authPayload,
         withCredentials: true,
         reconnection: true,
         reconnectionAttempts: 5,
@@ -53,6 +58,8 @@ export const emitMessageRead = (chatId, lastReadMessageId) => {
 // ---------------- LISTENERS ----------------
 
 const attachListener = (eventName, callback) => {
+    if (typeof callback !== "function") return () => {};
+
     const activeSocket = socket || connectSocket();
     if (!activeSocket) return () => { };
 
@@ -97,6 +104,23 @@ export const onOverviewUnread = (callback) =>
  */
 export const onOverviewUnreadReset = (callback) =>
     attachListener("overview:unread_reset", callback);
+
+export const onMessageDeleted = (callback) =>
+    attachListener("chat:message_deleted", callback);
+
+export const onMessageEdited = (callback) =>
+    attachListener("chat:message_edited", callback);
+
+export const onReactionUpdated = (callback) =>
+    attachListener("chat:reaction_updated", callback);
+
+export const emitMessageDeleted = (chatId, messageId) => {
+    if (socket) socket.emit("chat:message_deleted", { chatId, messageId });
+};
+
+export const emitMessageEdited = (chatId, messageId, content) => {
+    if (socket) socket.emit("chat:message_edited", { chatId, messageId, content });
+};
 
 // ---------------- CALL LISTENERS ----------------
 

@@ -1,8 +1,11 @@
 import axios from "axios";
 import { refreshToken } from "../service/auth.service";
 
+const normalizeBaseUrl = (value) =>
+    String(value || "http://localhost:3000").replace(/\/+$/, "");
+
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+    baseURL: normalizeBaseUrl(import.meta.env.VITE_API_URL),
     withCredentials: true, // Important: enables cookies to be sent with requests
     timeout: 30000, // Increased timeout for better reliability
     headers: {
@@ -14,7 +17,7 @@ const api = axios.create({
 let isRefreshing = false;
 let failedQueue = [];
 
-const processQueue = (error) => {
+const processQueue = (error = null) => {
     failedQueue.forEach(prom => {
         if (error) {
             prom.reject(error);
@@ -33,6 +36,9 @@ api.interceptors.response.use(
     },
     async (error) => {
         const originalRequest = error.config;
+        if (!originalRequest) {
+            return Promise.reject(error);
+        }
 
         // If error is 401 and we haven't already tried to refresh
         if (error.response?.status === 401 && !originalRequest._retry) {
@@ -63,14 +69,14 @@ api.interceptors.response.use(
                 await refreshToken();
                 
                 // Process queued requests
-                processQueue(null, null);
+                processQueue(null);
                 isRefreshing = false;
                 
                 // Retry the original request
                 return api(originalRequest);
             } catch (refreshError) {
                 // Refresh failed - clear auth and reject
-                processQueue(refreshError, null);
+                processQueue(refreshError);
                 isRefreshing = false;
                 
                 // Clear user data on refresh failure

@@ -990,7 +990,9 @@ const useWebRTC = (chatId) => {
             for (const candidate of queue) {
                 try {
                     await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch (e) {}
+                } catch (_e) {
+                    // Ignore stale ICE candidates that no longer apply.
+                }
             }
             iceCandidateQueueRef.current.delete(fromId);
         };
@@ -1005,7 +1007,11 @@ const useWebRTC = (chatId) => {
                 return;
             }
 
-            try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+            } catch (_e) {
+                // Ignore malformed or already-applied ICE candidates.
+            }
         };
 
         const onParticipantMediaUpdate = ({ userId, mediaState }) => {

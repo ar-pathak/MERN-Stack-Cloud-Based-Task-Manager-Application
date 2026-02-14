@@ -408,6 +408,52 @@ const getUnreadCount = async (userId) => {
     });
 };
 
+const setFollowRequestNotificationState = async ({
+    recipientUserId,
+    requestId,
+    requestState,
+    read = true
+}) => {
+    const recipientId = toObjectId(recipientUserId);
+    const requestIdString = normalizeIdString(requestId);
+
+    if (!recipientId || !requestIdString || !requestState) {
+        return null;
+    }
+
+    const now = new Date();
+    const setPayload = {
+        "metadata.requestState": requestState
+    };
+
+    if (read) {
+        setPayload.read = true;
+        setPayload.readAt = now;
+        setPayload.seenAt = now;
+    }
+
+    const notification = await Notification.findOneAndUpdate(
+        {
+            user: recipientId,
+            "metadata.kind": "follow_request",
+            "metadata.requestId": requestIdString
+        },
+        { $set: setPayload },
+        { new: true }
+    )
+        .populate("actor", "name username avatar")
+        .lean();
+
+    if (!notification) {
+        return null;
+    }
+
+    emitToUser(String(recipientUserId), "notification:updated", { notification });
+    await emitUnreadCounts([recipientUserId]);
+
+    return notification;
+};
+
 const markAsRead = async (userId, notificationId) => {
     const notification = await Notification.findOneAndUpdate(
         { _id: notificationId, user: userId },
@@ -543,6 +589,7 @@ module.exports = {
     createActivityNotifications,
     listNotifications,
     getUnreadCount,
+    setFollowRequestNotificationState,
     markAsRead,
     markAsUnread,
     markAllAsRead,

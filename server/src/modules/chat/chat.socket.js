@@ -123,19 +123,31 @@ module.exports = (io, socket) => {
             const chat = await loadAndAuthorise(socket, chatId, userId);
             if (!chat) return;
 
-            // Update all messages up to lastReadMessageId as read by this user
+            const lastReadMessage = await Message.findOne({
+                _id: lastReadMessageId,
+                chatId
+            })
+                .select("_id createdAt")
+                .lean();
+
+            if (!lastReadMessage) return;
+
+            const readAt = new Date();
+
+            // Mark only messages in this chat up to the reference timestamp.
             await Message.updateMany(
                 {
-                    chatId: chatId,
-                    _id: { $lte: lastReadMessageId },
-                    senderId: { $ne: userId }, // Don't mark own messages
-                    "readBy.userId": { $ne: userId } // Not already read
+                    chatId,
+                    createdAt: { $lte: lastReadMessage.createdAt },
+                    senderId: { $ne: userId },
+                    status: { $in: ["active", "edited"] },
+                    "readBy.userId": { $ne: userId }
                 },
                 {
                     $push: {
                         readBy: {
-                            userId: userId,
-                            readAt: new Date()
+                            userId,
+                            readAt
                         }
                     }
                 }
@@ -144,8 +156,10 @@ module.exports = (io, socket) => {
             // Emit read receipt to other members
             emitToMembers(io, chat, userId, "chat:read_update", {
                 chatId,
+                userId,
                 readBy: userId,
-                lastReadMessageId
+                lastReadMessageId,
+                lastReadAt: lastReadMessage.createdAt
             });
 
             // 🔥 NEW: Emit unread reset to the current user ONLY

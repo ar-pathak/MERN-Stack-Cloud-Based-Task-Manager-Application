@@ -33,6 +33,56 @@ const hasBlockedUser = (userDoc, targetId) => {
 };
 
 class UserService {
+    async autoApprovePendingFollowRequests(userId, session = null) {
+        const pendingRequests = await Follow.find({
+            following: userId,
+            status: "active",
+            isApproved: false
+        })
+            .select("_id follower")
+            .session(session)
+            .lean();
+
+        if (!pendingRequests.length) {
+            return { autoApprovedFollowRequests: 0 };
+        }
+
+        const followerIds = Array.from(
+            new Set(
+                pendingRequests
+                    .map((entry) => toIdString(entry?.follower))
+                    .filter(Boolean)
+            )
+        );
+
+        const requestIds = pendingRequests
+            .map((entry) => entry?._id)
+            .filter(Boolean);
+
+        await Follow.updateMany(
+            { _id: { $in: requestIds } },
+            { $set: { isApproved: true } },
+            { session }
+        );
+
+        if (followerIds.length > 0) {
+            await User.updateMany(
+                { _id: { $in: followerIds } },
+                { $inc: { followingCount: 1 } },
+                { session }
+            );
+            await User.findByIdAndUpdate(
+                userId,
+                { $inc: { followersCount: followerIds.length } },
+                { session }
+            );
+        }
+
+        return {
+            autoApprovedFollowRequests: followerIds.length
+        };
+    }
+
     /**
      * Get user's own profile information
      * @param {ObjectId} userId - User ID
@@ -107,6 +157,12 @@ class UserService {
         const canViewFullProfile = Boolean(
             (isSelfView || !user?.isPrivate || relationship?.isFollowing) && !isBlockedContext
         );
+        const isBasicPrivateView = Boolean(
+            !isBlockedContext &&
+            !isSelfView &&
+            user?.isPrivate &&
+            !relationship?.isFollowing
+        );
 
         profile.access = {
             canViewFullProfile
@@ -125,7 +181,9 @@ class UserService {
         }
 
         if (!canViewFullProfile) {
-            profile.bio = "";
+            if (!isBasicPrivateView) {
+                profile.bio = "";
+            }
             profile.headline = "";
             profile.location = "";
             profile.website = "";
@@ -182,17 +240,56 @@ class UserService {
             throw new Error("Name cannot exceed 50 characters");
         }
 
-        const user = await User.findByIdAndUpdate(
-            userId,
-            { $set: updates },
-            { new: true, runValidators: true }
-        ).select("-passwordHash -refreshToken -resetPasswordToken");
-
-        if (!user) {
-            throw new Error("User not found");
+        if (Object.keys(updates).length === 0) {
+            throw createError("No valid profile fields provided", 400);
         }
 
-        return user.toProfileJSON();
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            const currentUser = await User.findById(userId)
+                .select("isPrivate")
+                .session(session);
+
+            if (!currentUser) {
+                throw createError("User not found", 404);
+            }
+
+            const wasPrivate = Boolean(currentUser.isPrivate);
+
+            await User.findByIdAndUpdate(
+                userId,
+                { $set: updates },
+                { runValidators: true, session }
+            );
+
+            let privacySync = null;
+            const becamePublic = updates.isPrivate === false && wasPrivate;
+
+            if (becamePublic) {
+                privacySync = await this.autoApprovePendingFollowRequests(userId, session);
+            }
+
+            await session.commitTransaction();
+
+            const user = await User.findById(userId)
+                .select("-passwordHash -refreshToken -resetPasswordToken");
+
+            if (!user) {
+                throw createError("User not found", 404);
+            }
+
+            return {
+                user: user.toProfileJSON(),
+                privacySync: privacySync || { autoApprovedFollowRequests: 0 }
+            };
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
     }
 
     /**

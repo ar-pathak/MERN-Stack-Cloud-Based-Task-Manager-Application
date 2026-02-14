@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../../middleware/authMiddleware');
+const optionalAuthMiddleware = require('../../middleware/optionalAuthMiddleware');
 const postController = require('./post.controller');
 const { validate } = require('../../middleware/validate');
 const {
@@ -27,6 +28,7 @@ const {
 // Explore/Public feed
 router.get(
     '/explore',
+    optionalAuthMiddleware,
     validate(paginationSchema, 'query'),
     postController.getExploreFeed
 );
@@ -34,6 +36,7 @@ router.get(
 // Trending posts
 router.get(
     '/trending',
+    optionalAuthMiddleware,
     validate(trendingSchema, 'query'),
     postController.getTrending
 );
@@ -41,6 +44,7 @@ router.get(
 // Search posts
 router.get(
     '/search',
+    optionalAuthMiddleware,
     validate(searchSchema, 'query'),
     postController.searchPosts
 );
@@ -48,6 +52,7 @@ router.get(
 // Get posts by hashtag
 router.get(
     '/hashtag/:hashtag',
+    optionalAuthMiddleware,
     validate(hashtagSchema, 'params'),
     validate(paginationSchema, 'query'),
     postController.getHashtagPosts
@@ -56,6 +61,7 @@ router.get(
 // Get user's posts (public profile)
 router.get(
     '/user/:userId',
+    optionalAuthMiddleware,
     validate(userIdSchema, 'params'),
     validate(paginationSchema, 'query'),
     postController.getUserPosts
@@ -99,6 +105,7 @@ router.get(
 // Placed after static paths so /feed, /liked, /bookmarks resolve correctly.
 router.get(
     '/:id',
+    optionalAuthMiddleware,
     validate(postIdSchema, 'params'),
     postController.getPost
 );
