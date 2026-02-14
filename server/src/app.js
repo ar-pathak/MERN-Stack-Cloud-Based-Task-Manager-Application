@@ -27,6 +27,7 @@ const chatRoutes = require("./modules/chat/chat.routes");
 const uploadRoutes = require("./modules/upload/upload.routes");
 const callsRoutes = require("./modules/call/call.routes");
 const notificationRoutes = require("./modules/notification/notification.routes");
+const postService = require("./modules/posts/post.service");
 
 // Socket handler + auth middleware for Socket.IO
 const chatSocketHandler = require("./modules/chat/chat.socket");
@@ -39,6 +40,8 @@ const { setIO } = require("./modules/utils/socketStore");
 // ---------------------------------------------------------------------------
 const app = express();
 const port = process.env.PORT || 3000;   // fallback so listen() never gets undefined
+const SCHEDULED_POST_PUBLISH_INTERVAL_MS = 30 * 1000;
+let scheduledPostPublishTimer = null;
 
 const requiredEnvVars = ["MONGO_URL", "JWT_SECRET", "REFRESH_SECRET"];
 const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
@@ -231,8 +234,29 @@ io.on("connection", (socket) => {
 // ---------------------------------------------------------------------------
 // Bootstrap
 // ---------------------------------------------------------------------------
+const startScheduledPostPublisher = () => {
+    if (scheduledPostPublishTimer) return;
+
+    const publishDuePosts = async () => {
+        try {
+            await postService.publishDueScheduledPosts();
+        } catch (error) {
+            console.error("[post-scheduler] failed to publish due posts", error);
+        }
+    };
+
+    publishDuePosts();
+    scheduledPostPublishTimer = setInterval(publishDuePosts, SCHEDULED_POST_PUBLISH_INTERVAL_MS);
+
+    if (typeof scheduledPostPublishTimer.unref === "function") {
+        scheduledPostPublishTimer.unref();
+    }
+};
+
 connectDB()
     .then(() => {
+        startScheduledPostPublisher();
+
         httpServer.listen(port, () => {
             console.log("✅  DB connected successfully");
             console.log(`🚀  Server listening on port ${port}`);

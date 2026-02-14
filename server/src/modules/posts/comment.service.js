@@ -64,6 +64,8 @@ class CommentService {
      * @returns {Promise<Object>} Created comment
      */
     async createComment(userId, postId, content, parentCommentId = null, media = null) {
+        await postService.publishDueScheduledPosts();
+
         const session = await mongoose.startSession();
         session.startTransaction();
 

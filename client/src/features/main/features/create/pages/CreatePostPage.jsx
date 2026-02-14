@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
+import { Clock3, Image, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { useAuth } from "../../../../../context/AuthContext";
@@ -28,6 +28,20 @@ const getMediaTypeFromMime = (mime = "") => {
     return "document";
 };
 
+const toDateTimeLocalValue = (date) => {
+    const value = date instanceof Date ? date : new Date(date);
+    if (!Number.isFinite(value.getTime())) return "";
+
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+};
+
+const getDefaultScheduleValue = () => {
+    const date = new Date(Date.now() + 30 * 60 * 1000);
+    date.setSeconds(0, 0);
+    return toDateTimeLocalValue(date);
+};
+
 const CreatePostPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -42,6 +56,8 @@ const CreatePostPage = () => {
 
     const [content, setContent] = useState("");
     const [visibility, setVisibility] = useState("public");
+    const [publishMode, setPublishMode] = useState("now");
+    const [scheduledFor, setScheduledFor] = useState(() => getDefaultScheduleValue());
     const [postFiles, setPostFiles] = useState([]);
     const [selectedMentionIds, setSelectedMentionIds] = useState([]);
     const [mentionCandidates, setMentionCandidates] = useState([]);
@@ -123,6 +139,8 @@ const CreatePostPage = () => {
     const resetPostForm = () => {
         setContent("");
         setVisibility("public");
+        setPublishMode("now");
+        setScheduledFor(getDefaultScheduleValue());
         setPostFiles([]);
         setSelectedMentionIds([]);
         setMentionCandidates([]);
@@ -140,6 +158,22 @@ const CreatePostPage = () => {
         if (!trimmed) {
             showToast("Post content is required");
             return;
+        }
+
+        let scheduledForPayload;
+        if (publishMode === "schedule") {
+            if (!scheduledFor) {
+                showToast("Select a schedule date and time");
+                return;
+            }
+
+            const scheduledDate = new Date(scheduledFor);
+            if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate <= new Date()) {
+                showToast("Schedule time must be in the future");
+                return;
+            }
+
+            scheduledForPayload = scheduledDate.toISOString();
         }
 
         setPublishing(true);
@@ -165,14 +199,19 @@ const CreatePostPage = () => {
                 postType,
                 media: media.length ? media : undefined,
                 mentions: selectedMentionIds.length ? selectedMentionIds : undefined,
-                hashtags: extractHashtags(trimmed)
+                hashtags: extractHashtags(trimmed),
+                scheduledFor: scheduledForPayload
             });
 
             resetPostForm();
-            showToast("Post published");
+            if (scheduledForPayload) {
+                showToast(`Post scheduled for ${new Date(scheduledForPayload).toLocaleString()}`);
+            } else {
+                showToast("Post published");
+            }
             navigate("/main/feed");
         } catch (error) {
-            showToast(error?.message || "Failed to publish post");
+            showToast(error?.message || "Failed to create post");
         } finally {
             setUploading(false);
             setPublishing(false);
@@ -267,6 +306,55 @@ const CreatePostPage = () => {
                             </select>
                         </div>
 
+                        <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                                Publish
+                            </label>
+                            <div className="inline-flex rounded-lg border border-slate-700 bg-slate-900 p-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setPublishMode("now")}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                        publishMode === "now"
+                                            ? "bg-sky-500/20 text-sky-300"
+                                            : "text-slate-400 hover:bg-slate-800"
+                                    }`}
+                                >
+                                    Now
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setPublishMode("schedule")}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                                        publishMode === "schedule"
+                                            ? "bg-sky-500/20 text-sky-300"
+                                            : "text-slate-400 hover:bg-slate-800"
+                                    }`}
+                                >
+                                    Schedule
+                                </button>
+                            </div>
+                        </div>
+
+                        {publishMode === "schedule" && (
+                            <div className="grid gap-2">
+                                <label
+                                    htmlFor="post-scheduled-for"
+                                    className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500"
+                                >
+                                    Date & Time
+                                </label>
+                                <input
+                                    id="post-scheduled-for"
+                                    type="datetime-local"
+                                    value={scheduledFor}
+                                    min={toDateTimeLocalValue(new Date())}
+                                    onChange={(event) => setScheduledFor(event.target.value)}
+                                    className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 outline-none"
+                                />
+                            </div>
+                        )}
+
                         <div className="relative">
                             <textarea
                                 ref={textareaRef}
@@ -357,8 +445,12 @@ const CreatePostPage = () => {
                             disabled={publishing}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-700/70"
                         >
-                            {(publishing || uploading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                            Publish Post
+                            {(publishing || uploading)
+                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                : publishMode === "schedule"
+                                    ? <Clock3 className="h-4 w-4" />
+                                    : <Send className="h-4 w-4" />}
+                            {publishMode === "schedule" ? "Schedule Post" : "Publish Post"}
                         </button>
                     </section>
                 )}

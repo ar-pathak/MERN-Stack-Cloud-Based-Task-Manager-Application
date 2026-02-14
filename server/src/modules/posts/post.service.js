@@ -33,6 +33,35 @@ const hasBlockedUser = (userDoc, targetId) => {
 };
 
 class PostService {
+    isViewAction(action = "") {
+        return String(action || "").toLowerCase().startsWith("view");
+    }
+
+    async publishDueScheduledPosts(referenceDate = new Date()) {
+        const publishAt = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+        if (!Number.isFinite(publishAt.getTime())) {
+            return 0;
+        }
+
+        const result = await Post.updateMany(
+            {
+                status: "scheduled",
+                scheduledFor: { $lte: publishAt }
+            },
+            {
+                $set: {
+                    status: "active",
+                    publishedAt: publishAt
+                },
+                $unset: {
+                    scheduledFor: 1
+                }
+            }
+        );
+
+        return Number(result?.modifiedCount || result?.nModified || 0);
+    }
+
     async resolveAuthorAccess(authorId, currentUserId = null) {
         const author = await User.findById(authorId)
             .select("accountStatus isPrivate blockedUsers")
@@ -94,7 +123,15 @@ class PostService {
     }
 
     canViewPostWithAccess(post, authorAccess = {}) {
-        if (!post || post.status !== "active") {
+        if (!post) {
+            return false;
+        }
+
+        if (post.status === "scheduled") {
+            return Boolean(authorAccess.isOwner);
+        }
+
+        if (post.status !== "active") {
             return false;
         }
 
@@ -122,15 +159,26 @@ class PostService {
     }
 
     async assertCanAccessPost(post, currentUserId, action = "view this post") {
-        if (!post || post.status !== "active") {
+        if (!post) {
             throw createError("Post not found", 404);
         }
 
         const authorId = post?.author?._id || post?.author;
         const authorAccess = await this.resolveAuthorAccess(authorId, currentUserId);
+
+        if (post.status === "scheduled") {
+            if (authorAccess.isOwner && this.isViewAction(action)) {
+                return { authorAccess };
+            }
+            throw createError("Post not found", 404);
+        }
+
+        if (post.status !== "active") {
+            throw createError("Post not found", 404);
+        }
+
         if (authorAccess.isBlockedContext) {
-            const normalizedAction = String(action || "").toLowerCase();
-            const blockedMessage = normalizedAction.startsWith("view")
+            const blockedMessage = this.isViewAction(action)
                 ? "You cannot view this profile"
                 : "You cannot interact with this profile";
             throw createError(blockedMessage, 403);
@@ -147,7 +195,9 @@ class PostService {
     }
 
     async assertCanAccessPostById(postId, currentUserId, action = "view this post", session = null) {
-        let query = Post.findById(postId).select("_id author status visibility postType originalPost");
+        await this.publishDueScheduledPosts();
+
+        let query = Post.findById(postId).select("_id author status visibility postType originalPost scheduledFor");
         if (session) {
             query = query.session(session);
         }
@@ -247,6 +297,12 @@ class PostService {
         session.startTransaction();
 
         let mentionUsers = [];
+        const scheduledDate = postData?.scheduledFor ? new Date(postData.scheduledFor) : null;
+        const shouldSchedulePost = Boolean(
+            scheduledDate &&
+            Number.isFinite(scheduledDate.getTime()) &&
+            scheduledDate > new Date()
+        );
 
         try {
             // Validate user exists and is active
@@ -284,9 +340,15 @@ class PostService {
 
             mentionUsers = Array.from(mentionMap.values());
 
+            const normalizedPostData = { ...postData };
+            delete normalizedPostData.scheduledFor;
+
             // Create post
             const [post] = await Post.create([{
-                ...postData,
+                ...normalizedPostData,
+                status: shouldSchedulePost ? "scheduled" : "active",
+                scheduledFor: shouldSchedulePost ? scheduledDate : undefined,
+                publishedAt: shouldSchedulePost ? undefined : new Date(),
                 mentions: mentionUsers.map((item) => item._id),
                 author: userId
             }], { session });
@@ -297,7 +359,7 @@ class PostService {
             await post.populate("author", "username name avatar isVerified");
             await post.populate("mentions", "username name avatar");
 
-            if (mentionUsers.length > 0) {
+            if (!shouldSchedulePost && mentionUsers.length > 0) {
                 const actorLabel = user.name || user.username || "Someone";
                 await notifyMentionedUsers({
                     actorId: userId,
@@ -334,6 +396,8 @@ class PostService {
      * @returns {Promise<Object>} Post with engagement data
      */
     async getPostById(postId, currentUserId = null) {
+        await this.publishDueScheduledPosts();
+
         const post = await Post.findById(postId)
             .populate('author', 'username name avatar isVerified followersCount')
             .populate('originalPost')
@@ -365,8 +429,10 @@ class PostService {
             };
         }
 
-        // Increment view count (async, don't wait)
-        Post.findByIdAndUpdate(postId, { $inc: { viewsCount: 1 } }).exec();
+        // Increment view count (async, don't wait) for published posts only.
+        if (post.status === "active") {
+            Post.findByIdAndUpdate(postId, { $inc: { viewsCount: 1 } }).exec();
+        }
 
         return post;
     }
@@ -389,7 +455,7 @@ class PostService {
             throw new Error("You do not have permission to edit this post");
         }
 
-        if (post.status !== "active") {
+        if (!["active", "scheduled"].includes(post.status)) {
             throw new Error("Cannot edit a deleted or hidden post");
         }
 
@@ -471,13 +537,14 @@ class PostService {
                 throw new Error('You do not have permission to delete this post');
             }
 
-            if (post.status !== "active") {
+            if (!["active", "scheduled"].includes(post.status)) {
                 await session.commitTransaction();
                 return { success: true, message: "Post already deleted" };
             }
 
             // Soft delete by updating status
             post.status = 'deleted';
+            post.scheduledFor = undefined;
             await post.save({ session });
 
             await User.updateOne(
@@ -544,6 +611,8 @@ class PostService {
      * @returns {Promise<Object>}
      */
     async getBookmarkedPosts(userId, page = 1, limit = 20) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
 
         const [bookmarks, total] = await Promise.all([
@@ -610,6 +679,8 @@ class PostService {
      * @returns {Promise<Object>}
      */
     async repostPost(userId, postId, payload = {}) {
+        await this.publishDueScheduledPosts();
+
         const originalPost = await Post.findById(postId)
             .select("_id author status visibility postType originalPost")
             .populate("author", "username")
@@ -667,6 +738,8 @@ class PostService {
      * @returns {Promise<Object>} Feed with posts
      */
     async getUserFeed(userId, page = 1, limit = 20) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
 
         // Get list of users that current user follows
@@ -723,6 +796,8 @@ class PostService {
      * @returns {Promise<Object>} Public feed
      */
     async getPublicFeed(currentUserId = null, page = 1, limit = 20) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
         const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
 
@@ -785,6 +860,8 @@ class PostService {
      * @returns {Promise<Object>} User's posts
      */
     async getUserPosts(userId, currentUserId = null, page = 1, limit = 20) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
         const authorAccess = await this.resolveAuthorAccess(userId, currentUserId);
 
@@ -793,6 +870,10 @@ class PostService {
             author: userId,
             status: 'active'
         };
+
+        if (authorAccess.isOwner) {
+            query.status = { $in: ['active', 'scheduled'] };
+        }
 
         if (authorAccess.isBlockedContext) {
             throw createError("You cannot view this profile", 403);
@@ -859,6 +940,8 @@ class PostService {
      * @returns {Promise<Object>} Trending posts
      */
     async getTrendingPosts(page = 1, limit = 20, timeframe = 'day', currentUserId = null) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
         const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
 
@@ -931,6 +1014,8 @@ class PostService {
      * @returns {Promise<Object>} Search results
      */
     async searchPosts(query, page = 1, limit = 20, currentUserId = null) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
         const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
 
@@ -988,6 +1073,8 @@ class PostService {
      * @returns {Promise<Object>} Posts with hashtag
      */
     async getPostsByHashtag(hashtag, page = 1, limit = 20, currentUserId = null) {
+        await this.publishDueScheduledPosts();
+
         const skip = (page - 1) * limit;
         const accessibleAuthorIds = await this.getAccessibleAuthorIds(currentUserId);
 

@@ -159,8 +159,16 @@ const postSchema = new Schema({
     // --- Status & Moderation ---
     status: {
         type: String,
-        enum: ['active', 'deleted', 'hidden', 'flagged', 'archived'],
+        enum: ['active', 'scheduled', 'deleted', 'hidden', 'flagged', 'archived'],
         default: 'active',
+        index: true
+    },
+    scheduledFor: {
+        type: Date,
+        index: true
+    },
+    publishedAt: {
+        type: Date,
         index: true
     },
 
@@ -219,6 +227,7 @@ const postSchema = new Schema({
 postSchema.index({ author: 1, createdAt: -1 }); // User's posts timeline
 postSchema.index({ createdAt: -1 }); // Global feed
 postSchema.index({ status: 1, visibility: 1, createdAt: -1 }); // Public posts feed
+postSchema.index({ status: 1, scheduledFor: 1 }); // Scheduled post publishing
 postSchema.index({ hashtags: 1, createdAt: -1 }); // Hashtag search
 postSchema.index({ mentions: 1, createdAt: -1 }); // User mentions
 postSchema.index({ likesCount: -1, createdAt: -1 }); // Trending posts
@@ -276,7 +285,12 @@ postSchema.methods.toPublicJSON = function () {
 };
 
 postSchema.methods.canBeViewedBy = function (userId) {
-    // Post is deleted or hidden
+    // Scheduled posts are only visible to their author.
+    if (this.status === 'scheduled') {
+        return Boolean(userId) && this.author.toString() === userId.toString();
+    }
+
+    // Post is deleted or hidden.
     if (this.status !== 'active') return false;
 
     // Public posts can be viewed by anyone
@@ -402,6 +416,23 @@ postSchema.pre('save', function () {
     if (!this.isNew && this.isModified('content')) {
         this.isEdited = true;
         this.editedAt = new Date();
+    }
+});
+
+// Keep publish/schedule metadata consistent with status transitions.
+postSchema.pre('save', function () {
+    if (this.status === 'scheduled') {
+        if (!(this.scheduledFor instanceof Date) || Number.isNaN(this.scheduledFor.getTime())) {
+            this.invalidate('scheduledFor', 'Scheduled posts require a valid schedule time');
+        }
+        this.publishedAt = undefined;
+        return;
+    }
+
+    this.scheduledFor = undefined;
+
+    if (this.status === 'active' && !this.publishedAt) {
+        this.publishedAt = new Date();
     }
 });
 

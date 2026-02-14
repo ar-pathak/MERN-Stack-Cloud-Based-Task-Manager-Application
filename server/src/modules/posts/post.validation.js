@@ -82,6 +82,8 @@ const createPostSchema = z.object({
     visibility: z.enum(['public', 'followers', 'private', 'unlisted'])
         .default('public'),
 
+    scheduledFor: z.union([z.string().datetime(), z.date()]).optional(),
+
     mentions: z.array(objectIdSchema)
         .max(50, "Maximum 50 mentions allowed")
         .optional(),
@@ -111,6 +113,16 @@ const createPostSchema = z.object({
     },
     {
         message: "Poll data required for poll posts, originalPost required for reposts/quotes"
+    }
+).refine(
+    (data) => {
+        if (!data.scheduledFor) return true;
+
+        const scheduledDate = new Date(data.scheduledFor);
+        return Number.isFinite(scheduledDate.getTime()) && scheduledDate > new Date();
+    },
+    {
+        message: "scheduledFor must be a future date/time"
     }
 );
 
