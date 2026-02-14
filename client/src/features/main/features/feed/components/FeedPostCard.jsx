@@ -1,7 +1,194 @@
-import { Bookmark, BookmarkCheck, Heart, Loader2, MessageCircle, Repeat2, SendHorizontal } from "lucide-react";
+import {
+    Bookmark,
+    BookmarkCheck,
+    CornerDownRight,
+    Heart,
+    Loader2,
+    MessageCircle,
+    Repeat2,
+    SendHorizontal
+} from "lucide-react";
 
 import PostMediaPreview from "./PostMediaPreview";
 import { getInitial } from "../utils/feed.helpers";
+
+const CommentItem = ({
+    comment,
+    postId,
+    isReply = false,
+    actionState,
+    formatRelativeTime,
+    navigateToProfile,
+    allowReply = false,
+    replyDraft = "",
+    replyComposerOpen = false,
+    replySubmitting = false,
+    replyLoading = false,
+    onToggleCommentLike,
+    onToggleReplyComposer,
+    onReplyDraftChange,
+    onReplySubmit,
+    onLoadMoreReplies
+}) => {
+    const commentId = String(comment?._id || "");
+    const hasLiked = Boolean(comment?.userEngagement?.hasLiked);
+    const likeActionKey = `comment-like:${commentId}`;
+    const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+    const canSubmitReply = Boolean(String(replyDraft || "").trim()) && !replySubmitting;
+
+    return (
+        <div className={`rounded-lg border border-slate-800 bg-slate-900/50 ${isReply ? "p-2" : "p-2.5"}`}>
+            <div className="flex items-start gap-2.5">
+                <button
+                    type="button"
+                    onClick={() =>
+                        navigateToProfile(comment?.author?._id || comment?.author?.id)
+                    }
+                    className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full border border-slate-700 bg-slate-800"
+                >
+                    {comment?.author?.avatar ? (
+                        <img
+                            src={comment.author.avatar}
+                            alt={comment?.author?.name || comment?.author?.username || "User"}
+                            className="h-full w-full object-cover"
+                        />
+                    ) : (
+                        <span className="flex h-full w-full items-center justify-center text-[11px] font-semibold text-slate-300">
+                            {getInitial(comment?.author)}
+                        </span>
+                    )}
+                </button>
+
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                navigateToProfile(comment?.author?._id || comment?.author?.id)
+                            }
+                            className="truncate font-semibold text-slate-200 hover:text-sky-300"
+                        >
+                            @{comment?.author?.username || "user"}
+                        </button>
+                        <span className="text-slate-500">-</span>
+                        <span className="text-slate-500">
+                            {formatRelativeTime(comment?.createdAt)}
+                        </span>
+                    </div>
+
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">
+                        {comment?.content}
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => onToggleCommentLike(postId, comment)}
+                            disabled={Boolean(actionState?.[likeActionKey])}
+                            className={`inline-flex items-center gap-1 text-xs ${
+                                hasLiked
+                                    ? "text-rose-300"
+                                    : "text-slate-400 hover:text-slate-200"
+                            }`}
+                        >
+                            {actionState?.[likeActionKey] ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                                <Heart
+                                    className={`h-3.5 w-3.5 ${
+                                        hasLiked ? "fill-current" : ""
+                                    }`}
+                                />
+                            )}
+                            {Number(comment?.likesCount || 0)}
+                        </button>
+
+                        {allowReply && (
+                            <button
+                                type="button"
+                                onClick={() => onToggleReplyComposer(commentId)}
+                                className={`inline-flex items-center gap-1 text-xs ${
+                                    replyComposerOpen
+                                        ? "text-sky-300"
+                                        : "text-slate-400 hover:text-slate-200"
+                                }`}
+                            >
+                                <CornerDownRight className="h-3.5 w-3.5" />
+                                Reply
+                            </button>
+                        )}
+
+                        {allowReply && Number(comment?.repliesCount || 0) > 0 && (
+                            <span className="text-xs text-slate-500">
+                                {Number(comment?.repliesCount || 0)}{" "}
+                                {Number(comment?.repliesCount || 0) === 1
+                                    ? "reply"
+                                    : "replies"}
+                            </span>
+                        )}
+                    </div>
+
+                    {allowReply && replies.length > 0 && (
+                        <div className="mt-3 space-y-2 border-l border-slate-800 pl-3">
+                            {replies.map((reply) => (
+                                <CommentItem
+                                    key={reply?._id}
+                                    comment={reply}
+                                    postId={postId}
+                                    isReply
+                                    actionState={actionState}
+                                    formatRelativeTime={formatRelativeTime}
+                                    navigateToProfile={navigateToProfile}
+                                    onToggleCommentLike={onToggleCommentLike}
+                                />
+                            ))}
+
+                            {Boolean(comment?.hasMoreReplies) && (
+                                <button
+                                    type="button"
+                                    onClick={() => onLoadMoreReplies(postId, commentId)}
+                                    disabled={replyLoading}
+                                    className="inline-flex items-center gap-1 text-xs text-sky-300 hover:text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {replyLoading && (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    )}
+                                    Load more replies
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {allowReply && replyComposerOpen && (
+                        <div className="mt-3 flex items-end gap-2">
+                            <textarea
+                                value={replyDraft}
+                                onChange={(event) =>
+                                    onReplyDraftChange(commentId, event.target.value)
+                                }
+                                rows={2}
+                                placeholder={`Reply to @${comment?.author?.username || "user"}...`}
+                                className="w-full rounded-lg border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-500"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => onReplySubmit(postId, commentId)}
+                                disabled={!canSubmitReply}
+                                className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {replySubmitting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <SendHorizontal className="h-4 w-4" />
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const FeedPostCard = ({
     post,
@@ -18,12 +205,22 @@ const FeedPostCard = ({
     commentsLoading,
     commentsSubmitting,
     commentDraft,
+    replyDraftsByComment,
+    replyComposerByComment,
+    replySubmittingByComment,
+    replyLoadingByComment,
     onCommentDraftChange,
-    onCommentSubmit
+    onCommentSubmit,
+    onToggleCommentLike,
+    onToggleReplyComposer,
+    onReplyDraftChange,
+    onReplySubmit,
+    onLoadMoreReplies
 }) => {
     const postId = String(post?._id || "");
     const hasLiked = Boolean(post?.userEngagement?.hasLiked);
     const hasSaved = Boolean(post?.userEngagement?.hasSaved);
+    const canSubmitComment = Boolean(String(commentDraft || "").trim()) && !commentsSubmitting;
 
     return (
         <article className="rounded-2xl border border-slate-800/80 bg-slate-900/55 p-4">
@@ -165,7 +362,7 @@ const FeedPostCard = ({
                 <section className="mt-3 rounded-xl border border-slate-800 bg-slate-900/80 p-3">
                     <div className="mb-3 flex items-center justify-between">
                         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            Comments
+                            Comments ({Number(post?.commentsCount || 0)})
                         </p>
                         {commentsLoading && (
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500" />
@@ -173,18 +370,34 @@ const FeedPostCard = ({
                     </div>
 
                     <div className="space-y-2">
-                        {comments.map((comment) => (
-                            <div
-                                key={comment?._id}
-                                className="rounded-lg border border-slate-800 bg-slate-900/50 p-2.5"
-                            >
-                                <p className="text-xs text-slate-400">
-                                    @{comment?.author?.username || "user"} -{" "}
-                                    {formatRelativeTime(comment?.createdAt)}
-                                </p>
-                                <p className="text-sm text-slate-200">{comment?.content}</p>
-                            </div>
-                        ))}
+                        {comments.map((comment) => {
+                            const commentId = String(comment?._id || "");
+
+                            return (
+                                <CommentItem
+                                    key={commentId}
+                                    comment={comment}
+                                    postId={postId}
+                                    actionState={actionState}
+                                    formatRelativeTime={formatRelativeTime}
+                                    navigateToProfile={navigateToProfile}
+                                    allowReply
+                                    replyDraft={replyDraftsByComment?.[commentId] || ""}
+                                    replyComposerOpen={Boolean(
+                                        replyComposerByComment?.[commentId]
+                                    )}
+                                    replySubmitting={Boolean(
+                                        replySubmittingByComment?.[commentId]
+                                    )}
+                                    replyLoading={Boolean(replyLoadingByComment?.[commentId])}
+                                    onToggleCommentLike={onToggleCommentLike}
+                                    onToggleReplyComposer={onToggleReplyComposer}
+                                    onReplyDraftChange={onReplyDraftChange}
+                                    onReplySubmit={onReplySubmit}
+                                    onLoadMoreReplies={onLoadMoreReplies}
+                                />
+                            );
+                        })}
                         {!commentsLoading && comments.length === 0 && (
                             <p className="text-xs text-slate-500">No comments yet.</p>
                         )}
@@ -201,7 +414,7 @@ const FeedPostCard = ({
                         <button
                             type="button"
                             onClick={() => onCommentSubmit(postId)}
-                            disabled={commentsSubmitting}
+                            disabled={!canSubmitComment}
                             className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             {commentsSubmitting ? (

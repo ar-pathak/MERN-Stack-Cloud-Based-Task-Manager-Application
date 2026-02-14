@@ -4,14 +4,17 @@ import { useNavigate } from "react-router";
 import { useAuth } from "../../../../../context/AuthContext";
 import {
     addComment,
+    getCommentReplies,
     getBookmarkedPosts,
     getExploreFeed,
     getPostComments,
     getUserFeed,
+    likeComment,
     likePost,
     repostPost,
     savePost,
     sharePost,
+    unlikeComment,
     unlikePost,
     unsavePost
 } from "../../../../../service/post.service";
@@ -42,6 +45,89 @@ const FEED_FETCHERS = {
     bookmarks: getBookmarkedPosts
 };
 
+const REPLY_PAGE_SIZE = 6;
+
+const normalizeComment = (comment) => {
+    if (!comment?._id) return null;
+
+    const replies = Array.isArray(comment?.replies)
+        ? comment.replies.filter((reply) => reply?._id).map((reply) => ({
+              ...reply,
+              likesCount: Number(reply?.likesCount || 0),
+              userEngagement: {
+                  ...(reply?.userEngagement || {}),
+                  hasLiked: Boolean(reply?.userEngagement?.hasLiked)
+              }
+          }))
+        : [];
+
+    const repliesCount = Math.max(
+        Number(comment?.repliesCount || 0),
+        replies.length
+    );
+
+    return {
+        ...comment,
+        likesCount: Number(comment?.likesCount || 0),
+        repliesCount,
+        replies,
+        hasMoreReplies:
+            typeof comment?.hasMoreReplies === "boolean"
+                ? comment.hasMoreReplies
+                : repliesCount > replies.length,
+        userEngagement: {
+            ...(comment?.userEngagement || {}),
+            hasLiked: Boolean(comment?.userEngagement?.hasLiked)
+        }
+    };
+};
+
+const normalizeComments = (items = []) =>
+    (Array.isArray(items) ? items : [])
+        .map((comment) => normalizeComment(comment))
+        .filter(Boolean);
+
+const mergeUniqueComments = (items = []) => {
+    const byId = new Map();
+    items.forEach((comment) => {
+        if (!comment?._id) return;
+        byId.set(String(comment._id), normalizeComment(comment));
+    });
+    return Array.from(byId.values()).filter(Boolean);
+};
+
+const updateCommentThread = (comments = [], commentId, updater) => {
+    const targetKey = String(commentId || "");
+    const list = Array.isArray(comments) ? comments : [];
+    let hasChange = false;
+
+    const nextComments = list.map((comment) => {
+        if (String(comment?._id || "") === targetKey) {
+            hasChange = true;
+            return updater(comment);
+        }
+
+        const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+        if (!replies.length) return comment;
+
+        let hasReplyChange = false;
+        const nextReplies = replies.map((reply) => {
+            if (String(reply?._id || "") !== targetKey) return reply;
+            hasReplyChange = true;
+            hasChange = true;
+            return updater(reply);
+        });
+
+        if (!hasReplyChange) return comment;
+        return {
+            ...comment,
+            replies: nextReplies
+        };
+    });
+
+    return hasChange ? nextComments : list;
+};
+
 const useFeedPageLogic = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -68,6 +154,11 @@ const useFeedPageLogic = () => {
     const [commentsLoadingByPost, setCommentsLoadingByPost] = useState({});
     const [commentsSubmittingByPost, setCommentsSubmittingByPost] = useState({});
     const [commentDrafts, setCommentDrafts] = useState({});
+    const [replyDraftsByComment, setReplyDraftsByComment] = useState({});
+    const [replyComposerByComment, setReplyComposerByComment] = useState({});
+    const [replySubmittingByComment, setReplySubmittingByComment] = useState({});
+    const [replyLoadingByComment, setReplyLoadingByComment] = useState({});
+    const [replyPaginationByComment, setReplyPaginationByComment] = useState({});
     const [expandedCommentsPostId, setExpandedCommentsPostId] = useState(null);
 
     const [actionState, setActionState] = useState({});
@@ -206,6 +297,11 @@ const useFeedPageLogic = () => {
         setCommentDrafts({});
         setCommentsByPost({});
         setCommentsLoadingByPost({});
+        setReplyDraftsByComment({});
+        setReplyComposerByComment({});
+        setReplySubmittingByComment({});
+        setReplyLoadingByComment({});
+        setReplyPaginationByComment({});
         loadFeed({ page: 1, append: false });
     }, [activeTab, loadFeed]);
 
@@ -683,10 +779,31 @@ const useFeedPageLogic = () => {
                     limit: 8,
                     sortBy: "recent"
                 });
+                const nextComments = normalizeComments(result?.comments || []);
+
                 setCommentsByPost((previous) => ({
                     ...previous,
-                    [postId]: Array.isArray(result?.comments) ? result.comments : []
+                    [postId]: nextComments
                 }));
+
+                setReplyPaginationByComment((previous) => {
+                    const next = { ...previous };
+                    nextComments.forEach((comment) => {
+                        const commentId = String(comment?._id || "");
+                        if (!commentId) return;
+
+                        const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+                        const repliesCount = Number(comment?.repliesCount || replies.length);
+                        next[commentId] = {
+                            page: 1,
+                            hasMore:
+                                typeof comment?.hasMoreReplies === "boolean"
+                                    ? comment.hasMoreReplies
+                                    : replies.length < repliesCount
+                        };
+                    });
+                    return next;
+                });
             } catch (error) {
                 showToast(error?.message || "Failed to load comments", "error");
             } finally {
@@ -708,6 +825,75 @@ const useFeedPageLogic = () => {
         [commentsByPost, expandedCommentsPostId, loadCommentsForPost]
     );
 
+    const handleToggleCommentLike = useCallback(
+        async (postId, comment) => {
+            const commentId = comment?._id;
+            if (!postId || !commentId) return;
+
+            const key = `comment-like:${commentId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            const currentlyLiked = Boolean(comment?.userEngagement?.hasLiked);
+
+            try {
+                const result = currentlyLiked
+                    ? await unlikeComment(commentId)
+                    : await likeComment(commentId);
+
+                setCommentsByPost((previous) => ({
+                    ...previous,
+                    [postId]: updateCommentThread(
+                        previous?.[postId] || [],
+                        commentId,
+                        (entry) => {
+                            const entryLiked = Boolean(entry?.userEngagement?.hasLiked);
+                            const nextLiked =
+                                typeof result?.liked === "boolean"
+                                    ? result.liked
+                                    : !entryLiked;
+                            const delta =
+                                nextLiked === entryLiked ? 0 : nextLiked ? 1 : -1;
+
+                            return {
+                                ...entry,
+                                likesCount: Math.max(
+                                    0,
+                                    Number(entry?.likesCount || 0) + delta
+                                ),
+                                userEngagement: {
+                                    ...(entry?.userEngagement || {}),
+                                    hasLiked: nextLiked
+                                }
+                            };
+                        }
+                    )
+                }));
+            } catch (error) {
+                showToast(error?.message || "Could not update comment like", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, setActionLoading, showToast]
+    );
+
+    const handleToggleReplyComposer = useCallback((commentId) => {
+        if (!commentId) return;
+        setReplyComposerByComment((previous) => ({
+            ...previous,
+            [commentId]: !previous?.[commentId]
+        }));
+    }, []);
+
+    const handleReplyDraftChange = useCallback((commentId, value) => {
+        if (!commentId) return;
+        setReplyDraftsByComment((previous) => ({
+            ...previous,
+            [commentId]: value
+        }));
+    }, []);
+
     const handleSubmitComment = useCallback(
         async (postId) => {
             const value = String(commentDrafts?.[postId] || "").trim();
@@ -716,7 +902,11 @@ const useFeedPageLogic = () => {
             setCommentsSubmittingByPost((previous) => ({ ...previous, [postId]: true }));
 
             try {
-                const comment = await addComment(postId, { content: value });
+                const comment = normalizeComment(
+                    await addComment(postId, { content: value })
+                );
+                if (!comment) return;
+
                 setCommentsByPost((previous) => ({
                     ...previous,
                     [postId]: [comment, ...(previous?.[postId] || [])]
@@ -734,6 +924,142 @@ const useFeedPageLogic = () => {
             }
         },
         [commentDrafts, patchPost, showToast]
+    );
+
+    const handleSubmitReply = useCallback(
+        async (postId, parentCommentId) => {
+            const parentId = String(parentCommentId || "");
+            const value = String(replyDraftsByComment?.[parentId] || "").trim();
+            if (!postId || !parentId || !value || replySubmittingByComment?.[parentId]) {
+                return;
+            }
+
+            setReplySubmittingByComment((previous) => ({
+                ...previous,
+                [parentId]: true
+            }));
+
+            try {
+                const reply = normalizeComment(
+                    await addComment(postId, {
+                        content: value,
+                        parentCommentId: parentId
+                    })
+                );
+
+                if (!reply) return;
+
+                setCommentsByPost((previous) => ({
+                    ...previous,
+                    [postId]: (previous?.[postId] || []).map((comment) => {
+                        if (String(comment?._id || "") !== parentId) return comment;
+
+                        const existingReplies = Array.isArray(comment?.replies)
+                            ? comment.replies
+                            : [];
+
+                        return {
+                            ...comment,
+                            replies: mergeUniqueComments([...existingReplies, reply]),
+                            repliesCount:
+                                Number(comment?.repliesCount || existingReplies.length) + 1
+                        };
+                    })
+                }));
+
+                setReplyDraftsByComment((previous) => ({
+                    ...previous,
+                    [parentId]: ""
+                }));
+                setReplyComposerByComment((previous) => ({
+                    ...previous,
+                    [parentId]: false
+                }));
+
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    commentsCount: Number(entry?.commentsCount || 0) + 1
+                }));
+            } catch (error) {
+                showToast(error?.message || "Failed to post reply", "error");
+            } finally {
+                setReplySubmittingByComment((previous) => ({
+                    ...previous,
+                    [parentId]: false
+                }));
+            }
+        },
+        [patchPost, replyDraftsByComment, replySubmittingByComment, showToast]
+    );
+
+    const handleLoadMoreReplies = useCallback(
+        async (postId, parentCommentId) => {
+            const parentId = String(parentCommentId || "");
+            if (!postId || !parentId || replyLoadingByComment?.[parentId]) return;
+
+            const currentPagination = replyPaginationByComment?.[parentId];
+            const hasMore =
+                typeof currentPagination?.hasMore === "boolean"
+                    ? currentPagination.hasMore
+                    : true;
+            if (!hasMore) return;
+
+            const nextPage = Number(currentPagination?.page || 1) + 1;
+            setReplyLoadingByComment((previous) => ({ ...previous, [parentId]: true }));
+
+            try {
+                const result = await getCommentReplies(parentId, {
+                    page: nextPage,
+                    limit: REPLY_PAGE_SIZE
+                });
+                const nextReplies = normalizeComments(result?.replies || []);
+                const nextHasMore =
+                    typeof result?.pagination?.hasMore === "boolean"
+                        ? result.pagination.hasMore
+                        : nextReplies.length >= REPLY_PAGE_SIZE;
+
+                setCommentsByPost((previous) => ({
+                    ...previous,
+                    [postId]: (previous?.[postId] || []).map((comment) => {
+                        if (String(comment?._id || "") !== parentId) return comment;
+
+                        const existingReplies = Array.isArray(comment?.replies)
+                            ? comment.replies
+                            : [];
+                        const mergedReplies = mergeUniqueComments([
+                            ...existingReplies,
+                            ...nextReplies
+                        ]);
+
+                        return {
+                            ...comment,
+                            replies: mergedReplies,
+                            repliesCount: Math.max(
+                                Number(comment?.repliesCount || 0),
+                                mergedReplies.length
+                            ),
+                            hasMoreReplies: nextHasMore
+                        };
+                    })
+                }));
+
+                setReplyPaginationByComment((previous) => ({
+                    ...previous,
+                    [parentId]: {
+                        page: nextPage,
+                        hasMore: nextHasMore
+                    }
+                }));
+            } catch (error) {
+                showToast(error?.message || "Failed to load more replies", "error");
+            } finally {
+                setReplyLoadingByComment((previous) => ({
+                    ...previous,
+                    [parentId]: false
+                }));
+            }
+        },
+        [replyLoadingByComment, replyPaginationByComment, showToast]
     );
 
     const handleCommentDraftChange = useCallback((postId, value) => {
@@ -775,6 +1101,10 @@ const useFeedPageLogic = () => {
         commentsLoadingByPost,
         commentsSubmittingByPost,
         commentDrafts,
+        replyDraftsByComment,
+        replyComposerByComment,
+        replySubmittingByComment,
+        replyLoadingByComment,
         expandedCommentsPostId,
         actionState,
         toast,
@@ -799,8 +1129,13 @@ const useFeedPageLogic = () => {
         closeRepostComposer,
         submitRepost,
         handleToggleComments,
+        handleToggleCommentLike,
+        handleToggleReplyComposer,
         handleSubmitComment,
         handleCommentDraftChange,
+        handleReplyDraftChange,
+        handleSubmitReply,
+        handleLoadMoreReplies,
         handleLoadMore,
         handleRefresh
     };

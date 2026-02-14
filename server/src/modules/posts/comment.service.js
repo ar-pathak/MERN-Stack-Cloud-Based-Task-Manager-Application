@@ -14,6 +14,45 @@ const createError = (message, statusCode = 400) => {
 };
 
 class CommentService {
+    async buildCommentLikeSet(commentIds = [], currentUserId) {
+        const normalizedIds = Array.from(
+            new Set(
+                (Array.isArray(commentIds) ? commentIds : [])
+                    .filter(Boolean)
+                    .map((id) => String(id))
+            )
+        );
+
+        if (!currentUserId || normalizedIds.length === 0) {
+            return new Set();
+        }
+
+        const likedCommentIds = await Like.find({
+            user: currentUserId,
+            comment: { $in: normalizedIds }
+        }).distinct("comment");
+
+        return new Set((likedCommentIds || []).map((id) => String(id)));
+    }
+
+    attachCommentEngagement(comment, likedCommentIds = new Set()) {
+        const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+
+        return {
+            ...comment,
+            replies: replies.map((reply) => ({
+                ...reply,
+                userEngagement: {
+                    ...(reply?.userEngagement || {}),
+                    hasLiked: likedCommentIds.has(String(reply?._id || ""))
+                }
+            })),
+            userEngagement: {
+                ...(comment?.userEngagement || {}),
+                hasLiked: likedCommentIds.has(String(comment?._id || ""))
+            }
+        };
+    }
 
     /**
      * Create a comment on a post
@@ -194,7 +233,12 @@ class CommentService {
                 });
             }
 
-            return comment;
+            const serializedComment = comment.toObject();
+            serializedComment.userEngagement = { hasLiked: false };
+            serializedComment.replies = [];
+            serializedComment.hasMoreReplies = false;
+
+            return serializedComment;
         } catch (error) {
             await session.abortTransaction();
             throw error;
@@ -459,6 +503,10 @@ class CommentService {
                     .sort({ createdAt: 1 })
                     .limit(3)
                     .populate('author', 'username name avatar isVerified')
+                    .populate({
+                        path: 'mentions',
+                        select: 'username'
+                    })
                     .lean();
 
                 return {
@@ -469,8 +517,19 @@ class CommentService {
             })
         );
 
+        const commentIds = commentsWithReplies.flatMap((comment) => ([
+            comment?._id,
+            ...(Array.isArray(comment?.replies)
+                ? comment.replies.map((reply) => reply?._id)
+                : [])
+        ]));
+        const likedCommentIds = await this.buildCommentLikeSet(commentIds, currentUserId);
+        const commentsWithEngagement = commentsWithReplies.map((comment) =>
+            this.attachCommentEngagement(comment, likedCommentIds)
+        );
+
         return {
-            comments: commentsWithReplies,
+            comments: commentsWithEngagement,
             pagination: {
                 page,
                 limit,
@@ -523,8 +582,20 @@ class CommentService {
             Comment.countDocuments(query)
         ]);
 
+        const likedCommentIds = await this.buildCommentLikeSet(
+            replies.map((reply) => reply?._id),
+            currentUserId
+        );
+        const repliesWithEngagement = replies.map((reply) => ({
+            ...reply,
+            userEngagement: {
+                ...(reply?.userEngagement || {}),
+                hasLiked: likedCommentIds.has(String(reply?._id || ""))
+            }
+        }));
+
         return {
-            replies,
+            replies: repliesWithEngagement,
             pagination: {
                 page,
                 limit,

@@ -38,6 +38,10 @@ const FeedPage = () => {
         commentsLoadingByPost,
         commentsSubmittingByPost,
         commentDrafts,
+        replyDraftsByComment,
+        replyComposerByComment,
+        replySubmittingByComment,
+        replyLoadingByComment,
         expandedCommentsPostId,
         actionState,
         toast,
@@ -62,8 +66,13 @@ const FeedPage = () => {
         closeRepostComposer,
         submitRepost,
         handleToggleComments,
+        handleToggleCommentLike,
+        handleToggleReplyComposer,
         handleSubmitComment,
         handleCommentDraftChange,
+        handleReplyDraftChange,
+        handleSubmitReply,
+        handleLoadMoreReplies,
         handleLoadMore,
         handleRefresh
     } = useFeedPageLogic();
@@ -130,8 +139,17 @@ const FeedPage = () => {
                                         commentsLoading={Boolean(commentsLoadingByPost?.[postId])}
                                         commentsSubmitting={Boolean(commentsSubmittingByPost?.[postId])}
                                         commentDraft={commentDrafts?.[postId] || ""}
+                                        replyDraftsByComment={replyDraftsByComment}
+                                        replyComposerByComment={replyComposerByComment}
+                                        replySubmittingByComment={replySubmittingByComment}
+                                        replyLoadingByComment={replyLoadingByComment}
                                         onCommentDraftChange={handleCommentDraftChange}
                                         onCommentSubmit={handleSubmitComment}
+                                        onToggleCommentLike={handleToggleCommentLike}
+                                        onToggleReplyComposer={handleToggleReplyComposer}
+                                        onReplyDraftChange={handleReplyDraftChange}
+                                        onReplySubmit={handleSubmitReply}
+                                        onLoadMoreReplies={handleLoadMoreReplies}
                                     />
                                 );
                             })}
