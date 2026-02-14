@@ -355,6 +355,11 @@ postSchema.statics.getTrendingPosts = async function (limit = 10, timeframe = 24
 
 // --- Pre-save Hooks ---
 
+// Track whether this write created a new document so post-save hooks can safely branch.
+postSchema.pre('save', function () {
+    this.wasNew = this.isNew;
+});
+
 // Normalize optional location payload to avoid partial geo objects that break 2dsphere indexing.
 postSchema.pre('validate', function () {
     if (!this.location) return;
@@ -405,9 +410,12 @@ postSchema.pre('save', function () {
 // Update user's post count
 postSchema.post('save', async function (doc) {
     if (doc.wasNew) {
+        const session = typeof doc.$session === "function" ? doc.$session() : null;
+        const options = session ? { session } : {};
         await mongoose.model('User').findByIdAndUpdate(
             doc.author,
-            { $inc: { postsCount: 1 } }
+            { $inc: { postsCount: 1 } },
+            options
         );
     }
 });
@@ -416,10 +424,14 @@ postSchema.post('save', async function (doc) {
 
 postSchema.post('findOneAndDelete', async function (doc) {
     if (doc) {
+        const session = typeof this.getOptions === "function" ? this.getOptions().session : null;
+        const options = session ? { session } : {};
+
         // Decrement author's post count
         await mongoose.model('User').findByIdAndUpdate(
             doc.author,
-            { $inc: { postsCount: -1 } }
+            { $inc: { postsCount: -1 } },
+            options
         );
 
         // TODO: Delete associated data (likes, comments, etc.)

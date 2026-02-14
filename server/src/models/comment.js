@@ -130,12 +130,16 @@ commentSchema.statics.getReplies = function (commentId, limit = 10) {
 
 // --- Pre-save Hooks ---
 
-commentSchema.pre('save', function (next) {
+// Track whether this write created a new comment so post-save hooks can safely branch.
+commentSchema.pre('save', function () {
+    this.wasNew = this.isNew;
+});
+
+commentSchema.pre('save', function () {
     if (!this.isNew && this.isModified('content')) {
         this.isEdited = true;
         this.editedAt = new Date();
     }
-    next();
 });
 
 // --- Post-save Hooks ---
@@ -143,16 +147,21 @@ commentSchema.pre('save', function (next) {
 // Update post's comment count
 commentSchema.post('save', async function (doc) {
     if (doc.wasNew) {
+        const session = typeof doc.$session === "function" ? doc.$session() : null;
+        const options = session ? { session } : {};
+
         await mongoose.model('Post').findByIdAndUpdate(
             doc.post,
-            { $inc: { commentsCount: 1 } }
+            { $inc: { commentsCount: 1 } },
+            options
         );
 
         // If it's a reply, update parent comment's reply count
         if (doc.parentComment) {
             await this.constructor.findByIdAndUpdate(
                 doc.parentComment,
-                { $inc: { repliesCount: 1 } }
+                { $inc: { repliesCount: 1 } },
+                options
             );
         }
     }
@@ -162,25 +171,30 @@ commentSchema.post('save', async function (doc) {
 
 commentSchema.post('findOneAndDelete', async function (doc) {
     if (doc) {
+        const session = typeof this.getOptions === "function" ? this.getOptions().session : null;
+        const options = session ? { session } : {};
+
         // Decrement post's comment count
         await mongoose.model('Post').findByIdAndUpdate(
             doc.post,
-            { $inc: { commentsCount: -1 } }
+            { $inc: { commentsCount: -1 } },
+            options
         );
 
         // If it's a reply, decrement parent's reply count
         if (doc.parentComment) {
             await mongoose.model('Comment').findByIdAndUpdate(
                 doc.parentComment,
-                { $inc: { repliesCount: -1 } }
+                { $inc: { repliesCount: -1 } },
+                options
             );
         }
 
         // Delete all replies to this comment
-        await mongoose.model('Comment').deleteMany({ parentComment: doc._id });
+        await mongoose.model('Comment').deleteMany({ parentComment: doc._id }, options);
 
         // Delete all likes on this comment
-        await mongoose.model('Like').deleteMany({ comment: doc._id });
+        await mongoose.model('Like').deleteMany({ comment: doc._id }, options);
     }
 });
 

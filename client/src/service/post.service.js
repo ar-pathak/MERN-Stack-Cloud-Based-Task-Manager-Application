@@ -295,7 +295,7 @@ export const deletePost = async (postId) => {
 export const likePost = async (postId, reactionType = 'like') => {
     try {
         const response = await api.post(`${BASE_URL}/${postId}/like`, { reactionType });
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to like post",
@@ -311,7 +311,7 @@ export const likePost = async (postId, reactionType = 'like') => {
 export const unlikePost = async (postId) => {
     try {
         const response = await api.delete(`${BASE_URL}/${postId}/like`);
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to unlike post",
@@ -432,7 +432,7 @@ export const getCommentReplies = async (commentId, params = {}) => {
 export const likeComment = async (commentId) => {
     try {
         const response = await api.post(`${BASE_URL}/comments/${commentId}/like`);
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to like comment",
@@ -448,7 +448,7 @@ export const likeComment = async (commentId) => {
 export const unlikeComment = async (commentId) => {
     try {
         const response = await api.delete(`${BASE_URL}/comments/${commentId}/like`);
-        return response.data;
+        return response.data?.data || response.data;
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to unlike comment",

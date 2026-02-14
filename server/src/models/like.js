@@ -11,14 +11,14 @@ const likeSchema = new Schema({
     post: {
         type: Schema.Types.ObjectId,
         ref: 'Post',
-        required: [true, 'Post is required'],
-        index: true
+        index: true,
+        default: undefined
     },
-    // Optional: Support for liking comments too
     comment: {
         type: Schema.Types.ObjectId,
         ref: 'Comment',
-        index: true
+        index: true,
+        default: undefined
     },
     // Like reaction type (for future: heart, laugh, etc.)
     reactionType: {
@@ -30,10 +30,43 @@ const likeSchema = new Schema({
     timestamps: true
 });
 
+// A like must target exactly one entity: either a post or a comment.
+likeSchema.pre('validate', function () {
+    const hasPost = this.post != null;
+    const hasComment = this.comment != null;
+
+    // Ensure the non-target field is absent so unique indexes never see `{ field: null }`.
+    if (hasPost) {
+        this.comment = undefined;
+    }
+
+    if (hasComment) {
+        this.post = undefined;
+    }
+
+    if (hasPost === hasComment) {
+        const message = 'Like must target either a post or a comment';
+        this.invalidate('post', message);
+        this.invalidate('comment', message);
+    }
+});
+
 // --- Indexes ---
 // Compound unique index: User can only like a post once
-likeSchema.index({ user: 1, post: 1 }, { unique: true, sparse: true });
-likeSchema.index({ user: 1, comment: 1 }, { unique: true, sparse: true });
+likeSchema.index(
+    { user: 1, post: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { post: { $type: "objectId" } }
+    }
+);
+likeSchema.index(
+    { user: 1, comment: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { comment: { $type: "objectId" } }
+    }
+);
 
 // Sorted by recent for activity feeds
 likeSchema.index({ post: 1, createdAt: -1 });

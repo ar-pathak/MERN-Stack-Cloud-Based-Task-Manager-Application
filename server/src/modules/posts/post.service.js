@@ -93,6 +93,92 @@ class PostService {
         };
     }
 
+    canViewPostWithAccess(post, authorAccess = {}) {
+        if (!post || post.status !== "active") {
+            return false;
+        }
+
+        if (authorAccess.isBlockedContext) {
+            return false;
+        }
+
+        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+            return false;
+        }
+
+        if (authorAccess.isOwner) {
+            return true;
+        }
+
+        if (post.visibility === "followers") {
+            return Boolean(authorAccess.isApprovedFollower);
+        }
+
+        if (post.visibility === "private") {
+            return false;
+        }
+
+        return post.visibility === "public" || post.visibility === "unlisted";
+    }
+
+    async assertCanAccessPost(post, currentUserId, action = "view this post") {
+        if (!post || post.status !== "active") {
+            throw createError("Post not found", 404);
+        }
+
+        const authorId = post?.author?._id || post?.author;
+        const authorAccess = await this.resolveAuthorAccess(authorId, currentUserId);
+        if (authorAccess.isBlockedContext) {
+            const normalizedAction = String(action || "").toLowerCase();
+            const blockedMessage = normalizedAction.startsWith("view")
+                ? "You cannot view this profile"
+                : "You cannot interact with this profile";
+            throw createError(blockedMessage, 403);
+        }
+
+        if (!this.canViewPostWithAccess(post, authorAccess)) {
+            if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
+                throw createError("This profile is private", 403);
+            }
+            throw createError(`You do not have permission to ${action}`, 403);
+        }
+
+        return { authorAccess };
+    }
+
+    async assertCanAccessPostById(postId, currentUserId, action = "view this post", session = null) {
+        let query = Post.findById(postId).select("_id author status visibility postType originalPost");
+        if (session) {
+            query = query.session(session);
+        }
+
+        const post = await query;
+        await this.assertCanAccessPost(post, currentUserId, action);
+        return post;
+    }
+
+    async filterAccessiblePosts(posts, currentUserId) {
+        if (!Array.isArray(posts) || posts.length === 0) {
+            return [];
+        }
+
+        const checked = await Promise.all(
+            posts.map(async (post) => {
+                try {
+                    await this.assertCanAccessPost(post, currentUserId, "view this post");
+                    return post;
+                } catch (error) {
+                    if (error?.statusCode === 403 || error?.statusCode === 404) {
+                        return null;
+                    }
+                    throw error;
+                }
+            })
+        );
+
+        return checked.filter(Boolean);
+    }
+
     async getAccessibleAuthorIds(currentUserId = null) {
         if (!currentUserId) {
             return User.find({
@@ -253,32 +339,7 @@ class PostService {
             .populate('originalPost')
             .lean();
 
-        if (!post) {
-            throw createError('Post not found', 404);
-        }
-
-        const authorId = post?.author?._id || post?.author;
-        const authorAccess = await this.resolveAuthorAccess(authorId, currentUserId);
-
-        if (authorAccess.isBlockedContext) {
-            throw createError("You cannot view this profile", 403);
-        }
-
-        if (authorAccess.isPrivate && !authorAccess.isOwner && !authorAccess.isApprovedFollower) {
-            throw createError("This profile is private", 403);
-        }
-
-        let canView = Boolean(authorAccess.isOwner) ||
-            post.visibility === 'public' ||
-            post.visibility === 'unlisted';
-
-        if (!canView && post.visibility === 'followers') {
-            canView = Boolean(authorAccess.isApprovedFollower);
-        }
-
-        if (!canView) {
-            throw createError('You do not have permission to view this post', 403);
-        }
+        const { authorAccess } = await this.assertCanAccessPost(post, currentUserId, "view this post");
 
         // Add user engagement data if logged in
         if (currentUserId) {
@@ -410,9 +471,28 @@ class PostService {
                 throw new Error('You do not have permission to delete this post');
             }
 
+            if (post.status !== "active") {
+                await session.commitTransaction();
+                return { success: true, message: "Post already deleted" };
+            }
+
             // Soft delete by updating status
             post.status = 'deleted';
             await post.save({ session });
+
+            await User.updateOne(
+                { _id: userId, postsCount: { $gt: 0 } },
+                { $inc: { postsCount: -1 } },
+                { session }
+            );
+
+            if (post.originalPost && ["repost", "quote"].includes(post.postType)) {
+                await Post.updateOne(
+                    { _id: post.originalPost, repostsCount: { $gt: 0 } },
+                    { $inc: { repostsCount: -1 } },
+                    { session }
+                );
+            }
 
             // Or hard delete (uncomment if preferred)
             // await Post.findByIdAndDelete(postId).session(session);
@@ -434,17 +514,14 @@ class PostService {
      * @returns {Promise<Object>}
      */
     async savePost(userId, postId) {
-        const post = await Post.findById(postId).select("_id status");
-        if (!post || post.status !== "active") {
-            throw createError("Post not found", 404);
-        }
+        await this.assertCanAccessPostById(postId, userId, "save this post");
 
-        const existing = await PostSave.findOne({ user: userId, post: postId }).lean();
-        if (existing) {
-            return { saved: true };
-        }
+        await PostSave.updateOne(
+            { user: userId, post: postId },
+            { $setOnInsert: { user: userId, post: postId } },
+            { upsert: true }
+        );
 
-        await PostSave.create({ user: userId, post: postId });
         return { saved: true };
     }
 
@@ -492,7 +569,8 @@ class PostService {
             .map((entry) => entry.post)
             .filter((post) => post && post.status === "active");
 
-        const postsWithEngagement = await this.addUserEngagementData(posts, userId);
+        const accessiblePosts = await this.filterAccessiblePosts(posts, userId);
+        const postsWithEngagement = await this.addUserEngagementData(accessiblePosts, userId);
 
         return {
             posts: postsWithEngagement,
@@ -512,11 +590,8 @@ class PostService {
      * @param {String} channel
      * @returns {Promise<Object>}
      */
-    async sharePost(postId, channel = "copy_link") {
-        const post = await Post.findById(postId).select("_id status");
-        if (!post || post.status !== "active") {
-            throw createError("Post not found", 404);
-        }
+    async sharePost(userId, postId, channel = "copy_link") {
+        await this.assertCanAccessPostById(postId, userId, "share this post");
 
         await Post.findByIdAndUpdate(postId, { $inc: { sharesCount: 1 } });
 
@@ -536,12 +611,11 @@ class PostService {
      */
     async repostPost(userId, postId, payload = {}) {
         const originalPost = await Post.findById(postId)
+            .select("_id author status visibility postType originalPost")
             .populate("author", "username")
             .lean();
 
-        if (!originalPost || originalPost.status !== "active") {
-            throw createError("Original post not found", 404);
-        }
+        await this.assertCanAccessPost(originalPost, userId, "repost this post");
 
         const mode = payload.mode === "quote" ? "quote" : "repost";
         const visibility = payload.visibility || "public";
@@ -556,7 +630,11 @@ class PostService {
             });
 
             if (existingRepost) {
-                return this.getPostById(existingRepost._id, userId);
+                const existingPost = await this.getPostById(existingRepost._id, userId);
+                return {
+                    ...existingPost,
+                    alreadyReposted: true
+                };
             }
         }
 
@@ -575,7 +653,10 @@ class PostService {
         const repost = await this.createPost(userId, repostPayload);
         await Post.findByIdAndUpdate(postId, { $inc: { repostsCount: 1 } });
 
-        return repost;
+        return {
+            ...repost,
+            alreadyReposted: false
+        };
     }
 
     /**

@@ -4,6 +4,32 @@ const Post = require('../../models/post');
 const Comment = require('../../models/comment');
 const User = require('../../models/user');
 const notificationService = require('../notification/notification.service');
+const postService = require('./post.service');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
+const isMongoDuplicateKeyError = (error) =>
+    error?.name === "MongoServerError" && Number(error?.code) === 11000;
+
+const isDuplicateLikeError = (error, targetKey) =>
+    isMongoDuplicateKeyError(error) &&
+    Boolean(error?.keyPattern?.user) &&
+    Boolean(error?.keyPattern?.[targetKey]);
+
+const abortSessionIfActive = async (session) => {
+    if (!session) return;
+    try {
+        if (typeof session.inTransaction !== "function" || session.inTransaction()) {
+            await session.abortTransaction();
+        }
+    } catch (_error) {
+        // Ignore abort errors (e.g., transaction already ended).
+    }
+};
 
 class LikeService {
 
@@ -21,11 +47,12 @@ class LikeService {
         let notificationPayload = null;
 
         try {
-            // Check if post exists
-            const post = await Post.findById(postId).session(session);
-            if (!post || post.status !== 'active') {
-                throw new Error('Post not found');
-            }
+            const post = await postService.assertCanAccessPostById(
+                postId,
+                userId,
+                "like this post",
+                session
+            );
 
             // Check if already liked
             const existingLike = await Like.findOne({
@@ -39,9 +66,10 @@ class LikeService {
                     existingLike.reactionType = reactionType;
                     await existingLike.save({ session });
                     await session.commitTransaction();
-                    return { success: true, message: 'Reaction updated' };
+                    return { success: true, message: 'Reaction updated', liked: true };
                 }
-                throw new Error('You have already liked this post');
+                await session.commitTransaction();
+                return { success: true, message: 'Post already liked', liked: true };
             }
 
             // Create like
@@ -105,9 +133,28 @@ class LikeService {
                 }
             }
 
-            return { success: true, message: 'Post liked successfully' };
+            return { success: true, message: 'Post liked successfully', liked: true };
         } catch (error) {
-            await session.abortTransaction();
+            if (isDuplicateLikeError(error, "post")) {
+                await abortSessionIfActive(session);
+
+                const existingLike = await Like.findOne({
+                    user: userId,
+                    post: postId
+                });
+
+                if (existingLike) {
+                    if (existingLike.reactionType !== reactionType) {
+                        existingLike.reactionType = reactionType;
+                        await existingLike.save();
+                        return { success: true, message: 'Reaction updated', liked: true };
+                    }
+
+                    return { success: true, message: 'Post already liked', liked: true };
+                }
+            }
+
+            await abortSessionIfActive(session);
             throw error;
         } finally {
             session.endSession();
@@ -131,23 +178,24 @@ class LikeService {
             }).session(session);
 
             if (!like) {
-                throw new Error('You have not liked this post');
+                await session.commitTransaction();
+                return { success: true, message: 'Post already unliked', liked: false };
             }
 
             // Delete like
             await Like.findByIdAndDelete(like._id).session(session);
 
             // Decrement post like count
-            await Post.findByIdAndUpdate(
-                postId,
+            await Post.updateOne(
+                { _id: postId, likesCount: { $gt: 0 } },
                 { $inc: { likesCount: -1 } },
                 { session }
             );
 
             await session.commitTransaction();
-            return { success: true, message: 'Post unliked successfully' };
+            return { success: true, message: 'Post unliked successfully', liked: false };
         } catch (error) {
-            await session.abortTransaction();
+            await abortSessionIfActive(session);
             throw error;
         } finally {
             session.endSession();
@@ -167,10 +215,19 @@ class LikeService {
         let notificationPayload = null;
 
         try {
-            const comment = await Comment.findById(commentId).session(session);
+            const comment = await Comment.findById(commentId)
+                .select("_id author post status")
+                .session(session);
             if (!comment || comment.status !== 'active') {
-                throw new Error('Comment not found');
+                throw createError('Comment not found', 404);
             }
+
+            await postService.assertCanAccessPostById(
+                comment.post,
+                userId,
+                "like comments on this post",
+                session
+            );
 
             // Check if already liked
             const existingLike = await Like.findOne({
@@ -179,7 +236,8 @@ class LikeService {
             }).session(session);
 
             if (existingLike) {
-                throw new Error('You have already liked this comment');
+                await session.commitTransaction();
+                return { success: true, message: 'Comment already liked', liked: true };
             }
 
             // Create like
@@ -241,9 +299,22 @@ class LikeService {
                 }
             }
 
-            return { success: true, message: 'Comment liked successfully' };
+            return { success: true, message: 'Comment liked successfully', liked: true };
         } catch (error) {
-            await session.abortTransaction();
+            if (isDuplicateLikeError(error, "comment")) {
+                await abortSessionIfActive(session);
+
+                const existingLike = await Like.findOne({
+                    user: userId,
+                    comment: commentId
+                });
+
+                if (existingLike) {
+                    return { success: true, message: 'Comment already liked', liked: true };
+                }
+            }
+
+            await abortSessionIfActive(session);
             throw error;
         } finally {
             session.endSession();
@@ -267,21 +338,22 @@ class LikeService {
             }).session(session);
 
             if (!like) {
-                throw new Error('You have not liked this comment');
+                await session.commitTransaction();
+                return { success: true, message: 'Comment already unliked', liked: false };
             }
 
             await Like.findByIdAndDelete(like._id).session(session);
 
-            await Comment.findByIdAndUpdate(
-                commentId,
+            await Comment.updateOne(
+                { _id: commentId, likesCount: { $gt: 0 } },
                 { $inc: { likesCount: -1 } },
                 { session }
             );
 
             await session.commitTransaction();
-            return { success: true, message: 'Comment unliked successfully' };
+            return { success: true, message: 'Comment unliked successfully', liked: false };
         } catch (error) {
-            await session.abortTransaction();
+            await abortSessionIfActive(session);
             throw error;
         } finally {
             session.endSession();
@@ -295,7 +367,8 @@ class LikeService {
      * @param {Number} limit - Results per page
      * @returns {Promise<Object>} Users who liked
      */
-    async getPostLikes(postId, page = 1, limit = 20) {
+    async getPostLikes(postId, currentUserId, page = 1, limit = 20) {
+        await postService.assertCanAccessPostById(postId, currentUserId, "view likes on this post");
         const skip = (page - 1) * limit;
 
         const query = { post: postId };
@@ -338,7 +411,7 @@ class LikeService {
 
         const query = {
             user: userId,
-            post: { $exists: true }
+            post: { $type: "objectId" }
         };
 
         const [likes, total] = await Promise.all([
@@ -354,11 +427,17 @@ class LikeService {
             Like.countDocuments(query)
         ]);
 
-        return {
-            posts: likes.map(like => ({
+        const likedPosts = likes
+            .filter((like) => like?.post && like.post.status === "active")
+            .map((like) => ({
                 ...like.post,
                 likedAt: like.createdAt
-            })),
+            }));
+
+        const accessibleLikedPosts = await postService.filterAccessiblePosts(likedPosts, userId);
+
+        return {
+            posts: accessibleLikedPosts,
             pagination: {
                 page,
                 limit,

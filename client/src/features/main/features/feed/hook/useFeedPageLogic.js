@@ -484,23 +484,30 @@ const useFeedPageLogic = () => {
             const currentlyLiked = Boolean(post?.userEngagement?.hasLiked);
 
             try {
-                if (currentlyLiked) {
-                    await unlikePost(postId);
-                } else {
-                    await likePost(postId);
-                }
+                const result = currentlyLiked
+                    ? await unlikePost(postId)
+                    : await likePost(postId);
 
-                patchPost(postId, (entry) => ({
-                    ...entry,
-                    likesCount: Math.max(
-                        0,
-                        Number(entry?.likesCount || 0) + (currentlyLiked ? -1 : 1)
-                    ),
-                    userEngagement: {
-                        ...(entry?.userEngagement || {}),
-                        hasLiked: !currentlyLiked
-                    }
-                }));
+                patchPost(postId, (entry) => {
+                    const entryLiked = Boolean(entry?.userEngagement?.hasLiked);
+                    const nextLiked =
+                        typeof result?.liked === "boolean"
+                            ? result.liked
+                            : !entryLiked;
+                    const likeDelta = nextLiked === entryLiked ? 0 : nextLiked ? 1 : -1;
+
+                    return {
+                        ...entry,
+                        likesCount: Math.max(
+                            0,
+                            Number(entry?.likesCount || 0) + likeDelta
+                        ),
+                        userEngagement: {
+                            ...(entry?.userEngagement || {}),
+                            hasLiked: nextLiked
+                        }
+                    };
+                });
             } catch (error) {
                 showToast(error?.message || "Could not update like", "error");
             } finally {
@@ -635,20 +642,28 @@ const useFeedPageLogic = () => {
                     visibility: repostComposer?.visibility || "public"
                 });
 
+                const alreadyReposted = Boolean(created?.alreadyReposted);
+
                 patchPost(postId, (entry) => ({
                     ...entry,
-                    repostsCount: Number(entry?.repostsCount || 0) + 1,
+                    repostsCount:
+                        Number(entry?.repostsCount || 0) +
+                        (Boolean(entry?.userEngagement?.hasReposted) || alreadyReposted ? 0 : 1),
                     userEngagement: {
                         ...(entry?.userEngagement || {}),
                         hasReposted: true
                     }
                 }));
 
-                if (created?._id && activeTab !== "bookmarks") {
+                if (created?._id && activeTab !== "bookmarks" && !alreadyReposted) {
                     setPosts((previous) => mergeUniquePosts([created, ...previous]));
                 }
 
-                showToast(mode === "quote" ? "Quote repost published" : "Reposted");
+                if (alreadyReposted) {
+                    showToast("Already reposted");
+                } else {
+                    showToast(mode === "quote" ? "Quote repost published" : "Reposted");
+                }
                 closeRepostComposer();
             } catch (error) {
                 showToast(error?.message || "Could not repost", "error");

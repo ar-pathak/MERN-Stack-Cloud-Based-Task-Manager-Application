@@ -1,9 +1,17 @@
 const mongoose = require('mongoose');
 const Comment = require('../../models/comment');
 const Post = require('../../models/post');
+const Like = require('../../models/like');
 const User = require('../../models/user');
 const notificationService = require('../notification/notification.service');
 const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
+const postService = require('./post.service');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
 
 class CommentService {
 
@@ -26,14 +34,18 @@ class CommentService {
 
         try {
             // Verify post exists and comments are enabled
-            const post = await Post.findById(postId).session(session);
+            const post = await Post.findById(postId)
+                .select("_id author status visibility settings")
+                .session(session);
 
             if (!post || post.status !== "active") {
-                throw new Error("Post not found");
+                throw createError("Post not found", 404);
             }
 
+            await postService.assertCanAccessPost(post, userId, "comment on this post");
+
             if (post.settings?.commentsDisabled) {
-                throw new Error("Comments are disabled on this post");
+                throw createError("Comments are disabled on this post", 403);
             }
 
             // If replying to a comment, verify it exists
@@ -41,11 +53,11 @@ class CommentService {
                 parentComment = await Comment.findById(parentCommentId).session(session);
 
                 if (!parentComment || parentComment.status !== "active") {
-                    throw new Error("Parent comment not found");
+                    throw createError("Parent comment not found", 404);
                 }
 
                 if (parentComment.post.toString() !== postId.toString()) {
-                    throw new Error("Parent comment does not belong to this post");
+                    throw createError("Parent comment does not belong to this post", 400);
                 }
             }
 
@@ -269,27 +281,125 @@ class CommentService {
 
         try {
             const comment = await Comment.findById(commentId)
-                .populate('post')
+                .select("_id post author parentComment status")
                 .session(session);
 
             if (!comment) {
-                throw new Error('Comment not found');
+                throw createError('Comment not found', 404);
+            }
+
+            const post = await Post.findById(comment.post)
+                .select("_id author")
+                .session(session);
+
+            if (!post) {
+                throw createError("Post not found", 404);
             }
 
             // Check if user is comment author or post author
             const isAuthor = comment.author.toString() === userId.toString();
-            const isPostAuthor = comment.post.author.toString() === userId.toString();
+            const isPostAuthor = post.author.toString() === userId.toString();
 
             if (!isAuthor && !isPostAuthor) {
-                throw new Error('You do not have permission to delete this comment');
+                throw createError('You do not have permission to delete this comment', 403);
             }
 
-            // Soft delete
-            comment.status = 'deleted';
-            await comment.save({ session });
+            if (comment.status !== "active") {
+                await session.commitTransaction();
+                return { success: true, message: "Comment already deleted" };
+            }
 
-            // Or hard delete (uncomment if preferred)
-            // await Comment.findByIdAndDelete(commentId).session(session);
+            const queue = [comment._id];
+            const visited = new Set([String(comment._id)]);
+            const activeComments = [{
+                _id: comment._id,
+                parentComment: comment.parentComment
+            }];
+
+            let cursor = 0;
+            while (cursor < queue.length) {
+                const batch = queue.slice(cursor, cursor + 100);
+                cursor += 100;
+
+                const children = await Comment.find({
+                    parentComment: { $in: batch }
+                })
+                    .select("_id parentComment status")
+                    .session(session)
+                    .lean();
+
+                children.forEach((child) => {
+                    const childId = String(child._id);
+                    if (!visited.has(childId)) {
+                        visited.add(childId);
+                        queue.push(child._id);
+                    }
+
+                    if (child.status === "active") {
+                        activeComments.push({
+                            _id: child._id,
+                            parentComment: child.parentComment
+                        });
+                    }
+                });
+            }
+
+            const activeCommentIds = activeComments.map((item) => item._id);
+            const activeIdSet = new Set(activeCommentIds.map((id) => String(id)));
+            const parentReplyDecrements = new Map();
+
+            activeComments.forEach((item) => {
+                if (!item.parentComment) return;
+
+                const parentId = String(item.parentComment);
+                if (!parentId || activeIdSet.has(parentId)) {
+                    return;
+                }
+
+                parentReplyDecrements.set(
+                    parentId,
+                    (parentReplyDecrements.get(parentId) || 0) + 1
+                );
+            });
+
+            await Comment.updateMany(
+                { _id: { $in: activeCommentIds } },
+                { $set: { status: "deleted" } },
+                { session }
+            );
+
+            await Post.updateOne(
+                { _id: comment.post, commentsCount: { $gt: 0 } },
+                { $inc: { commentsCount: -activeCommentIds.length } },
+                { session }
+            );
+
+            await Post.updateOne(
+                { _id: comment.post, commentsCount: { $lt: 0 } },
+                { $set: { commentsCount: 0 } },
+                { session }
+            );
+
+            if (parentReplyDecrements.size > 0) {
+                const parentIds = Array.from(parentReplyDecrements.keys());
+                await Comment.bulkWrite(
+                    Array.from(parentReplyDecrements.entries()).map(([parentId, decrementBy]) => ({
+                        updateOne: {
+                            filter: { _id: parentId, repliesCount: { $gt: 0 } },
+                            update: { $inc: { repliesCount: -decrementBy } }
+                        }
+                    })),
+                    { session }
+                );
+
+                await Comment.updateMany(
+                    { _id: { $in: parentIds }, repliesCount: { $lt: 0 } },
+                    { $set: { repliesCount: 0 } },
+                    { session }
+                );
+            }
+
+            await Like.deleteMany({ comment: { $in: activeCommentIds } }).session(session);
 
             await session.commitTransaction();
             return { success: true, message: 'Comment deleted successfully' };
@@ -309,7 +419,8 @@ class CommentService {
      * @param {String} sortBy - Sort order ('recent' or 'popular')
      * @returns {Promise<Object>} Comments
      */
-    async getPostComments(postId, page = 1, limit = 20, sortBy = 'recent') {
+    async getPostComments(postId, currentUserId, page = 1, limit = 20, sortBy = 'recent') {
+        await postService.assertCanAccessPostById(postId, currentUserId, "view comments on this post");
         const skip = (page - 1) * limit;
 
         const query = {
@@ -377,7 +488,20 @@ class CommentService {
      * @param {Number} limit - Replies per page
      * @returns {Promise<Object>} Replies
      */
-    async getCommentReplies(commentId, page = 1, limit = 20) {
+    async getCommentReplies(commentId, currentUserId, page = 1, limit = 20) {
+        const parentComment = await Comment.findById(commentId)
+            .select("_id post status");
+
+        if (!parentComment || parentComment.status !== "active") {
+            throw createError("Comment not found", 404);
+        }
+
+        await postService.assertCanAccessPostById(
+            parentComment.post,
+            currentUserId,
+            "view replies on this comment"
+        );
+
         const skip = (page - 1) * limit;
 
         const query = {

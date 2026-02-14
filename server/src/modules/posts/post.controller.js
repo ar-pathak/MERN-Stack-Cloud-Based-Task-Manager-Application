@@ -179,8 +179,8 @@ const postController = {
     likePost: async (req, res) => {
         try {
             const { reactionType = 'like' } = req.body;
-            await likeService.likePost(req.user._id, req.params.id, reactionType);
-            return sendSuccess(res, null, 'Post liked successfully');
+            const result = await likeService.likePost(req.user._id, req.params.id, reactionType);
+            return sendSuccess(res, result, result?.message || 'Post liked successfully');
         } catch (error) {
             return handleError(error, res);
         }
@@ -192,8 +192,8 @@ const postController = {
      */
     unlikePost: async (req, res) => {
         try {
-            await likeService.unlikePost(req.user._id, req.params.id);
-            return sendSuccess(res, null, 'Post unliked successfully');
+            const result = await likeService.unlikePost(req.user._id, req.params.id);
+            return sendSuccess(res, result, result?.message || 'Post unliked successfully');
         } catch (error) {
             return handleError(error, res);
         }
@@ -208,6 +208,7 @@ const postController = {
             const { page = 1, limit = 20 } = req.query;
             const result = await likeService.getPostLikes(
                 req.params.id,
+                req.user._id,
                 parseInt(page),
                 parseInt(limit)
             );
@@ -286,7 +287,7 @@ const postController = {
     sharePost: async (req, res) => {
         try {
             const { channel = 'copy_link' } = req.body;
-            const result = await postService.sharePost(req.params.id, channel);
+            const result = await postService.sharePost(req.user._id, req.params.id, channel);
             return sendSuccess(res, result, 'Post shared successfully');
         } catch (error) {
             return handleError(error, res);
@@ -335,6 +336,7 @@ const postController = {
             const { page = 1, limit = 20, sortBy = 'recent' } = req.query;
             const result = await commentService.getPostComments(
                 req.params.id,
+                req.user._id,
                 parseInt(page),
                 parseInt(limit),
                 sortBy
@@ -385,6 +387,7 @@ const postController = {
             const { page = 1, limit = 20 } = req.query;
             const result = await commentService.getCommentReplies(
                 req.params.commentId,
+                req.user._id,
                 parseInt(page),
                 parseInt(limit)
             );
@@ -400,8 +403,8 @@ const postController = {
      */
     likeComment: async (req, res) => {
         try {
-            await likeService.likeComment(req.user._id, req.params.commentId);
-            return sendSuccess(res, null, 'Comment liked successfully');
+            const result = await likeService.likeComment(req.user._id, req.params.commentId);
+            return sendSuccess(res, result, result?.message || 'Comment liked successfully');
         } catch (error) {
             return handleError(error, res);
         }
@@ -413,8 +416,8 @@ const postController = {
      */
     unlikeComment: async (req, res) => {
         try {
-            await likeService.unlikeComment(req.user._id, req.params.commentId);
-            return sendSuccess(res, null, 'Comment unliked successfully');
+            const result = await likeService.unlikeComment(req.user._id, req.params.commentId);
+            return sendSuccess(res, result, result?.message || 'Comment unliked successfully');
         } catch (error) {
             return handleError(error, res);
         }

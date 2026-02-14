@@ -58,7 +58,22 @@ const handleError = (error, res) => {
     if (error.name === 'MongoServerError') {
         if (error.code === 11000) {
             // Duplicate key error
-            const field = Object.keys(error.keyPattern)[0];
+            const keyPattern = error.keyPattern || {};
+            const fields = Object.keys(keyPattern);
+
+            if (fields.includes("user") && fields.includes("post")) {
+                return sendError(res, "Post already liked", 409);
+            }
+
+            if (fields.includes("user") && fields.includes("comment")) {
+                return sendError(res, "Comment already liked", 409);
+            }
+
+            if (fields.length > 1) {
+                return sendError(res, "Record already exists", 409);
+            }
+
+            const field = fields[0] || "record";
             return sendError(res, `${field} already exists`, 409);
         }
         return sendError(res, 'Database error', 500);

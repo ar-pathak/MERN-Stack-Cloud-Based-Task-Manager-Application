@@ -49,8 +49,6 @@ const messageSchema = new mongoose.Schema(
             {
                 url: { type: String, required: true },
                 name: { type: String },
-                // "type" is a reserved keyword in Mongoose. 
-                // It must be defined like this to work as a field name:
                 type: { type: String },
                 size: { type: Number }
             }
