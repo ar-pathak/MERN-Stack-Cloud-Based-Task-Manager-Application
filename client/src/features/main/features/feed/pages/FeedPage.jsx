@@ -62,6 +62,9 @@ const FeedPage = () => {
         handleToggleLike,
         handleToggleSave,
         handleSharePost,
+        handleToggleFollowAuthor,
+        handleDeletePost,
+        handleDeleteComment,
         openRepostComposer,
         closeRepostComposer,
         submitRepost,
@@ -134,17 +137,21 @@ const FeedPage = () => {
                                         onOpenRepost={openRepostComposer}
                                         onToggleSave={handleToggleSave}
                                         onSharePost={handleSharePost}
+                                        onToggleFollowAuthor={handleToggleFollowAuthor}
+                                        onDeletePost={handleDeletePost}
                                         isCommentsOpen={isCommentsOpen}
                                         comments={commentsByPost?.[postId] || []}
                                         commentsLoading={Boolean(commentsLoadingByPost?.[postId])}
                                         commentsSubmitting={Boolean(commentsSubmittingByPost?.[postId])}
                                         commentDraft={commentDrafts?.[postId] || ""}
+                                        currentUserId={profileId}
                                         replyDraftsByComment={replyDraftsByComment}
                                         replyComposerByComment={replyComposerByComment}
                                         replySubmittingByComment={replySubmittingByComment}
                                         replyLoadingByComment={replyLoadingByComment}
                                         onCommentDraftChange={handleCommentDraftChange}
                                         onCommentSubmit={handleSubmitComment}
+                                        onDeleteComment={handleDeleteComment}
                                         onToggleCommentLike={handleToggleCommentLike}
                                         onToggleReplyComposer={handleToggleReplyComposer}
                                         onReplyDraftChange={handleReplyDraftChange}

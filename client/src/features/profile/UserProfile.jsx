@@ -28,7 +28,7 @@ import {
     unblockUser as unblockUserRequest,
     updateProfile as updateProfileRequest
 } from "../../service/user.service";
-import { getUserPosts } from "../../service/post.service";
+import { deletePost, getPostLikes, getUserPosts } from "../../service/post.service";
 import {
     approveFollowRequest,
     followUser,
@@ -41,6 +41,9 @@ import {
     unfollowUser
 } from "../../service/follow.service";
 import ProfileEditModal from "./components/ProfileEditModal";
+import PostDetailModal from "./components/PostDetailModal";
+import PostLikesModal from "./components/PostLikesModal";
+import ProfilePostsTab from "./components/ProfilePostsTab";
 import RelationshipModal from "./components/RelationshipModal";
 import {
     FOLLOW_LIST_PAGE_SIZE,
@@ -55,6 +58,8 @@ import {
     toDisplayName,
     toId
 } from "./utils/profile.helpers";
+
+const MotionDiv = motion.div;
 
 const UserProfile = () => {
     const { id } = useParams();
@@ -98,6 +103,12 @@ const UserProfile = () => {
     const [pendingRequests, setPendingRequests] = useState([]);
     const [pendingLoading, setPendingLoading] = useState(false);
     const [pendingActionLoadingId, setPendingActionLoadingId] = useState("");
+    const [postActionLoadingId, setPostActionLoadingId] = useState("");
+    const [selectedPost, setSelectedPost] = useState(null);
+    const [likesModal, setLikesModal] = useState({ open: false, postId: "", postAuthorId: "" });
+    const [likedUsers, setLikedUsers] = useState([]);
+    const [likesPagination, setLikesPagination] = useState(normalizePagination({}, 1));
+    const [likesLoading, setLikesLoading] = useState(false);
 
     const menuRef = useRef(null);
     const flashTimeoutRef = useRef(null);
@@ -153,6 +164,20 @@ const UserProfile = () => {
         flashTimeoutRef.current = setTimeout(() => setFlashMessage(""), 2500);
     }, []);
 
+    const getUserInitial = useCallback((entry) => {
+        const label = entry?.name || entry?.username || "U";
+        return String(label).trim().charAt(0).toUpperCase();
+    }, []);
+
+    const getPostDateLabel = useCallback((value) => {
+        if (!value) return "";
+        try {
+            return new Date(value).toLocaleString();
+        } catch {
+            return "";
+        }
+    }, []);
+
     useEffect(() => {
         return () => {
             if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
@@ -181,6 +206,32 @@ const UserProfile = () => {
         return () => document.removeEventListener("mousedown", onClickOutside);
     }, []);
 
+    useEffect(() => {
+        if (!selectedPost && !likesModal.open) return undefined;
+
+        const onKeyDown = (event) => {
+            if (event.key !== "Escape") return;
+            if (likesModal.open) {
+                setLikesModal({ open: false, postId: "", postAuthorId: "" });
+                return;
+            }
+            setSelectedPost(null);
+        };
+
+        window.addEventListener("keydown", onKeyDown);
+        return () => window.removeEventListener("keydown", onKeyDown);
+    }, [likesModal.open, selectedPost]);
+
+    useEffect(() => {
+        const hasOverlay = Boolean(selectedPost) || likesModal.open;
+        if (!hasOverlay) return undefined;
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [likesModal.open, selectedPost]);
+
     const loadPosts = useCallback(
         async (page = 1, append = false) => {
             if (!id) return;
@@ -203,6 +254,11 @@ const UserProfile = () => {
         },
         [id]
     );
+
+    const handleLoadMorePosts = useCallback(async () => {
+        if (postsLoadingMore) return;
+        await loadPosts(Number(postsPagination?.page || 1) + 1, true);
+    }, [loadPosts, postsLoadingMore, postsPagination?.page]);
 
     const loadProfile = useCallback(async () => {
         if (!id) return;
@@ -271,6 +327,13 @@ const UserProfile = () => {
     }, [loadProfile]);
 
     useEffect(() => {
+        setSelectedPost(null);
+        setLikesModal({ open: false, postId: "", postAuthorId: "" });
+        setLikedUsers([]);
+        setLikesPagination(normalizePagination({}, 1));
+    }, [id]);
+
+    useEffect(() => {
         if (!currentUserId) return;
         loadSuggestions();
     }, [currentUserId, loadSuggestions]);
@@ -282,6 +345,116 @@ const UserProfile = () => {
     useEffect(() => {
         loadPendingRequestsList();
     }, [loadPendingRequestsList]);
+
+    const loadPostLikesList = useCallback(
+        async (postId, page = 1, append = false) => {
+            if (!postId) return;
+            setLikesLoading(true);
+            try {
+                const payload = await getPostLikes(postId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
+                const rawLikes = Array.isArray(payload?.likes) ? payload.likes : [];
+                const normalizedLikes = rawLikes.map((entry) => ({
+                    ...normalizeConnection(entry),
+                    likedAt: entry?.likedAt || entry?.createdAt || ""
+                }));
+                setLikedUsers((previous) =>
+                    append ? mergeConnections(previous, normalizedLikes) : normalizedLikes
+                );
+                setLikesPagination(normalizePagination(payload?.pagination, page));
+            } catch (error) {
+                if (!append) setLikedUsers([]);
+                setFlash(error?.message || "Could not load likes list");
+            } finally {
+                setLikesLoading(false);
+            }
+        },
+        [setFlash]
+    );
+
+    const handleOpenPostModal = useCallback((post) => {
+        if (!post) return;
+        setSelectedPost(post);
+    }, []);
+
+    const handleOpenLikesModal = useCallback(
+        async (post, event) => {
+            event?.stopPropagation?.();
+            const postId = toId(post);
+            if (!postId) return;
+            setLikesModal({ open: true, postId, postAuthorId: toId(post?.author) });
+            setLikedUsers([]);
+            setLikesPagination(normalizePagination({}, 1));
+            await loadPostLikesList(postId, 1, false);
+        },
+        [loadPostLikesList]
+    );
+
+    const handleCloseLikesModal = useCallback(() => {
+        setLikesModal({ open: false, postId: "", postAuthorId: "" });
+        setLikedUsers([]);
+        setLikesPagination(normalizePagination({}, 1));
+    }, []);
+
+    const handleLoadMoreLikes = useCallback(async () => {
+        if (!likesModal.open || likesLoading || !likesPagination?.hasMore) return;
+        await loadPostLikesList(likesModal.postId, Number(likesPagination?.page || 1) + 1, true);
+    }, [likesLoading, likesModal, likesPagination, loadPostLikesList]);
+
+    const handleDeleteProfilePost = useCallback(
+        async (post, event) => {
+            event?.stopPropagation?.();
+            const postId = toId(post);
+            const postAuthorId = toId(post?.author);
+            const canDelete = Boolean(
+                postId &&
+                    currentUserId &&
+                    (isOwnProfile || String(currentUserId) === String(postAuthorId))
+            );
+            if (!canDelete || postActionLoadingId === postId) return;
+            if (!window.confirm("Delete this post?")) return;
+
+            setPostActionLoadingId(postId);
+            try {
+                await deletePost(postId);
+                setPosts((previous) => previous.filter((entry) => toId(entry) !== postId));
+                setPostsPagination((previous) => ({
+                    ...previous,
+                    total: Math.max(0, Number(previous?.total || 0) - 1)
+                }));
+                setProfile((previous) =>
+                    previous
+                        ? {
+                              ...previous,
+                              postsCount: Math.max(0, Number(previous?.postsCount || 0) - 1)
+                          }
+                        : previous
+                );
+                setSelectedPost((previous) => (toId(previous) === postId ? null : previous));
+                setLikesModal((previous) =>
+                    previous.postId === postId
+                        ? { open: false, postId: "", postAuthorId: "" }
+                        : previous
+                );
+                setFlash("Post deleted");
+            } catch (error) {
+                setFlash(error?.message || "Could not delete post");
+            } finally {
+                setPostActionLoadingId("");
+            }
+        },
+        [currentUserId, isOwnProfile, postActionLoadingId, setFlash]
+    );
+
+    const handleOpenLikedUserProfile = useCallback(
+        (entry) => {
+            const targetId = toId(entry);
+            if (!targetId) return;
+            handleCloseLikesModal();
+            setSelectedPost(null);
+            navigate(`/profile/${targetId}`);
+        },
+        [handleCloseLikesModal, navigate]
+    );
 
     const loadGraphUsers = useCallback(
         async (type, page = 1, append = false) => {
@@ -490,7 +663,7 @@ const UserProfile = () => {
                         </button>
                         <AnimatePresence>
                             {isMenuOpen && (
-                                <motion.div
+                                <MotionDiv
                                     initial={{ opacity: 0, y: 6 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: 6 }}
@@ -530,7 +703,7 @@ const UserProfile = () => {
                                             {isBlockedByMe ? "Unblock user" : "Block user"}
                                         </button>
                                     )}
-                                </motion.div>
+                                </MotionDiv>
                             )}
                         </AnimatePresence>
                     </div>
@@ -712,24 +885,23 @@ const UserProfile = () => {
                     </div>
                     <div className="p-3 sm:p-4">
                         {activeTab === "posts" && (
-                            <div className="space-y-3">
-                                {!canViewProtectedContent ? (
-                                    <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">{isBlockedByMe ? "You blocked this user" : isBlockedMe ? "You cannot view this profile" : "This profile is private"}</p></div>
-                                ) : posts.length === 0 ? (
-                                    <p className="py-8 text-center text-sm text-slate-500">{postsAccessMessage || "No posts yet."}</p>
-                                ) : (
-                                    <>
-                                        {posts.map((post) => (
-                                            <article key={toId(post)} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
-                                                {post?.content && <p className="text-sm leading-6 text-slate-200">{post.content}</p>}
-                                                {(post?.media || []).length > 0 && <div className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={post.media[0]?.url} alt="Post media" className="h-56 w-full object-cover" /></div>}
-                                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500"><span>{Number(post?.likesCount || 0)} likes</span><span>{Number(post?.commentsCount || 0)} comments</span><span>{Number(post?.repostsCount || 0)} reposts</span></div>
-                                            </article>
-                                        ))}
-                                        {Boolean(postsPagination?.hasMore) && <button type="button" onClick={async () => { if (!postsLoadingMore) await loadPosts(Number(postsPagination?.page || 1) + 1, true); }} disabled={postsLoadingMore} className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">{postsLoadingMore ? "Loading..." : "Load more posts"}</button>}
-                                    </>
-                                )}
-                            </div>
+                            <ProfilePostsTab
+                                canViewProtectedContent={canViewProtectedContent}
+                                isBlockedByMe={isBlockedByMe}
+                                isBlockedMe={isBlockedMe}
+                                posts={posts}
+                                postsAccessMessage={postsAccessMessage}
+                                onOpenPost={handleOpenPostModal}
+                                onDeletePost={handleDeleteProfilePost}
+                                onOpenLikes={handleOpenLikesModal}
+                                isOwnProfile={isOwnProfile}
+                                currentUserId={currentUserId}
+                                postActionLoadingId={postActionLoadingId}
+                                getPostDateLabel={getPostDateLabel}
+                                postsPagination={postsPagination}
+                                postsLoadingMore={postsLoadingMore}
+                                onLoadMorePosts={handleLoadMorePosts}
+                            />
                         )}
                         {activeTab === "media" && <div>{!canViewProtectedContent ? <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 text-center"><Lock className="mx-auto h-6 w-6 text-slate-500" /><p className="mt-2 text-sm font-medium text-slate-300">{isBlockedByMe ? "You blocked this user" : isBlockedMe ? "You cannot view this profile" : "Media is hidden"}</p></div> : mediaPosts.length === 0 ? <p className="py-8 text-center text-sm text-slate-500">No media posts yet.</p> : <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{mediaPosts.map((media) => <div key={media.key} className="overflow-hidden rounded-lg border border-slate-800 bg-slate-900"><img src={media.url} alt="Media" className="h-36 w-full object-cover" /></div>)}</div>}</div>}
                         {activeTab === "about" && <div className="grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Profile Quality</p><p className="mt-1 text-2xl font-bold text-slate-100">{profileCompletion}%</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Type</p><p className="mt-1 text-sm font-semibold text-slate-200">{profile?.isPrivate ? "Private account" : "Public account"}</p></div><div className="rounded-xl border border-slate-800 bg-slate-900/70 p-3.5 sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Highlights</p><div className="mt-2 grid gap-2 text-sm text-slate-300 sm:grid-cols-2"><p className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-sky-400" />{profile?.isVerified ? "Verified profile" : "Standard profile"}</p><p className="inline-flex items-center gap-2"><Users className="h-4 w-4 text-sky-400" />{Number(profile?.followersCount || 0).toLocaleString()} followers</p><p className="inline-flex items-center gap-2"><UserRound className="h-4 w-4 text-sky-400" />{Number(profile?.followingCount || 0).toLocaleString()} following</p><p className="inline-flex items-center gap-2"><Calendar className="h-4 w-4 text-sky-400" />Joined {getJoinedLabel(profile?.createdAt)}</p></div></div></div>}
@@ -738,11 +910,36 @@ const UserProfile = () => {
                 </div>
             </div>
 
+            <PostDetailModal
+                open={Boolean(selectedPost)}
+                post={selectedPost}
+                onClose={() => setSelectedPost(null)}
+                isOwnProfile={isOwnProfile}
+                currentUserId={currentUserId}
+                postActionLoadingId={postActionLoadingId}
+                onDeletePost={handleDeleteProfilePost}
+                onOpenLikes={handleOpenLikesModal}
+                getPostDateLabel={getPostDateLabel}
+            />
+
+            <PostLikesModal
+                open={likesModal.open}
+                postAuthorId={likesModal.postAuthorId}
+                likedUsers={likedUsers}
+                likesLoading={likesLoading}
+                likesPagination={likesPagination}
+                onClose={handleCloseLikesModal}
+                onLoadMore={handleLoadMoreLikes}
+                onUserClick={handleOpenLikedUserProfile}
+                getUserInitial={getUserInitial}
+                getPostDateLabel={getPostDateLabel}
+            />
+
             <AnimatePresence>
                 {flashMessage && (
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className={`fixed z-50 rounded-lg border border-sky-500/35 bg-slate-900/95 px-3 py-2 text-xs font-semibold text-sky-200 shadow-xl ${showOwnMobileMenu ? "bottom-[5.7rem] left-1/2 -translate-x-1/2" : "bottom-5 left-1/2 -translate-x-1/2"}`}>
+                    <MotionDiv initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className={`fixed z-50 rounded-lg border border-sky-500/35 bg-slate-900/95 px-3 py-2 text-xs font-semibold text-sky-200 shadow-xl ${showOwnMobileMenu ? "bottom-[5.7rem] left-1/2 -translate-x-1/2" : "bottom-5 left-1/2 -translate-x-1/2"}`}>
                         {flashMessage}
-                    </motion.div>
+                    </MotionDiv>
                 )}
             </AnimatePresence>
 

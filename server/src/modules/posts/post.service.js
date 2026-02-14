@@ -1063,7 +1063,7 @@ class PostService {
             )
         ];
 
-        const [likedMap, savedMap, reposts, followingMap] = await Promise.all([
+        const [likedMap, savedMap, reposts, followRelationships, followedByRelationships] = await Promise.all([
             Like.checkMultipleLikes(userId, postIds),
             PostSave.checkMultipleSaved(userId, postIds),
             Post.find({
@@ -1075,8 +1075,24 @@ class PostService {
                 .select("originalPost")
                 .lean(),
             authorIds.length
-                ? Follow.checkMultipleRelationships(userId, authorIds)
-                : {}
+                ? Follow.find({
+                    follower: userId,
+                    following: { $in: authorIds },
+                    status: "active"
+                })
+                    .select("following isApproved")
+                    .lean()
+                : [],
+            authorIds.length
+                ? Follow.find({
+                    follower: { $in: authorIds },
+                    following: userId,
+                    status: "active",
+                    isApproved: true
+                })
+                    .select("follower")
+                    .lean()
+                : []
         ]);
 
         const repostMap = {};
@@ -1086,6 +1102,30 @@ class PostService {
         reposts.forEach((post) => {
             if (!post?.originalPost) return;
             repostMap[String(post.originalPost)] = true;
+        });
+
+        const followingMap = {};
+        const followRequestMap = {};
+        const followedByMap = {};
+
+        authorIds.forEach((authorId) => {
+            const key = String(authorId);
+            followingMap[key] = false;
+            followRequestMap[key] = false;
+            followedByMap[key] = false;
+        });
+
+        followRelationships.forEach((relationship) => {
+            const key = String(relationship?.following || "");
+            if (!key) return;
+            followingMap[key] = Boolean(relationship?.isApproved);
+            followRequestMap[key] = !relationship?.isApproved;
+        });
+
+        followedByRelationships.forEach((relationship) => {
+            const key = String(relationship?.follower || "");
+            if (!key) return;
+            followedByMap[key] = true;
         });
 
         return posts.map((post) => {
@@ -1098,7 +1138,9 @@ class PostService {
                     hasLiked: Boolean(likedMap[postId]),
                     hasSaved: Boolean(savedMap[postId]),
                     hasReposted: Boolean(repostMap[postId]),
-                    isFollowingAuthor: Boolean(followingMap[authorId])
+                    isFollowingAuthor: Boolean(followingMap[authorId]),
+                    isFollowRequestPending: Boolean(followRequestMap[authorId]),
+                    isFollowedByAuthor: Boolean(followedByMap[authorId])
                 }
             };
         });

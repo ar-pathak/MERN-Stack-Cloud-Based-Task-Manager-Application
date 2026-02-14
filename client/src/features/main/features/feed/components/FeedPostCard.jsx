@@ -6,7 +6,10 @@ import {
     Loader2,
     MessageCircle,
     Repeat2,
-    SendHorizontal
+    SendHorizontal,
+    Trash2,
+    UserCheck,
+    UserPlus
 } from "lucide-react";
 
 import PostMediaPreview from "./PostMediaPreview";
@@ -19,6 +22,8 @@ const CommentItem = ({
     actionState,
     formatRelativeTime,
     navigateToProfile,
+    currentUserId,
+    postAuthorId,
     allowReply = false,
     replyDraft = "",
     replyComposerOpen = false,
@@ -28,13 +33,21 @@ const CommentItem = ({
     onToggleReplyComposer,
     onReplyDraftChange,
     onReplySubmit,
-    onLoadMoreReplies
+    onLoadMoreReplies,
+    onDeleteComment
 }) => {
     const commentId = String(comment?._id || "");
+    const commentAuthorId = String(comment?.author?._id || comment?.author?.id || "");
     const hasLiked = Boolean(comment?.userEngagement?.hasLiked);
     const likeActionKey = `comment-like:${commentId}`;
+    const deleteActionKey = `comment-delete:${commentId}`;
     const replies = Array.isArray(comment?.replies) ? comment.replies : [];
     const canSubmitReply = Boolean(String(replyDraft || "").trim()) && !replySubmitting;
+    const canDeleteComment = Boolean(
+        String(currentUserId || "") &&
+        (String(currentUserId || "") === commentAuthorId ||
+            String(currentUserId || "") === String(postAuthorId || ""))
+    );
 
     return (
         <div className={`rounded-lg border border-slate-800 bg-slate-900/50 ${isReply ? "p-2" : "p-2.5"}`}>
@@ -126,6 +139,22 @@ const CommentItem = ({
                                     : "replies"}
                             </span>
                         )}
+
+                        {canDeleteComment && (
+                            <button
+                                type="button"
+                                onClick={() => onDeleteComment(postId, comment)}
+                                disabled={Boolean(actionState?.[deleteActionKey])}
+                                className="inline-flex items-center gap-1 text-xs text-rose-300 hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {actionState?.[deleteActionKey] ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                Delete
+                            </button>
+                        )}
                     </div>
 
                     {allowReply && replies.length > 0 && (
@@ -139,7 +168,10 @@ const CommentItem = ({
                                     actionState={actionState}
                                     formatRelativeTime={formatRelativeTime}
                                     navigateToProfile={navigateToProfile}
+                                    currentUserId={currentUserId}
+                                    postAuthorId={postAuthorId}
                                     onToggleCommentLike={onToggleCommentLike}
+                                    onDeleteComment={onDeleteComment}
                                 />
                             ))}
 
@@ -200,17 +232,21 @@ const FeedPostCard = ({
     onOpenRepost,
     onToggleSave,
     onSharePost,
+    onToggleFollowAuthor,
+    onDeletePost,
     isCommentsOpen,
     comments,
     commentsLoading,
     commentsSubmitting,
     commentDraft,
+    currentUserId,
     replyDraftsByComment,
     replyComposerByComment,
     replySubmittingByComment,
     replyLoadingByComment,
     onCommentDraftChange,
     onCommentSubmit,
+    onDeleteComment,
     onToggleCommentLike,
     onToggleReplyComposer,
     onReplyDraftChange,
@@ -218,9 +254,30 @@ const FeedPostCard = ({
     onLoadMoreReplies
 }) => {
     const postId = String(post?._id || "");
+    const authorId = String(post?.author?._id || post?.author?.id || "");
     const hasLiked = Boolean(post?.userEngagement?.hasLiked);
     const hasSaved = Boolean(post?.userEngagement?.hasSaved);
+    const isOwnPost = Boolean(String(currentUserId || "") && String(currentUserId) === authorId);
+    const isFollowingAuthor = Boolean(post?.userEngagement?.isFollowingAuthor);
+    const isFollowRequestPending = Boolean(post?.userEngagement?.isFollowRequestPending);
+    const isFollowedByAuthor = Boolean(post?.userEngagement?.isFollowedByAuthor);
+    const followActionKey = `follow:${authorId}`;
+    const deletePostActionKey = `post-delete:${postId}`;
     const canSubmitComment = Boolean(String(commentDraft || "").trim()) && !commentsSubmitting;
+
+    let followLabel = "Follow";
+    let followButtonClass = "border-sky-500/40 text-sky-300 hover:bg-sky-500/10";
+
+    if (isFollowingAuthor) {
+        followLabel = "Following";
+        followButtonClass = "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10";
+    } else if (isFollowRequestPending) {
+        followLabel = "Requested";
+        followButtonClass = "border-amber-500/40 text-amber-300 hover:bg-amber-500/10";
+    } else if (isFollowedByAuthor) {
+        followLabel = "Follow Back";
+        followButtonClass = "border-sky-500/40 text-sky-300 hover:bg-sky-500/10";
+    }
 
     return (
         <article className="rounded-2xl border border-slate-800/80 bg-slate-900/55 p-4">
@@ -253,9 +310,45 @@ const FeedPostCard = ({
                     </div>
                 </button>
 
-                <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                    {post?.visibility || "public"}
-                </span>
+                <div className="flex items-center gap-2">
+                    {!isOwnPost && (
+                        <button
+                            type="button"
+                            onClick={() => onToggleFollowAuthor(post)}
+                            disabled={Boolean(actionState?.[followActionKey])}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${followButtonClass}`}
+                        >
+                            {actionState?.[followActionKey] ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : isFollowingAuthor ? (
+                                <UserCheck className="h-3 w-3" />
+                            ) : (
+                                <UserPlus className="h-3 w-3" />
+                            )}
+                            {followLabel}
+                        </button>
+                    )}
+
+                    <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                        {post?.visibility || "public"}
+                    </span>
+
+                    {isOwnPost && (
+                        <button
+                            type="button"
+                            onClick={() => onDeletePost(post)}
+                            disabled={Boolean(actionState?.[deletePostActionKey])}
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {actionState?.[deletePostActionKey] ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                                <Trash2 className="h-3 w-3" />
+                            )}
+                            Delete
+                        </button>
+                    )}
+                </div>
             </header>
 
             {post?.postType === "repost" && (
@@ -381,6 +474,8 @@ const FeedPostCard = ({
                                     actionState={actionState}
                                     formatRelativeTime={formatRelativeTime}
                                     navigateToProfile={navigateToProfile}
+                                    currentUserId={currentUserId}
+                                    postAuthorId={authorId}
                                     allowReply
                                     replyDraft={replyDraftsByComment?.[commentId] || ""}
                                     replyComposerOpen={Boolean(
@@ -395,6 +490,7 @@ const FeedPostCard = ({
                                     onReplyDraftChange={onReplyDraftChange}
                                     onReplySubmit={onReplySubmit}
                                     onLoadMoreReplies={onLoadMoreReplies}
+                                    onDeleteComment={onDeleteComment}
                                 />
                             );
                         })}

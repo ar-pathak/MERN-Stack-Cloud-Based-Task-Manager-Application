@@ -4,6 +4,8 @@ import { useNavigate } from "react-router";
 import { useAuth } from "../../../../../context/AuthContext";
 import {
     addComment,
+    deleteComment,
+    deletePost,
     getCommentReplies,
     getBookmarkedPosts,
     getExploreFeed,
@@ -18,6 +20,10 @@ import {
     unlikePost,
     unsavePost
 } from "../../../../../service/post.service";
+import {
+    followUser,
+    unfollowUser
+} from "../../../../../service/follow.service";
 import {
     getStoryFeed,
     markStoryViewed,
@@ -128,9 +134,56 @@ const updateCommentThread = (comments = [], commentId, updater) => {
     return hasChange ? nextComments : list;
 };
 
+const getLoadedCommentTreeCount = (comment) => {
+    if (!comment?._id) return 0;
+
+    const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+    return 1 + replies.reduce((total, reply) => total + getLoadedCommentTreeCount(reply), 0);
+};
+
+const removeCommentFromThread = (comments = [], commentId) => {
+    const targetKey = String(commentId || "");
+    const list = Array.isArray(comments) ? comments : [];
+    let removedCount = 0;
+
+    const nextComments = list
+        .map((comment) => {
+            if (String(comment?._id || "") === targetKey) {
+                removedCount += getLoadedCommentTreeCount(comment);
+                return null;
+            }
+
+            const replies = Array.isArray(comment?.replies) ? comment.replies : [];
+            if (!replies.length) return comment;
+
+            const nestedResult = removeCommentFromThread(replies, commentId);
+            if (!nestedResult.removedCount) return comment;
+
+            removedCount += nestedResult.removedCount;
+            const directRepliesRemoved = replies.length - nestedResult.comments.length;
+
+            return {
+                ...comment,
+                replies: nestedResult.comments,
+                repliesCount: Math.max(
+                    0,
+                    Number(comment?.repliesCount || replies.length) - directRepliesRemoved
+                ),
+                hasMoreReplies: Boolean(comment?.hasMoreReplies)
+            };
+        })
+        .filter(Boolean);
+
+    return {
+        comments: nextComments,
+        removedCount
+    };
+};
+
 const useFeedPageLogic = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
+    const profileId = user?._id || user?.id;
 
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
@@ -219,6 +272,26 @@ const useFeedPageLogic = () => {
                 }
 
                 return post;
+            })
+        );
+    }, []);
+
+    const patchAuthorEngagement = useCallback((authorId, updater) => {
+        const key = String(authorId || "");
+        if (!key) return;
+
+        setPosts((previous) =>
+            previous.map((post) => {
+                const postAuthorId = String(
+                    post?.author?._id || post?.author?.id || post?.author || ""
+                );
+
+                if (postAuthorId !== key) return post;
+
+                return {
+                    ...post,
+                    userEngagement: updater(post?.userEngagement || {})
+                };
             })
         );
     }, []);
@@ -692,6 +765,149 @@ const useFeedPageLogic = () => {
         [actionState, patchPost, setActionLoading, showToast]
     );
 
+    const handleToggleFollowAuthor = useCallback(
+        async (post) => {
+            const authorId = String(post?.author?._id || post?.author?.id || "");
+            if (!authorId || authorId === String(profileId || "")) return;
+
+            const key = `follow:${authorId}`;
+            if (actionState[key]) return;
+
+            const isFollowing = Boolean(post?.userEngagement?.isFollowingAuthor);
+            const isPending = Boolean(post?.userEngagement?.isFollowRequestPending);
+
+            setActionLoading(key, true);
+            try {
+                if (isFollowing || isPending) {
+                    await unfollowUser(authorId);
+                    patchAuthorEngagement(authorId, (engagement) => ({
+                        ...engagement,
+                        isFollowingAuthor: false,
+                        isFollowRequestPending: false
+                    }));
+                    showToast(isPending ? "Follow request cancelled" : "Unfollowed");
+                } else {
+                    const result = await followUser(authorId);
+                    const nextPending = Boolean(result?.isPending);
+
+                    patchAuthorEngagement(authorId, (engagement) => ({
+                        ...engagement,
+                        isFollowingAuthor: !nextPending,
+                        isFollowRequestPending: nextPending
+                    }));
+
+                    showToast(nextPending ? "Follow request sent" : "Now following");
+                }
+            } catch (error) {
+                showToast(error?.message || "Could not update follow status", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, patchAuthorEngagement, profileId, setActionLoading, showToast]
+    );
+
+    const handleDeletePost = useCallback(
+        async (post) => {
+            const postId = String(post?._id || "");
+            if (!postId) return;
+
+            const key = `post-delete:${postId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            try {
+                await deletePost(postId);
+
+                setPosts((previous) =>
+                    previous.filter((entry) => String(entry?._id || "") !== postId)
+                );
+                setPagination((previous) => ({
+                    ...previous,
+                    total: Math.max(0, Number(previous?.total || 0) - 1)
+                }));
+                setExpandedCommentsPostId((previous) =>
+                    previous === postId ? null : previous
+                );
+                setCommentsByPost((previous) => {
+                    if (!previous?.[postId]) return previous;
+                    const next = { ...previous };
+                    delete next[postId];
+                    return next;
+                });
+                setCommentsLoadingByPost((previous) => {
+                    if (!previous?.[postId]) return previous;
+                    const next = { ...previous };
+                    delete next[postId];
+                    return next;
+                });
+                setCommentsSubmittingByPost((previous) => {
+                    if (!previous?.[postId]) return previous;
+                    const next = { ...previous };
+                    delete next[postId];
+                    return next;
+                });
+                setCommentDrafts((previous) => {
+                    if (!previous?.[postId]) return previous;
+                    const next = { ...previous };
+                    delete next[postId];
+                    return next;
+                });
+
+                showToast("Post deleted");
+            } catch (error) {
+                showToast(error?.message || "Could not delete post", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, setActionLoading, showToast]
+    );
+
+    const handleDeleteComment = useCallback(
+        async (postId, comment) => {
+            const postIdKey = String(postId || "");
+            const commentId = String(comment?._id || "");
+            if (!postIdKey || !commentId) return;
+
+            const key = `comment-delete:${commentId}`;
+            if (actionState[key]) return;
+
+            setActionLoading(key, true);
+            try {
+                await deleteComment(commentId);
+
+                let removedCount = 1;
+                setCommentsByPost((previous) => {
+                    const existingComments = previous?.[postIdKey] || [];
+                    const result = removeCommentFromThread(existingComments, commentId);
+                    removedCount = Math.max(1, Number(result?.removedCount || 0));
+
+                    if (!result?.removedCount) return previous;
+                    return {
+                        ...previous,
+                        [postIdKey]: result.comments
+                    };
+                });
+
+                patchPost(postIdKey, (entry) => ({
+                    ...entry,
+                    commentsCount: Math.max(
+                        0,
+                        Number(entry?.commentsCount || 0) - removedCount
+                    )
+                }));
+
+                showToast("Comment deleted");
+            } catch (error) {
+                showToast(error?.message || "Could not delete comment", "error");
+            } finally {
+                setActionLoading(key, false);
+            }
+        },
+        [actionState, patchPost, setActionLoading, showToast]
+    );
+
     const openRepostComposer = useCallback((post) => {
         setRepostComposer({
             postId: post?._id || null,
@@ -1076,7 +1292,6 @@ const useFeedPageLogic = () => {
         showToast("Feed refreshed");
     }, [loadFeed, loadStories, showToast]);
 
-    const profileId = user?._id || user?.id;
     const shouldShowBottomNav = isMobileViewport;
 
     return {
@@ -1125,6 +1340,9 @@ const useFeedPageLogic = () => {
         handleToggleLike,
         handleToggleSave,
         handleSharePost,
+        handleToggleFollowAuthor,
+        handleDeletePost,
+        handleDeleteComment,
         openRepostComposer,
         closeRepostComposer,
         submitRepost,
