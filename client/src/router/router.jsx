@@ -11,6 +11,8 @@ const HomePage = lazy(() => import("../features/home/pages/HomePage"));
 const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
 const OverviewLayout = lazy(() => import("../features/main/features/overview/pages/OverviewLayout.jsx"));
 const FeedPage = lazy(() => import("../features/main/features/feed/pages/FeedPage.jsx"));
+const PostDetailPage = lazy(() => import("../features/main/features/feed/pages/PostDetailPage.jsx"));
+const NotificationsPage = lazy(() => import("../features/main/features/notifications/pages/NotificationsPage.jsx"));
 const CreatePostPage = lazy(() => import("../features/main/features/create/pages/CreatePostPage.jsx"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
 const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"))
@@ -66,6 +68,7 @@ const router = createBrowserRouter([
                 children: [
                   { index: true, element: withSuspense(OverviewLayout) },
                   { path: "feed", element: withSuspense(FeedPage) },
+                  { path: "notifications", element: withSuspense(NotificationsPage) },
                   { path: "create", element: withSuspense(CreatePostPage) },
                   { path: "settings", element: withSuspense(SettingsPage) },
                   // { path: "my-tasks", element: withSuspense(MyTasksPage) },
@@ -81,6 +84,10 @@ const router = createBrowserRouter([
           {
             path: "chat/:id",
             element: withSuspense(ChatPage),
+          },
+          {
+            path: "post/:id",
+            element: withSuspense(PostDetailPage),
           }
         ],
       },

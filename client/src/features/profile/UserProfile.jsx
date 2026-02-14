@@ -120,9 +120,9 @@ const UserProfile = () => {
     const isBlockedMe = Boolean(profile?.relationship?.blockedMe);
     const hasPrivateProfileAccess = Boolean(
         isOwnProfile ||
-            !profile?.isPrivate ||
-            profile?.relationship?.isFollowing ||
-            profile?.access?.canViewFullProfile
+        !profile?.isPrivate ||
+        profile?.relationship?.isFollowing ||
+        profile?.access?.canViewFullProfile
     );
     const canViewProtectedContent = Boolean(
         !isBlockedByMe && !isBlockedMe && hasPrivateProfileAccess
@@ -407,8 +407,8 @@ const UserProfile = () => {
             const postAuthorId = toId(post?.author);
             const canDelete = Boolean(
                 postId &&
-                    currentUserId &&
-                    (isOwnProfile || String(currentUserId) === String(postAuthorId))
+                currentUserId &&
+                (isOwnProfile || String(currentUserId) === String(postAuthorId))
             );
             if (!canDelete || postActionLoadingId === postId) return;
             if (!window.confirm("Delete this post?")) return;
@@ -424,9 +424,9 @@ const UserProfile = () => {
                 setProfile((previous) =>
                     previous
                         ? {
-                              ...previous,
-                              postsCount: Math.max(0, Number(previous?.postsCount || 0) - 1)
-                          }
+                            ...previous,
+                            postsCount: Math.max(0, Number(previous?.postsCount || 0) - 1)
+                        }
                         : previous
                 );
                 setSelectedPost((previous) => (toId(previous) === postId ? null : previous));
@@ -483,10 +483,10 @@ const UserProfile = () => {
         setProfile((previous) =>
             previous
                 ? {
-                      ...previous,
-                      followersCount: Math.max(0, Number(previous?.followersCount || 0) + followersDelta),
-                      relationship: { ...(previous?.relationship || {}), ...patch }
-                  }
+                    ...previous,
+                    followersCount: Math.max(0, Number(previous?.followersCount || 0) + followersDelta),
+                    relationship: { ...(previous?.relationship || {}), ...patch }
+                }
                 : previous
         );
     }, []);
@@ -530,8 +530,8 @@ const UserProfile = () => {
                 next.isFollowing
                     ? "Now following user"
                     : next.isPending
-                      ? "Follow request sent"
-                      : "Unfollowed"
+                        ? "Follow request sent"
+                        : "Unfollowed"
             );
             loadMutualFollowers();
             loadSuggestions();
@@ -695,9 +695,8 @@ const UserProfile = () => {
                                             type="button"
                                             onClick={handleToggleBlock}
                                             disabled={blockActionLoading}
-                                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs hover:bg-slate-800 disabled:opacity-60 ${
-                                                isBlockedByMe ? "text-emerald-300" : "text-rose-300"
-                                            }`}
+                                            className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs hover:bg-slate-800 disabled:opacity-60 ${isBlockedByMe ? "text-emerald-300" : "text-rose-300"
+                                                }`}
                                         >
                                             {blockActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserX className="h-4 w-4" />}
                                             {isBlockedByMe ? "Unblock user" : "Block user"}
@@ -766,13 +765,12 @@ const UserProfile = () => {
                                                 type="button"
                                                 onClick={handleFollowAction}
                                                 disabled={followLoading}
-                                                className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${
-                                                    followButtonState.tone === "following"
+                                                className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${followButtonState.tone === "following"
                                                         ? "border-slate-700 bg-slate-900/85 text-slate-200"
                                                         : followButtonState.tone === "pending"
-                                                          ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
-                                                          : "border-sky-500/50 bg-sky-500/20 text-sky-200"
-                                                }`}
+                                                            ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
+                                                            : "border-sky-500/50 bg-sky-500/20 text-sky-200"
+                                                    }`}
                                             >
                                                 {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : followButtonState.label}
                                             </button>
@@ -825,8 +823,8 @@ const UserProfile = () => {
                                 {isBlockedByMe
                                     ? "You blocked this user"
                                     : isBlockedMe
-                                      ? "You cannot view this profile"
-                                      : "This account is private"}
+                                        ? "You cannot view this profile"
+                                        : "This account is private"}
                             </p>
                             {!isBlockedByMe && !isBlockedMe && (
                                 <p className="mt-1 text-xs text-slate-400">

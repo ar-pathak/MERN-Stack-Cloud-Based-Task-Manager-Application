@@ -1,14 +1,44 @@
-import { Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
 import { useNavigate } from "react-router";
+
+import { getUnreadNotificationCount } from "../../../../service/notification.service";
+import * as socketService from "../../../../service/Chat.socket.service";
 
 const ITEMS = [
     { id: "overview", label: "Overview", icon: Grid2x2, path: "/main" },
     { id: "feed", label: "Feed", icon: Newspaper, path: "/main/feed" },
-    { id: "create", label: "Create", icon: SquarePen, path: "/main/create" }
+    { id: "create", label: "Create", icon: SquarePen, path: "/main/create" },
+    { id: "notifications", label: "Alerts", icon: Bell, path: "/main/notifications" }
 ];
 
 const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) => {
     const navigate = useNavigate();
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const loadUnreadCount = async () => {
+            try {
+                const count = await getUnreadNotificationCount();
+                if (mounted) setUnreadCount(Number(count || 0));
+            } catch {
+                if (mounted) setUnreadCount(0);
+            }
+        };
+
+        loadUnreadCount();
+
+        const offUnreadCount = socketService.onNotificationUnreadCount(({ count }) => {
+            setUnreadCount(Number(count || 0));
+        });
+
+        return () => {
+            mounted = false;
+            offUnreadCount();
+        };
+    }, []);
 
     if (hidden) return null;
 
@@ -22,10 +52,11 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
             className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
             style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
         >
-            <div className="grid grid-cols-4 gap-1 px-2 pt-1.5">
+            <div className="grid grid-cols-5 gap-1 px-2 pt-1.5">
                 {ITEMS.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
+                    const isNotifications = item.id === "notifications";
 
                     return (
                         <button
@@ -38,7 +69,14 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
                                     : "text-slate-400 hover:bg-slate-800/70"
                             }`}
                         >
-                            <Icon className="h-4 w-4" />
+                            <span className="relative">
+                                <Icon className="h-4 w-4" />
+                                {isNotifications && unreadCount > 0 && (
+                                    <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[9px] font-semibold text-white">
+                                        {unreadCount > 99 ? "99+" : unreadCount}
+                                    </span>
+                                )}
+                            </span>
                             {item.label}
                         </button>
                     );

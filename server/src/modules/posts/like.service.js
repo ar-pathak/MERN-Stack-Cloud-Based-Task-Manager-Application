@@ -112,7 +112,7 @@ class LikeService {
                         priority: "normal",
                         entityType: "none",
                         entityId: postId,
-                        link: "/main/feed",
+                        link: `/post/${String(postId)}`,
                         metadata: {
                             kind: "post_like",
                             postId: String(postId),
@@ -279,10 +279,11 @@ class LikeService {
                         priority: "normal",
                         entityType: "none",
                         entityId: commentId,
-                        link: "/main/feed",
+                        link: `/post/${String(comment.post)}`,
                         metadata: {
                             kind: "comment_like",
-                            commentId: String(commentId)
+                            commentId: String(commentId),
+                            postId: String(comment.post)
                         },
                         dedupeKey: `social:comment_like:${String(userId)}:${String(commentId)}`
                     };

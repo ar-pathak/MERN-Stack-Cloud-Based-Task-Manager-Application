@@ -170,7 +170,7 @@ class CommentService {
                             priority: "normal",
                             entityType: "none",
                             entityId: comment._id,
-                            link: "/main/feed",
+                            link: `/post/${String(postId)}`,
                             metadata: {
                                 kind: "comment_reply",
                                 postId: String(postId),
@@ -191,7 +191,7 @@ class CommentService {
                         priority: "normal",
                         entityType: "none",
                         entityId: comment._id,
-                        link: "/main/feed",
+                        link: `/post/${String(postId)}`,
                         metadata: {
                             kind: "post_comment",
                             postId: String(postId),
@@ -223,11 +223,11 @@ class CommentService {
                     priority: "normal",
                     entityType: "none",
                     entityId: comment._id,
-                    link: "/main",
+                    link: `/post/${String(postId)}`,
                     metadata: {
                         source: "comment.create",
-                        commentId: comment._id,
-                        postId
+                        commentId: String(comment._id),
+                        postId: String(postId)
                     },
                     dedupeKey: `mention:comment:${String(comment._id)}`
                 });
@@ -300,11 +300,11 @@ class CommentService {
                 priority: "normal",
                 entityType: "none",
                 entityId: comment._id,
-                link: "/main",
+                link: `/post/${String(comment.post)}`,
                 metadata: {
                     source: "comment.update",
-                    commentId: comment._id,
-                    postId: comment.post
+                    commentId: String(comment._id),
+                    postId: String(comment.post)
                 },
                 dedupeKey: `mention:comment:update:${String(comment._id)}`
             });

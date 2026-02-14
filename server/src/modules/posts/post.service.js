@@ -309,10 +309,10 @@ class PostService {
                     priority: "normal",
                     entityType: "none",
                     entityId: post._id,
-                    link: "/main",
+                    link: `/post/${String(post._id)}`,
                     metadata: {
                         source: "post.create",
-                        postId: post._id
+                        postId: String(post._id)
                     },
                     dedupeKey: `mention:post:${String(post._id)}`
                 });
@@ -430,10 +430,10 @@ class PostService {
                     priority: "normal",
                     entityType: "none",
                     entityId: postId,
-                    link: "/main",
+                    link: `/post/${String(postId)}`,
                     metadata: {
                         source: "post.update",
-                        postId
+                        postId: String(postId)
                     },
                     dedupeKey: `mention:post:update:${String(postId)}`
                 });
