@@ -33,6 +33,66 @@ const formatDuration = (minutes = 0) => {
     return `${hours}h ${mins}m`;
 };
 
+const TIME_SOURCE_KEYS = ["planner", "likes", "comments", "reposts", "presence"];
+
+const createTimeSourceCounter = () => ({
+    planner: 0,
+    likes: 0,
+    comments: 0,
+    reposts: 0,
+    presence: 0
+});
+
+const aggregateDailyActions = (Model, match = {}) =>
+    Model.aggregate([
+        { $match: match },
+        {
+            $group: {
+                _id: {
+                    $dateToString: {
+                        format: "%Y-%m-%d",
+                        date: "$createdAt"
+                    }
+                },
+                firstAt: { $min: "$createdAt" },
+                lastAt: { $max: "$createdAt" },
+                actions: { $sum: 1 }
+            }
+        }
+    ]);
+
+const addDailySourceRows = (dailyMap, rows = [], sourceKey = "planner") => {
+    rows.forEach((row) => {
+        const dateKey = String(row?._id || "");
+        if (!dateKey) return;
+
+        const firstAt = row?.firstAt ? new Date(row.firstAt) : null;
+        const lastAt = row?.lastAt ? new Date(row.lastAt) : null;
+        const actions = Math.max(0, Number(row?.actions || 0));
+
+        if (!dailyMap.has(dateKey)) {
+            dailyMap.set(dateKey, {
+                date: dateKey,
+                firstAt: null,
+                lastAt: null,
+                actions: 0,
+                sourceActions: createTimeSourceCounter()
+            });
+        }
+
+        const bucket = dailyMap.get(dateKey);
+        if (firstAt && (!bucket.firstAt || firstAt < bucket.firstAt)) {
+            bucket.firstAt = firstAt;
+        }
+        if (lastAt && (!bucket.lastAt || lastAt > bucket.lastAt)) {
+            bucket.lastAt = lastAt;
+        }
+        bucket.actions += actions;
+        bucket.sourceActions[sourceKey] =
+            Number(bucket.sourceActions?.[sourceKey] || 0) + actions;
+    });
+};
+
 const serializeUser = (user) => {
     if (!user) return null;
     return {
@@ -74,32 +134,62 @@ const buildTimeSpentStats = async (userId, userDoc = null) => {
     const startOfMonth = new Date(now);
     startOfMonth.setDate(startOfMonth.getDate() - 30);
 
-    const perDay = await Activity.aggregate([
-        {
-            $match: {
-                user: userId,
-                createdAt: { $gte: startOfMonth }
-            }
-        },
-        {
-            $group: {
-                _id: {
-                    $dateToString: {
-                        format: "%Y-%m-%d",
-                        date: "$createdAt"
-                    }
-                },
-                firstAt: { $min: "$createdAt" },
-                lastAt: { $max: "$createdAt" },
-                actions: { $sum: 1 }
-            }
-        }
+    const matchWindow = { createdAt: { $gte: startOfMonth } };
+    const [plannerRows, likeRows, commentRows, repostRows] = await Promise.all([
+        aggregateDailyActions(Activity, {
+            user: userId,
+            ...matchWindow
+        }),
+        aggregateDailyActions(Like, {
+            user: userId,
+            post: { $type: "objectId" },
+            ...matchWindow
+        }),
+        aggregateDailyActions(Comment, {
+            author: userId,
+            status: "active",
+            post: { $type: "objectId" },
+            ...matchWindow
+        }),
+        aggregateDailyActions(Post, {
+            author: userId,
+            status: "active",
+            postType: { $in: ["repost", "quote"] },
+            ...matchWindow
+        })
     ]);
+
+    const dailyMap = new Map();
+    addDailySourceRows(dailyMap, plannerRows, "planner");
+    addDailySourceRows(dailyMap, likeRows, "likes");
+    addDailySourceRows(dailyMap, commentRows, "comments");
+    addDailySourceRows(dailyMap, repostRows, "reposts");
+
+    const latestSignalAt = userDoc?.lastActive || userDoc?.lastSeen || null;
+    if (!dailyMap.size && latestSignalAt) {
+        const signalDate = new Date(latestSignalAt);
+        if (!Number.isNaN(signalDate.getTime()) && signalDate >= startOfMonth) {
+            const signalKey = signalDate.toISOString().slice(0, 10);
+            dailyMap.set(signalKey, {
+                date: signalKey,
+                firstAt: signalDate,
+                lastAt: signalDate,
+                actions: 1,
+                sourceActions: {
+                    ...createTimeSourceCounter(),
+                    presence: 1
+                }
+            });
+        }
+    }
 
     const estimateMinutesForDay = (row) => {
         const firstAt = row?.firstAt ? new Date(row.firstAt) : null;
         const lastAt = row?.lastAt ? new Date(row.lastAt) : null;
         const actions = Math.max(1, Number(row?.actions || 0));
+        const sourceCount = TIME_SOURCE_KEYS.filter(
+            (source) => Number(row?.sourceActions?.[source] || 0) > 0
+        ).length;
 
         if (!firstAt || !lastAt) return 0;
 
@@ -107,15 +197,26 @@ const buildTimeSpentStats = async (userId, userDoc = null) => {
             1,
             Math.round((lastAt.getTime() - firstAt.getTime()) / 60000)
         );
-        const interactionBonus = Math.min(120, actions * 2);
-        return Math.min(8 * 60, Math.max(5, spanMinutes + interactionBonus));
+        const interactionBonus = Math.min(180, actions * 2 + sourceCount * 4);
+        const baseMinutes = actions >= 6 ? 15 : actions >= 3 ? 8 : 5;
+        return Math.min(10 * 60, Math.max(baseMinutes, spanMinutes + interactionBonus));
     };
 
-    const dailyEstimates = perDay.map((row) => ({
-        date: row._id,
-        actions: Number(row.actions || 0),
-        estimatedMinutes: estimateMinutesForDay(row)
-    }));
+    const sourceBreakdown = createTimeSourceCounter();
+    const dailyEstimates = Array.from(dailyMap.values())
+        .map((row) => {
+            TIME_SOURCE_KEYS.forEach((source) => {
+                sourceBreakdown[source] += Number(row?.sourceActions?.[source] || 0);
+            });
+
+            return {
+                date: row.date,
+                actions: Number(row?.actions || 0),
+                sourceActions: row?.sourceActions || createTimeSourceCounter(),
+                estimatedMinutes: estimateMinutesForDay(row)
+            };
+        })
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     const todayKey = startOfToday.toISOString().slice(0, 10);
     const weekStartKey = startOfWeek.toISOString().slice(0, 10);
@@ -131,18 +232,54 @@ const buildTimeSpentStats = async (userId, userDoc = null) => {
     const monthMinutes = dailyEstimates
         .reduce((sum, row) => sum + row.estimatedMinutes, 0);
 
+    const dailyEstimateMap = new Map(
+        dailyEstimates.map((row) => [String(row.date), row])
+    );
+    const dailyBreakdownLast7 = [];
+    for (let offset = 6; offset >= 0; offset -= 1) {
+        const date = new Date(startOfToday);
+        date.setDate(date.getDate() - offset);
+        const key = date.toISOString().slice(0, 10);
+        const row = dailyEstimateMap.get(key);
+        dailyBreakdownLast7.push({
+            date: key,
+            label: date.toLocaleDateString("en-US", { weekday: "short" }),
+            day: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+            minutes: Number(row?.estimatedMinutes || 0),
+            actions: Number(row?.actions || 0)
+        });
+    }
+
+    const dataSources = TIME_SOURCE_KEYS.filter(
+        (source) => Number(sourceBreakdown[source] || 0) > 0
+    );
+    const note = dataSources.length
+        ? `Estimated from ${dataSources.join(", ")} activity signals.`
+        : "No activity signals found in the last 30 days yet.";
+
+    const averageDailyMinutes = Math.round(monthMinutes / 30);
+    const activeDays = dailyEstimates.length;
+    const averageActiveDayMinutes = activeDays
+        ? Math.round(monthMinutes / activeDays)
+        : 0;
+
     return {
         estimated: true,
-        note: "Estimated from your recent in-app actions.",
+        note,
         todayMinutes,
         todayLabel: formatDuration(todayMinutes),
         last7DaysMinutes: weekMinutes,
         last7DaysLabel: formatDuration(weekMinutes),
         last30DaysMinutes: monthMinutes,
         last30DaysLabel: formatDuration(monthMinutes),
-        averageDailyMinutes: Math.round(monthMinutes / 30),
-        averageDailyLabel: formatDuration(Math.round(monthMinutes / 30)),
-        activeDaysLast30: dailyEstimates.length,
+        averageDailyMinutes,
+        averageDailyLabel: formatDuration(averageDailyMinutes),
+        averageActiveDayMinutes,
+        averageActiveDayLabel: formatDuration(averageActiveDayMinutes),
+        activeDaysLast30: activeDays,
+        sourceBreakdown,
+        dataSources,
+        dailyBreakdownLast7,
         lastActiveAt: userDoc?.lastActive || userDoc?.lastSeen || null
     };
 };

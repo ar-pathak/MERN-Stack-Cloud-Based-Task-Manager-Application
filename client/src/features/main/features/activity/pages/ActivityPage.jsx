@@ -291,6 +291,22 @@ const ActivityPage = () => {
     const accountEvents = Array.isArray(dashboard?.accountHistory?.events)
         ? dashboard.accountHistory.events
         : [];
+    const timeSpent = dashboard?.timeSpent || null;
+    const timeBreakdown = Array.isArray(timeSpent?.dailyBreakdownLast7)
+        ? timeSpent.dailyBreakdownLast7
+        : [];
+    const timeBreakdownMax = Math.max(
+        1,
+        ...timeBreakdown.map((entry) => Number(entry?.minutes || 0))
+    );
+    const timeSourceBreakdown = timeSpent?.sourceBreakdown || {};
+    const timeSourceItems = [
+        { key: "planner", label: "Planner", value: Number(timeSourceBreakdown?.planner || 0) },
+        { key: "likes", label: "Likes", value: Number(timeSourceBreakdown?.likes || 0) },
+        { key: "comments", label: "Comments", value: Number(timeSourceBreakdown?.comments || 0) },
+        { key: "reposts", label: "Reposts", value: Number(timeSourceBreakdown?.reposts || 0) },
+        { key: "presence", label: "Presence", value: Number(timeSourceBreakdown?.presence || 0) }
+    ].filter((item) => item.value > 0);
 
     const renderEmptySection = (message) => (
         <p className="rounded-xl border border-slate-800/80 bg-slate-900/40 px-3 py-3 text-xs text-slate-500">
@@ -367,37 +383,96 @@ const ActivityPage = () => {
                             <p className="text-sm text-slate-400">Loading time stats...</p>
                         )}
 
-                        {!dashboardLoading && dashboard?.timeSpent && (
+                        {!dashboardLoading && (
                             <div className="space-y-3">
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-2.5">
                                         <p className="text-[11px] text-slate-500">Today</p>
                                         <p className="mt-1 text-sm font-semibold text-slate-100">
-                                            {dashboard.timeSpent?.todayLabel || "0h 0m"}
+                                            {timeSpent?.todayLabel || "0h 0m"}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-2.5">
                                         <p className="text-[11px] text-slate-500">7 Days</p>
                                         <p className="mt-1 text-sm font-semibold text-slate-100">
-                                            {dashboard.timeSpent?.last7DaysLabel || "0h 0m"}
+                                            {timeSpent?.last7DaysLabel || "0h 0m"}
                                         </p>
                                     </div>
                                     <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-2.5">
                                         <p className="text-[11px] text-slate-500">30 Days</p>
                                         <p className="mt-1 text-sm font-semibold text-slate-100">
-                                            {dashboard.timeSpent?.last30DaysLabel || "0h 0m"}
+                                            {timeSpent?.last30DaysLabel || "0h 0m"}
                                         </p>
                                     </div>
                                 </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-2.5">
+                                        <p className="text-[11px] text-slate-500">Avg / Day</p>
+                                        <p className="mt-1 text-sm font-semibold text-slate-100">
+                                            {timeSpent?.averageDailyLabel || "0h 0m"}
+                                        </p>
+                                    </div>
+                                    <div className="rounded-xl border border-slate-800/80 bg-slate-900/70 p-2.5">
+                                        <p className="text-[11px] text-slate-500">Active Days</p>
+                                        <p className="mt-1 text-sm font-semibold text-slate-100">
+                                            {Number(timeSpent?.activeDaysLast30 || 0)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {timeBreakdown.length > 0 && (
+                                    <div className="space-y-1.5">
+                                        <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                                            Last 7 Days Trend
+                                        </p>
+                                        <div className="space-y-1.5">
+                                            {timeBreakdown.map((entry) => {
+                                                const minutes = Number(entry?.minutes || 0);
+                                                const widthPercent =
+                                                    minutes > 0
+                                                        ? Math.max(
+                                                            8,
+                                                            Math.round((minutes / timeBreakdownMax) * 100)
+                                                        )
+                                                        : 0;
+
+                                                return (
+                                                    <div key={entry?.date} className="space-y-1">
+                                                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                                                            <span>{entry?.label || entry?.day || "Day"}</span>
+                                                            <span>{minutes}m</span>
+                                                        </div>
+                                                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-800">
+                                                            <div
+                                                                className="h-full rounded-full bg-sky-400/80"
+                                                                style={{ width: `${widthPercent}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {timeSourceItems.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {timeSourceItems.map((item) => (
+                                            <span
+                                                key={item.key}
+                                                className="inline-flex rounded-full border border-slate-700 bg-slate-900/70 px-2 py-0.5 text-[11px] text-slate-400"
+                                            >
+                                                {item.label}: {item.value}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+
                                 <div className="text-xs text-slate-500">
-                                    {dashboard.timeSpent?.note ||
-                                        "Time tracking data is not available yet."}
+                                    {timeSpent?.note || "Time tracking data is not available yet."}
                                 </div>
                             </div>
-                        )}
-
-                        {!dashboardLoading && !dashboard?.timeSpent && (
-                            <p className="text-sm text-slate-500">No time data available yet.</p>
                         )}
                     </section>
 
