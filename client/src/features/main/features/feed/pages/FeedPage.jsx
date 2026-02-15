@@ -91,8 +91,6 @@ const FeedPage = () => {
         <div className={`min-h-full bg-slate-950 ${shouldShowBottomNav ? "pb-[5.25rem]" : "pb-8"}`}>
             <div className="mx-auto w-full max-w-6xl px-3 pt-3 sm:px-4 sm:pt-4">
                 <FeedTopBar
-                    totalPosts={pagination?.total}
-                    totalStories={storyStats.totalStories}
                     onCreate={() => navigate("/main/create")}
                     onRefresh={handleRefresh}
                 />
@@ -185,7 +183,6 @@ const FeedPage = () => {
                     </section>
 
                     <FeedSidebar
-                        storyStats={storyStats}
                         topHashtags={topHashtags}
                         onPickTag={setSearchTerm}
                     />

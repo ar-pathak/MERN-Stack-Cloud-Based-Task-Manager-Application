@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { AuthContext } from "./AuthContext";
 import { login as loginService, logout as logoutService, register as registerService, getUserInfo } from "../service/auth.service";
+import { updateActivity as updateUserActivity } from "../service/user.service";
 
 
 export const AuthProvider = ({ children }) => {
@@ -44,6 +45,37 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         loadUser();
     }, [loadUser]);
+
+    useEffect(() => {
+        const userId = user?._id || user?.id;
+        if (!userId) return undefined;
+
+        let mounted = true;
+        const pushActivity = async (isOnline) => {
+            if (!mounted) return;
+            await updateUserActivity(isOnline);
+        };
+
+        pushActivity(true);
+
+        const handleVisibility = () => {
+            pushActivity(document.visibilityState === "visible");
+        };
+
+        const handleBeforeUnload = () => {
+            updateUserActivity(false);
+        };
+
+        document.addEventListener("visibilitychange", handleVisibility);
+        window.addEventListener("beforeunload", handleBeforeUnload);
+
+        return () => {
+            mounted = false;
+            document.removeEventListener("visibilitychange", handleVisibility);
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            updateUserActivity(false);
+        };
+    }, [user?._id, user?.id]);
 
     useEffect(() => {
         const handleSessionExpired = () => {

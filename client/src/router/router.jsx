@@ -14,12 +14,12 @@ const FeedPage = lazy(() => import("../features/main/features/feed/pages/FeedPag
 const PostDetailPage = lazy(() => import("../features/main/features/feed/pages/PostDetailPage.jsx"));
 const NotificationsPage = lazy(() => import("../features/main/features/notifications/pages/NotificationsPage.jsx"));
 const CreatePostPage = lazy(() => import("../features/main/features/create/pages/CreatePostPage.jsx"));
+const ActivityPage = lazy(() => import("../features/main/features/activity/pages/ActivityPage.jsx"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
 const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"))
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"))
 // const MyTasksPage = lazy(() => import("../features/dashboard/features/myTasks/pages/MyTasksPage"));
 // const ProjectsPage = lazy(() => import("../features/dashboard/features/projects/pages/ProjectsPage"));
-// const ActivityPage = lazy(() => import("../features/dashboard/features/activity/pages/ActivityPage"));
 // const SchedulePage = lazy(() => import("../features/dashboard/features/schedule/pages/SchedulePage"));
 
 const withSuspense = (Component) => (
@@ -69,11 +69,11 @@ const router = createBrowserRouter([
                   { index: true, element: withSuspense(OverviewLayout) },
                   { path: "feed", element: withSuspense(FeedPage) },
                   { path: "notifications", element: withSuspense(NotificationsPage) },
+                  { path: "activity", element: withSuspense(ActivityPage) },
                   { path: "create", element: withSuspense(CreatePostPage) },
                   { path: "settings", element: withSuspense(SettingsPage) },
                   // { path: "my-tasks", element: withSuspense(MyTasksPage) },
                   // { path: "projects", element: withSuspense(ProjectsPage) },
-                  // { path: "activity", element: withSuspense(ActivityPage) },
               // { path: "schedule", element: withSuspense(SchedulePage) },
             ],
           },

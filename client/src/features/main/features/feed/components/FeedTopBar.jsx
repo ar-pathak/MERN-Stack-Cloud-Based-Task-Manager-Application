@@ -1,6 +1,6 @@
 import { Newspaper, Plus, RefreshCcw } from "lucide-react";
 
-const FeedTopBar = ({ totalPosts, totalStories, onCreate, onRefresh }) => {
+const FeedTopBar = ({ onCreate, onRefresh }) => {
     return (
         <div className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -10,9 +10,6 @@ const FeedTopBar = ({ totalPosts, totalStories, onCreate, onRefresh }) => {
                         <Newspaper className="h-5 w-5 text-sky-400" />
                         Social Stream
                     </h1>
-                    <p className="text-xs text-slate-400">
-                        {totalPosts || 0} posts - {totalStories} stories
-                    </p>
                 </div>
 
                 <div className="flex items-center gap-2">

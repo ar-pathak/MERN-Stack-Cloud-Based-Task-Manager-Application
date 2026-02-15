@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
+import { Activity, Bell, Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { getUnreadNotificationCount } from "../../../../service/notification.service";
@@ -8,6 +8,7 @@ import * as socketService from "../../../../service/Chat.socket.service";
 const ITEMS = [
     { id: "overview", label: "Overview", icon: Grid2x2, path: "/main" },
     { id: "feed", label: "Feed", icon: Newspaper, path: "/main/feed" },
+    { id: "activity", label: "Activity", icon: Activity, path: "/main/activity" },
     { id: "create", label: "Create", icon: SquarePen, path: "/main/create" },
     { id: "notifications", label: "Alerts", icon: Bell, path: "/main/notifications" }
 ];
@@ -52,7 +53,7 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
             className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
             style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
         >
-            <div className="grid grid-cols-5 gap-1 px-2 pt-1.5">
+            <div className="grid grid-cols-6 gap-1 px-2 pt-1.5">
                 {ITEMS.map((item) => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;

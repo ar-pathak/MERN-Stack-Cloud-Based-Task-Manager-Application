@@ -7,9 +7,7 @@ import PinnedBanner from "./PinnedBanner";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import useWebRTC from "../../hook/useWebRTC";
-// import VideoCallModal from "./VideoCallModal"; // <-- Removed (Replaced by CallInterface)
-// import IncomingCallModal from "./IncomingCallModal"; // <-- Removed (Optional, keeping code clean)
-import CallInterface from "./CallInterface"; // <-- Added
+import CallInterface from "./CallInterface";
 import { useAuth } from "../../../../../../context/AuthContext";
 
 const ChatPanel = ({

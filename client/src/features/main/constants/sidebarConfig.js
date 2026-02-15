@@ -16,6 +16,14 @@ export const NAV_ITEMS = [
         color: "emerald"
     },
     {
+        label: "Activity",
+        icon: "Activity",
+        path: "/main/activity",
+        exact: true,
+        description: "Recent actions",
+        color: "rose"
+    },
+    {
         label: "Create",
         icon: "SquarePen",
         path: "/main/create",

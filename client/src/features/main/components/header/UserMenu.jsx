@@ -106,7 +106,7 @@ const UserMenu = ({ user }) => {
                     bgColor: "bg-green-500/10",
                     action: () => {
                         setIsOpen(false);
-                        toast.info("Activity view coming soon");
+                        navigate("/main/activity");
                     }
                 },
             ]

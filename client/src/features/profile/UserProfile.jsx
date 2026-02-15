@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+    Activity,
     ArrowLeft,
     Calendar,
     Check,
@@ -678,17 +679,30 @@ const UserProfile = () => {
                                         Copy profile link
                                     </button>
                                     {isOwnProfile && (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setIsMenuOpen(false);
-                                                navigate("/main/settings");
-                                            }}
-                                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
-                                        >
-                                            <Settings className="h-4 w-4" />
-                                            Settings
-                                        </button>
+                                        <>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsMenuOpen(false);
+                                                    navigate("/main/activity");
+                                                }}
+                                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                            >
+                                                <Activity className="h-4 w-4" />
+                                                Activity
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsMenuOpen(false);
+                                                    navigate("/main/settings");
+                                                }}
+                                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                            >
+                                                <Settings className="h-4 w-4" />
+                                                Settings
+                                            </button>
+                                        </>
                                     )}
                                     {!isOwnProfile && (
                                         <button
