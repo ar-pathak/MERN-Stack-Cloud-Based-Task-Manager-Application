@@ -180,7 +180,13 @@ export const getUnreadCallInviteSummary = async (params = {}) => {
  * POST /api/chat/message
  * Send a new message
  */
-export const sendMessage = async (chatId, content, attachments = [], replyTo = null) => {
+export const sendMessage = async (
+    chatId,
+    content,
+    attachments = [],
+    replyTo = null,
+    postId = null
+) => {
     try {
         const payload = { chatId, content };
         if (attachments && attachments.length > 0) {
@@ -188,6 +194,9 @@ export const sendMessage = async (chatId, content, attachments = [], replyTo = n
         }
         if (replyTo) {
             payload.replyTo = replyTo;
+        }
+        if (postId) {
+            payload.postId = postId;
         }
 
         const response = await api.post(`${BASE}/message`, payload);

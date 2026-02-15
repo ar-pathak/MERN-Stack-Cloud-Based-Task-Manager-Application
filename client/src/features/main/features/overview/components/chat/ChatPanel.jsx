@@ -39,6 +39,9 @@ const ChatPanel = ({
     jumpToMessageId,
     onMentionJumpHandled,
     onMobileBack,
+    chatAccessError = "",
+    sendPermissionError = "",
+    canSendMessages = true,
 }) => {
     const { user } = useAuth();
 
@@ -89,6 +92,12 @@ const ChatPanel = ({
         if (!typingUsers?.length) return [];
         return typingUsers.map(u => ({ name: u.userName || u.name || "Someone", typing: true }));
     }, [typingUsers]);
+    const viewerRoleBlocked = String(item?.permissions?.role || "").toLowerCase() === "viewer";
+    const sendBlockedReason =
+        chatAccessError ||
+        sendPermissionError ||
+        (viewerRoleBlocked ? "You do not have permission to send messages." : "");
+    const sendDisabled = Boolean(sendBlockedReason) || !canSendMessages;
 
     const filteredMessages = useMemo(() => {
         let f = messages;
@@ -100,6 +109,7 @@ const ChatPanel = ({
 
     // ── Message Send (Existing logic) ─────────────────────────────────────
     const handleSendWithContext = (fileFromInput) => {
+        if (sendDisabled) return;
         const fileToSend = fileFromInput || selectedFile;
         if (chatMessage?.trim() || fileToSend || replyingTo) {
             handleSendMessage({ replyTo: replyingTo, file: fileToSend });
@@ -149,7 +159,7 @@ const ChatPanel = ({
 
                         {/* 2. CALL INTERFACE (The Telegram Style Bar) - ADDED HERE */}
                         <div className="flex-shrink-0 z-30">
-                             <AnimatePresence>
+                            <AnimatePresence>
                                 {currentCall && (
                                     <CallInterface
                                         activeUserId={user?._id}
@@ -174,7 +184,7 @@ const ChatPanel = ({
                                         invitingUserIds={invitingUserIds}
                                     />
                                 )}
-                             </AnimatePresence>
+                            </AnimatePresence>
                         </div>
 
                         {/* 3. Pinned Banner */}
@@ -205,6 +215,11 @@ const ChatPanel = ({
 
                         {/* 5. Input Area */}
                         <div className="flex-shrink-0 z-20">
+                            {sendBlockedReason ? (
+                                <div className="mx-3 mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 sm:mx-4 md:mx-6">
+                                    {sendBlockedReason}
+                                </div>
+                            ) : null}
                             <ChatInput
                                 chatMessage={chatMessage}
                                 setChatMessage={handleMessageChange}
@@ -220,6 +235,8 @@ const ChatPanel = ({
                                 typingUsers={typingUsers}
                                 selectedFile={selectedFile}
                                 setSelectedFile={setSelectedFile}
+                                sendDisabled={sendDisabled}
+                                sendDisabledReason={sendBlockedReason}
                             />
                         </div>
                     </div>

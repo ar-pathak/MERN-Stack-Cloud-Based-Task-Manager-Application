@@ -42,7 +42,9 @@ const ChatInput = ({
     setShowEmojiPicker,
     selectedFile,
     setSelectedFile,
-    chatId
+    chatId,
+    sendDisabled = false,
+    sendDisabledReason = ""
 }) => {
     const textareaRef = useRef(null);
     const [previewUrl, setPreviewUrl] = useState(null);
@@ -127,6 +129,12 @@ const ChatInput = ({
     };
 
     const onFileSelect = (e) => {
+        if (sendDisabled) {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+            return;
+        }
         if (e.target.files && e.target.files[0]) {
             setSelectedFile(e.target.files[0]);
         }
@@ -203,7 +211,7 @@ const ChatInput = ({
     };
 
     const onSendClick = () => {
-        if ((!chatMessage.trim() && !selectedFile) || uploadingFile) return;
+        if ((!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled) return;
         handleSend(selectedFile);
 
         setMentionContext(null);
@@ -300,7 +308,7 @@ const ChatInput = ({
                 <ActionButton
                     icon={Paperclip}
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingFile}
+                    disabled={uploadingFile || sendDisabled}
                     title="Attach file"
                 />
 
@@ -312,9 +320,15 @@ const ChatInput = ({
                         onClick={(e) => updateMentionFromValue(e.target.value, e.target.selectionStart)}
                         onKeyUp={(e) => updateMentionFromValue(e.target.value, e.target.selectionStart)}
                         onKeyDown={handleKeyDown}
-                        placeholder={selectedFile ? "Add a caption..." : "Type a message... Use @ to mention"}
+                        placeholder={
+                            sendDisabled
+                                ? (sendDisabledReason || "You cannot send messages in this chat.")
+                                : selectedFile
+                                    ? "Add a caption..."
+                                    : "Type a message... Use @ to mention"
+                        }
                         rows={1}
-                        disabled={uploadingFile}
+                        disabled={uploadingFile || sendDisabled}
                         className="w-full px-3 py-2.5 sm:px-4 sm:py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
                         style={{ minHeight: "44px", maxHeight: "120px" }}
                     />
@@ -379,7 +393,7 @@ const ChatInput = ({
                         icon={Smile}
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                         active={showEmojiPicker}
-                        disabled={uploadingFile}
+                        disabled={uploadingFile || sendDisabled}
                         title="Emoji"
                     />
 
@@ -401,7 +415,7 @@ const ChatInput = ({
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={onSendClick}
-                    disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile}
+                    disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled}
                     className={`p-2.5 sm:p-3 rounded-xl transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
                         ? "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25"
                         : "bg-slate-800/40 text-slate-600 cursor-not-allowed"

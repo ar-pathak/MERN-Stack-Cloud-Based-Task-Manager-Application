@@ -452,6 +452,9 @@ const OverviewLayout = () => {
                 uploadingFile={chat.uploadingFile}
                 showEmojiPicker={chat.showEmojiPicker}
                 setShowEmojiPicker={chat.setShowEmojiPicker}
+                chatAccessError={chat.chatAccessError}
+                sendPermissionError={chat.sendPermissionError}
+                canSendMessages={chat.canSendMessages}
                 chatEndRef={chat.refs.chatEndRef}
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}

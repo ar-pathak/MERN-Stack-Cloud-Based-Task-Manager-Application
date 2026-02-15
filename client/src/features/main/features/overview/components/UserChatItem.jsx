@@ -1,6 +1,7 @@
 import React from "react";
 import { MessageSquare, Users, Phone, AtSign, PhoneIncoming } from "lucide-react";
 import { useAuth } from "../../../../../context/AuthContext";
+import { getMessagePreviewText } from "../utils/messagePreview";
 
 const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenChat, onOpenMention }) => {
     const isSelected = selectedItem?.id === chat.id;
@@ -16,6 +17,7 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenChat, onOpenM
 
     const callInviteUnreadCount = chat.callInviteUnreadCount || 0;
     const hasUnreadCallInvite = callInviteUnreadCount > 0;
+    const lastMessagePreview = getMessagePreviewText(chat?.lastMessage);
 
     const formatActivityTime = (dateString) => {
         if (!dateString) return "";
@@ -147,7 +149,7 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenChat, onOpenM
                                     : chat.lastMessage?.sender?.username?.split(" ")[0] || "User"}
                             </span>
                         )}
-                        {chat.description || chat.lastMessage?.content || "Start a conversation"}
+                        {lastMessagePreview || chat.description || "Start a conversation"}
                     </p>
                 </div>
 

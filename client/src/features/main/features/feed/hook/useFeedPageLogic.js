@@ -15,11 +15,14 @@ import {
     likePost,
     repostPost,
     savePost,
-    sharePost,
     unlikeComment,
     unlikePost,
     unsavePost
 } from "../../../../../service/post.service";
+import {
+    sendMessage as sendChatMessage
+} from "../../../../../service/chat.service";
+import { getOverviewActivity } from "../../../../../service/overview.service";
 import {
     followUser,
     unfollowUser
@@ -52,6 +55,80 @@ const FEED_FETCHERS = {
 };
 
 const REPLY_PAGE_SIZE = 6;
+
+const toIdString = (value) => String(value?._id || value?.id || value || "");
+
+const getChatMessagePreview = (message) => {
+    if (!message) return "";
+
+    const content = String(message?.content || "").trim();
+    if (content) return content;
+
+    if (message?.type === "post" || message?.sharedPost) return "Shared a post";
+    if (message?.type === "image") return "Sent an image";
+    if (message?.type === "video") return "Sent a video";
+    if (message?.type === "audio") return "Sent an audio message";
+    if (message?.type === "file") return "Sent an attachment";
+    return "Start a conversation";
+};
+
+const getNodeChildren = (node = {}) => [
+    ...(Array.isArray(node?.projects) ? node.projects : []),
+    ...(Array.isArray(node?.tasks) ? node.tasks : []),
+    ...(Array.isArray(node?.subtasks) ? node.subtasks : [])
+];
+
+const normalizeShareTargets = (items = []) => {
+    const toNode = (item = {}, parentKey = "root") => {
+        const rawId = toIdString(item?.id || item?._id || item?.chatId || "");
+        if (!rawId) return null;
+
+        const type = String(item?.type || "chat");
+        const nodeId = `${type}:${rawId}:${parentKey}`;
+        const chatId =
+            type === "chat"
+                ? toIdString(item?.id || item?._id || item?.chatId || "")
+                : toIdString(item?.chatId || "");
+
+        const children = getNodeChildren(item)
+            .map((child) => toNode(child, nodeId))
+            .filter(Boolean)
+            .sort(
+                (a, b) =>
+                    new Date(b?.updatedAt || 0).getTime() -
+                    new Date(a?.updatedAt || 0).getTime()
+            );
+
+        const canSelect = Boolean(chatId);
+        if (!canSelect && children.length === 0) return null;
+
+        return {
+            id: nodeId,
+            entityId: rawId,
+            chatId: canSelect ? chatId : "",
+            canSelect,
+            type,
+            label: String(item?.name || item?.title || item?.description || "Untitled"),
+            subtitle: getChatMessagePreview(item?.lastMessage),
+            avatar: item?.avatar || null,
+            updatedAt:
+                item?.updatedAt ||
+                item?.latestActivity ||
+                item?.lastMessage?.createdAt ||
+                null,
+            children
+        };
+    };
+
+    return (Array.isArray(items) ? items : [])
+        .map((item) => toNode(item, "root"))
+        .filter(Boolean)
+        .sort(
+            (a, b) =>
+                new Date(b?.updatedAt || 0).getTime() -
+                new Date(a?.updatedAt || 0).getTime()
+        );
+};
 
 const normalizeComment = (comment) => {
     if (!comment?._id) return null;
@@ -222,6 +299,16 @@ const useFeedPageLogic = () => {
         quoteText: "",
         visibility: "public",
         submitting: false
+    });
+    const [shareComposer, setShareComposer] = useState({
+        postId: null,
+        postPreview: null,
+        selectedChatIds: [],
+        targets: [],
+        expandedNodeIds: {},
+        note: "",
+        loadingTargets: false,
+        sending: false
     });
 
     const toastTimeoutRef = useRef(null);
@@ -731,39 +818,200 @@ const useFeedPageLogic = () => {
         [actionState, activeTab, patchPost, setActionLoading, showToast]
     );
 
-    const handleSharePost = useCallback(
-        async (post) => {
-            const postId = post?._id;
-            if (!postId) return;
-            const key = `share:${postId}`;
-            if (actionState[key]) return;
+    const closeShareComposer = useCallback(() => {
+        setShareComposer({
+            postId: null,
+            postPreview: null,
+            selectedChatIds: [],
+            targets: [],
+            expandedNodeIds: {},
+            note: "",
+            loadingTargets: false,
+            sending: false
+        });
+    }, []);
 
-            setActionLoading(key, true);
-            try {
-                await sharePost(postId, "copy_link");
-                patchPost(postId, (entry) => ({
-                    ...entry,
-                    sharesCount: Number(entry?.sharesCount || 0) + 1
-                }));
+    const toggleShareNodeExpanded = useCallback((nodeId) => {
+        if (!nodeId) return;
+        setShareComposer((previous) => ({
+            ...previous,
+            expandedNodeIds: {
+                ...(previous?.expandedNodeIds || {}),
+                [nodeId]: !previous?.expandedNodeIds?.[nodeId]
+            }
+        }));
+    }, []);
 
-                const shareUrl =
-                    typeof window !== "undefined"
-                        ? `${window.location.origin}/post/${postId}`
-                        : `/post/${postId}`;
+    const handleSelectShareChat = useCallback((chatId) => {
+        const id = String(chatId || "");
+        if (!id) return;
 
-                if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-                    await navigator.clipboard.writeText(shareUrl);
-                }
+        setShareComposer((previous) => {
+            const current = new Set(previous?.selectedChatIds || []);
+            if (current.has(id)) {
+                current.delete(id);
+            } else {
+                current.add(id);
+            }
 
-                showToast("Post link copied");
-            } catch (error) {
-                showToast(error?.message || "Could not share post", "error");
-            } finally {
-                setActionLoading(key, false);
+            return {
+                ...previous,
+                selectedChatIds: Array.from(current)
+            };
+        });
+    }, []);
+
+    const handleShareTargetPress = useCallback(
+        (target) => {
+            if (!target?.id) return;
+
+            const hasChildren = Array.isArray(target?.children) && target.children.length > 0;
+            const isExpanded = shareComposer?.expandedNodeIds?.[target.id] === true;
+
+            // First click on a parent expands it. Second click can select it.
+            if (hasChildren && !isExpanded) {
+                toggleShareNodeExpanded(target.id);
+                return;
+            }
+
+            if (target?.canSelect && target?.chatId) {
+                handleSelectShareChat(target.chatId);
             }
         },
-        [actionState, patchPost, setActionLoading, showToast]
+        [
+            handleSelectShareChat,
+            shareComposer?.expandedNodeIds,
+            toggleShareNodeExpanded
+        ]
     );
+
+    const handleShareNoteChange = useCallback((note) => {
+        setShareComposer((previous) => ({
+            ...previous,
+            note: note ?? ""
+        }));
+    }, []);
+
+    const handleSharePost = useCallback(
+        async (post) => {
+            const postId = String(post?._id || "");
+            if (!postId) return;
+
+            setShareComposer((previous) => ({
+                ...previous,
+                postId,
+                postPreview: {
+                    authorLabel:
+                        post?.author?.name ||
+                        post?.author?.username ||
+                        "Unknown user",
+                    content: String(post?.content || "")
+                },
+                note: "",
+                selectedChatIds: [],
+                targets: [],
+                expandedNodeIds: {},
+                loadingTargets: true,
+                sending: false
+            }));
+
+            try {
+                const activity = await getOverviewActivity();
+                const normalized = normalizeShareTargets(activity);
+
+                setShareComposer((previous) => ({
+                    ...previous,
+                    targets: normalized,
+                    loadingTargets: false
+                }));
+            } catch (error) {
+                setShareComposer((previous) => ({
+                    ...previous,
+                    targets: [],
+                    selectedChatIds: [],
+                    loadingTargets: false
+                }));
+                showToast(error?.message || "Could not load share targets", "error");
+            }
+        },
+        [showToast]
+    );
+
+    const submitShareToChat = useCallback(async () => {
+        const postId = String(shareComposer?.postId || "");
+        const selectedChatIds = Array.from(
+            new Set((shareComposer?.selectedChatIds || []).map((id) => String(id || "")).filter(Boolean))
+        );
+        if (!postId || !selectedChatIds.length) return;
+
+        const key = `share:${postId}`;
+        if (actionState[key] || shareComposer?.sending) return;
+
+        setActionLoading(key, true);
+        setShareComposer((previous) => ({ ...previous, sending: true }));
+
+        try {
+            const note = String(shareComposer?.note || "").trim();
+            const results = await Promise.allSettled(
+                selectedChatIds.map((chatId) => sendChatMessage(chatId, note, [], null, postId))
+            );
+
+            const failedChatIds = [];
+            let successCount = 0;
+
+            results.forEach((result, index) => {
+                if (result.status === "fulfilled") {
+                    successCount += 1;
+                    return;
+                }
+                failedChatIds.push(selectedChatIds[index]);
+            });
+
+            if (successCount > 0) {
+                patchPost(postId, (entry) => ({
+                    ...entry,
+                    sharesCount: Number(entry?.sharesCount || 0) + successCount
+                }));
+            }
+
+            if (!failedChatIds.length) {
+                showToast(
+                    successCount > 1
+                        ? `Post shared in ${successCount} chats`
+                        : "Post shared in chat"
+                );
+                closeShareComposer();
+                return;
+            }
+
+            setShareComposer((previous) => ({
+                ...previous,
+                sending: false,
+                selectedChatIds: failedChatIds
+            }));
+
+            if (successCount > 0) {
+                showToast(
+                    `${successCount} chats me share hua, ${failedChatIds.length} me failed`,
+                    "error"
+                );
+            } else {
+                showToast("Post share failed in selected chats", "error");
+            }
+        } catch (error) {
+            setShareComposer((previous) => ({ ...previous, sending: false }));
+            showToast(error?.message || "Could not share post in chat", "error");
+        } finally {
+            setActionLoading(key, false);
+        }
+    }, [
+        actionState,
+        closeShareComposer,
+        patchPost,
+        setActionLoading,
+        shareComposer,
+        showToast
+    ]);
 
     const handleToggleFollowAuthor = useCallback(
         async (post) => {
@@ -1325,6 +1573,7 @@ const useFeedPageLogic = () => {
         toast,
         repostComposer,
         setRepostComposer,
+        shareComposer,
         repostTargetPost,
         filteredPosts,
         topHashtags,
@@ -1345,6 +1594,11 @@ const useFeedPageLogic = () => {
         handleDeleteComment,
         openRepostComposer,
         closeRepostComposer,
+        closeShareComposer,
+        handleShareTargetPress,
+        toggleShareNodeExpanded,
+        handleShareNoteChange,
+        submitShareToChat,
         submitRepost,
         handleToggleComments,
         handleToggleCommentLike,

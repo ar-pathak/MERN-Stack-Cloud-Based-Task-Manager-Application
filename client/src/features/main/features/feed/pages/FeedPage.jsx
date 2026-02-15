@@ -10,6 +10,7 @@ import FeedSkeletonList from "../components/FeedSkeletonList";
 import FeedToast from "../components/FeedToast";
 import FeedTopBar from "../components/FeedTopBar";
 import RepostComposerModal from "../components/RepostComposerModal";
+import SharePostModal from "../components/SharePostModal";
 import StoryRail from "../components/StoryRail";
 import StoryViewerModal from "../components/StoryViewerModal";
 import useFeedPageLogic from "../hook/useFeedPageLogic";
@@ -47,6 +48,7 @@ const FeedPage = () => {
         toast,
         repostComposer,
         setRepostComposer,
+        shareComposer,
         repostTargetPost,
         filteredPosts,
         topHashtags,
@@ -67,6 +69,11 @@ const FeedPage = () => {
         handleDeleteComment,
         openRepostComposer,
         closeRepostComposer,
+        closeShareComposer,
+        handleShareTargetPress,
+        toggleShareNodeExpanded,
+        handleShareNoteChange,
+        submitShareToChat,
         submitRepost,
         handleToggleComments,
         handleToggleCommentLike,
@@ -210,6 +217,23 @@ const FeedPage = () => {
                     onQuoteRepost={() => submitRepost("quote")}
                 />
             )}
+
+            <SharePostModal
+                isOpen={Boolean(shareComposer?.postId)}
+                postId={shareComposer?.postId}
+                postPreview={shareComposer?.postPreview}
+                targets={shareComposer?.targets || []}
+                loadingTargets={Boolean(shareComposer?.loadingTargets)}
+                selectedChatIds={shareComposer?.selectedChatIds || []}
+                expandedNodeIds={shareComposer?.expandedNodeIds || {}}
+                note={shareComposer?.note || ""}
+                submitting={Boolean(shareComposer?.sending)}
+                onClose={closeShareComposer}
+                onTargetPress={handleShareTargetPress}
+                onToggleExpand={toggleShareNodeExpanded}
+                onNoteChange={handleShareNoteChange}
+                onSubmit={submitShareToChat}
+            />
 
             <StoryViewerModal
                 viewer={storyViewer}

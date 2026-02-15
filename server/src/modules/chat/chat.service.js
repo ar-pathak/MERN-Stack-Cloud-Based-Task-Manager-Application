@@ -3,12 +3,32 @@ const Chat = require("../../models/chat");
 const Message = require("../../models/message");
 const User = require("../../models/user");
 const Follow = require("../../models/follow");
+const Post = require("../../models/post");
+const Workspace = require("../../models/workspace");
+const WorkspaceMember = require("../../models/workspaceMember");
+const Project = require("../../models/project");
+const Task = require("../../models/tasks");
+const Subtask = require("../../models/subtasks");
 const mongoose = require("mongoose");
+const postService = require("../posts/post.service");
 const {
     resolveMentionUsersFromText,
     notifyMentionedUsers,
     getMentionSnippet
 } = require("../utils/mentionService");
+
+const sharedPostPopulate = {
+    path: "sharedPost",
+    select: "content media author postType visibility status originalPost createdAt",
+    populate: [
+        { path: "author", select: "name username avatar isVerified" },
+        {
+            path: "originalPost",
+            select: "content media author createdAt",
+            populate: { path: "author", select: "name username avatar isVerified" }
+        }
+    ]
+};
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -74,6 +94,240 @@ class ChatService {
         }
     }
 
+    inferAttachmentType(attachments = []) {
+        if (!attachments?.length) return "text";
+        const firstType = attachments[0]?.type || "";
+        if (firstType.startsWith("image")) return "image";
+        if (firstType.startsWith("video")) return "video";
+        if (firstType.startsWith("audio")) return "audio";
+        return "file";
+    }
+
+    async resolveSharedPostForChat({ postId, senderId, chatMembers }) {
+        if (!postId) return null;
+
+        const post = await Post.findById(postId)
+            .select("author content media visibility status postType originalPost createdAt")
+            .lean();
+
+        if (!post) {
+            throw createError("Post not found", 404);
+        }
+
+        await postService.assertCanAccessPost(post, senderId, "share this post");
+
+        const memberIds = (chatMembers || [])
+            .map((memberId) => toIdString(memberId))
+            .filter(Boolean)
+            .filter((memberId) => memberId !== toIdString(senderId));
+
+        for (const memberId of memberIds) {
+            await postService.assertCanAccessPost(post, memberId, "view this post");
+        }
+
+        return post._id;
+    }
+
+    async findSectionScopeByChatId(chatId) {
+        const [workspace, project, task, subtask] = await Promise.all([
+            Workspace.findOne({ chatId })
+                .select("_id createdBy")
+                .lean(),
+            Project.findOne({ chatId })
+                .select("_id owner members workspace")
+                .lean(),
+            Task.findOne({ chatId })
+                .select("_id createdBy assignees workspace project")
+                .lean(),
+            Subtask.findOne({ chatId })
+                .select("_id task createdBy assignedTo")
+                .lean()
+        ]);
+
+        if (workspace) return { type: "workspace", entity: workspace };
+        if (project) return { type: "project", entity: project };
+        if (task) return { type: "task", entity: task };
+        if (subtask) return { type: "subtask", entity: subtask };
+        return null;
+    }
+
+    async resolveWorkspaceAccess(workspaceId, userId, workspaceDoc = null) {
+        const workspace = workspaceDoc || (await Workspace.findById(workspaceId).select("_id createdBy").lean());
+        if (!workspace) {
+            return { isMember: false, role: null, source: "workspace" };
+        }
+
+        if (String(workspace.createdBy) === String(userId)) {
+            return { isMember: true, role: "owner", source: "workspace" };
+        }
+
+        const membership = await WorkspaceMember.findOne({
+            workspace: workspace._id,
+            user: userId,
+            status: "active"
+        })
+            .select("role")
+            .lean();
+
+        if (!membership) {
+            return { isMember: false, role: null, source: "workspace" };
+        }
+
+        return {
+            isMember: true,
+            role: String(membership.role || "member"),
+            source: "workspace"
+        };
+    }
+
+    async resolveProjectAccess(projectDoc, userId) {
+        const project = projectDoc || null;
+        if (!project) {
+            return { isMember: false, role: null, source: "project" };
+        }
+
+        if (String(project.owner) === String(userId)) {
+            return { isMember: true, role: "owner", source: "project" };
+        }
+
+        const member = (project.members || []).find(
+            (entry) => String(entry?.user) === String(userId)
+        );
+        if (member) {
+            return {
+                isMember: true,
+                role: String(member.role || "member"),
+                source: "project"
+            };
+        }
+
+        if (!project.workspace) {
+            return { isMember: false, role: null, source: "project" };
+        }
+
+        const workspaceAccess = await this.resolveWorkspaceAccess(project.workspace, userId);
+        if (!workspaceAccess.isMember) {
+            return { isMember: false, role: null, source: "project" };
+        }
+
+        return workspaceAccess;
+    }
+
+    async resolveTaskAccess(taskDoc, userId) {
+        const task = taskDoc || null;
+        if (!task) {
+            return { isMember: false, role: null, source: "task" };
+        }
+
+        if (String(task.createdBy) === String(userId)) {
+            return { isMember: true, role: "creator", source: "task" };
+        }
+
+        const isAssignee = (task.assignees || []).some(
+            (assigneeId) => String(assigneeId) === String(userId)
+        );
+        if (isAssignee) {
+            return { isMember: true, role: "assignee", source: "task" };
+        }
+
+        if (task.project) {
+            const project = await Project.findById(task.project)
+                .select("_id owner members workspace")
+                .lean();
+            const projectAccess = await this.resolveProjectAccess(project, userId);
+            if (projectAccess.isMember) {
+                return projectAccess;
+            }
+        }
+
+        if (task.workspace) {
+            return this.resolveWorkspaceAccess(task.workspace, userId);
+        }
+
+        return { isMember: false, role: null, source: "task" };
+    }
+
+    async resolveSubtaskAccess(subtaskDoc, userId) {
+        const subtask = subtaskDoc || null;
+        if (!subtask) {
+            return { isMember: false, role: null, source: "subtask" };
+        }
+
+        if (String(subtask.createdBy) === String(userId)) {
+            return { isMember: true, role: "creator", source: "subtask" };
+        }
+
+        const isAssigned = (subtask.assignedTo || []).some(
+            (assigneeId) => String(assigneeId) === String(userId)
+        );
+        if (isAssigned) {
+            return { isMember: true, role: "assignee", source: "subtask" };
+        }
+
+        if (!subtask.task) {
+            return { isMember: false, role: null, source: "subtask" };
+        }
+
+        const task = await Task.findById(subtask.task)
+            .select("_id createdBy assignees workspace project")
+            .lean();
+
+        return this.resolveTaskAccess(task, userId);
+    }
+
+    async resolveSectionAccessByChat(chatId, userId) {
+        const sectionScope = await this.findSectionScopeByChatId(chatId);
+        if (!sectionScope) {
+            return { isSectionChat: false, isMember: true, role: null, scopeType: null };
+        }
+
+        let access = { isMember: false, role: null, source: sectionScope.type };
+        if (sectionScope.type === "workspace") {
+            access = await this.resolveWorkspaceAccess(sectionScope.entity._id, userId, sectionScope.entity);
+        } else if (sectionScope.type === "project") {
+            access = await this.resolveProjectAccess(sectionScope.entity, userId);
+        } else if (sectionScope.type === "task") {
+            access = await this.resolveTaskAccess(sectionScope.entity, userId);
+        } else if (sectionScope.type === "subtask") {
+            access = await this.resolveSubtaskAccess(sectionScope.entity, userId);
+        }
+
+        return {
+            ...access,
+            isSectionChat: true,
+            scopeType: sectionScope.type
+        };
+    }
+
+    async assertCanViewSectionChat(chatId, userId) {
+        const access = await this.resolveSectionAccessByChat(chatId, userId);
+        if (!access.isSectionChat) return access;
+
+        if (!access.isMember) {
+            const error = createError("You are not a member of this section chat", 403);
+            error.code = "SECTION_CHAT_MEMBER_REQUIRED";
+            throw error;
+        }
+
+        return access;
+    }
+
+    async assertCanSendSectionChat(chatId, userId) {
+        const access = await this.assertCanViewSectionChat(chatId, userId);
+        if (!access.isSectionChat) return access;
+
+        if (String(access.role || "").toLowerCase() === "viewer") {
+            const error = createError(
+                "You don't have permission to send messages in this section chat",
+                403
+            );
+            error.code = "SECTION_CHAT_SEND_FORBIDDEN";
+            throw error;
+        }
+
+        return access;
+    }
+
     // -----------------------------------------------------------------------
     //  Check Private Chat Exists
     // -----------------------------------------------------------------------
@@ -106,7 +360,10 @@ class ChatService {
             .populate("members", "name username avatar email")
             .populate({
                 path: "lastMessage",
-                populate: { path: "senderId", select: "name avatar" }
+                populate: [
+                    { path: "senderId", select: "name username avatar" },
+                    sharedPostPopulate
+                ]
             });
 
         if (!chat) {
@@ -162,7 +419,10 @@ class ChatService {
             .populate("members", "name username avatar email")
             .populate({
                 path: "lastMessage",
-                populate: { path: "senderId", select: "name avatar" }
+                populate: [
+                    { path: "senderId", select: "name username avatar" },
+                    sharedPostPopulate
+                ]
             })
             .sort({ updatedAt: -1 })
             .lean();
@@ -171,13 +431,15 @@ class ChatService {
     // -----------------------------------------------------------------------
     // 4. Send Message — with membership check
     // -----------------------------------------------------------------------
-    async sendMessage(senderId, chatId, content, attachments = [], replyTo = null) {
+    async sendMessage(senderId, chatId, content, attachments = [], replyTo = null, postId = null) {
         // Validate content
+        const hasPostShare = Boolean(postId);
         if (
             (!content || content.trim().length === 0) &&
-            (!attachments || attachments.length === 0)
+            (!attachments || attachments.length === 0) &&
+            !hasPostShare
         ) {
-            throw createError("Message must contain text or at least one attachment", 400);
+            throw createError("Message must contain text, attachment, or a shared post", 400);
         }
 
         // Verify the sender is actually a member of this chat
@@ -189,11 +451,17 @@ class ChatService {
             throw createError("You are not a member of this chat", 403);
         }
 
+        await this.assertCanSendSectionChat(chatId, senderId);
+
         if (chat.type === "private") {
             const recipientId = chat.members.find((memberId) => String(memberId) !== String(senderId));
             if (recipientId) {
                 await this.assertCanMessageTarget(senderId, recipientId);
             }
+        }
+
+        if (hasPostShare && attachments?.length) {
+            throw createError("Attachments cannot be combined with a shared post", 400);
         }
 
         // Verify replyTo message exists if provided
@@ -205,6 +473,13 @@ class ChatService {
         }
 
         const cleanContent = content ? content.trim() : "";
+        const sharedPostId = hasPostShare
+            ? await this.resolveSharedPostForChat({
+                postId,
+                senderId,
+                chatMembers: chat.members
+            })
+            : null;
 
         const mentionUsers = cleanContent
             ? await resolveMentionUsersFromText([cleanContent], {
@@ -225,18 +500,12 @@ class ChatService {
             messageData.mentions = mentionUsers.map((user) => user._id);
         }
 
-        if (attachments && attachments.length > 0) {
+        if (sharedPostId) {
+            messageData.type = "post";
+            messageData.sharedPost = sharedPostId;
+        } else if (attachments && attachments.length > 0) {
             messageData.attachments = attachments;
-            // Infer type from first attachment
-            if (attachments[0].type?.startsWith("image")) {
-                messageData.type = "image";
-            } else if (attachments[0].type?.startsWith("video")) {
-                messageData.type = "video";
-            } else if (attachments[0].type?.startsWith("audio")) {
-                messageData.type = "audio";
-            } else {
-                messageData.type = "file";
-            }
+            messageData.type = this.inferAttachmentType(attachments);
         }
 
         if (replyTo) {
@@ -244,6 +513,10 @@ class ChatService {
         }
 
         const message = await Message.create(messageData);
+
+        if (sharedPostId) {
+            await Post.findByIdAndUpdate(sharedPostId, { $inc: { sharesCount: 1 } });
+        }
 
         // Bump lastMessage pointer (also updates the chat's updatedAt via
         // Mongoose timestamps so the inbox sort stays correct)
@@ -253,9 +526,13 @@ class ChatService {
             .populate("senderId", "name username avatar")
             .populate({
                 path: "replyTo",
-                select: "content senderId",
-                populate: { path: "senderId", select: "name username avatar" }
+                select: "content senderId type sharedPost",
+                populate: [
+                    { path: "senderId", select: "name username avatar" },
+                    sharedPostPopulate
+                ]
             })
+            .populate(sharedPostPopulate)
             .populate("mentions", "username name avatar")
             .lean();
 
@@ -302,11 +579,13 @@ class ChatService {
         // Verify the requester is a member of this chat
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
+
+        await this.assertCanViewSectionChat(chatId, userId);
 
         const messages = await Message.find({ chatId, status: { $in: ["active", "edited"] } })
             .sort({ createdAt: -1 })
@@ -315,9 +594,13 @@ class ChatService {
             .populate("senderId", "name avatar")
             .populate({
                 path: "replyTo",
-                select: "content senderId",
-                populate: { path: "senderId", select: "name" }
+                select: "content senderId type sharedPost",
+                populate: [
+                    { path: "senderId", select: "name avatar" },
+                    sharedPostPopulate
+                ]
             })
+            .populate(sharedPostPopulate)
             .populate("reactions.userId", "name avatar")
             .populate("mentions", "username name avatar")
             .lean();
@@ -576,6 +859,7 @@ class ChatService {
 
         const populatedMessage = await Message.findById(message._id)
             .populate("senderId", "name username avatar")
+            .populate(sharedPostPopulate)
             .populate("mentions", "username name avatar")
             .lean();
 
@@ -633,6 +917,7 @@ class ChatService {
         await message.addReaction(userId, emoji);
         return Message.findById(message._id)
             .populate("senderId", "name username avatar")
+            .populate(sharedPostPopulate)
             .populate("reactions.userId", "name username avatar")
             .populate("mentions", "username name avatar")
             .lean();
@@ -662,6 +947,7 @@ class ChatService {
         await message.removeReaction(userId, emoji);
         return Message.findById(message._id)
             .populate("senderId", "name username avatar")
+            .populate(sharedPostPopulate)
             .populate("reactions.userId", "name username avatar")
             .populate("mentions", "username name avatar")
             .lean();

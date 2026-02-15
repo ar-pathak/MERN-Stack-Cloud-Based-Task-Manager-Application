@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { setIsSubtaskPopupOpen } from "../../../../../store/slice/overviewSlice";
 import { usePermissions } from "../hook/usePermissions";
 import { useAuth } from "../../../../../context/AuthContext";
+import { getMessagePreviewText } from "../utils/messagePreview";
 
 // Helper for time formatting
 const formatActivityTime = (dateString) => {
@@ -155,7 +156,7 @@ const TaskItem = ({
                             <div className="flex items-center gap-1.5">
                                 <MessageSquare className="h-3 w-3 text-slate-600" />
                                 <p className="text-xs text-slate-400 truncate">
-                                    <span className="text-sky-500/90 font-medium">{senderName}:</span> {lastMsg.content}
+                                    <span className="text-sky-500/90 font-medium">{senderName}:</span> {getMessagePreviewText(lastMsg)}
                                 </p>
                             </div>
                         ) : (
@@ -322,7 +323,7 @@ const TaskItem = ({
 
                     {lastMsg ? (
                         <p className="text-xs text-slate-500 truncate mt-0.5">
-                            <span className="text-emerald-500/80">{senderName}:</span> {lastMsg.content}
+                            <span className="text-emerald-500/80">{senderName}:</span> {getMessagePreviewText(lastMsg)}
                         </p>
                     ) : (
                         task.assignees && task.assignees.length > 0 && (

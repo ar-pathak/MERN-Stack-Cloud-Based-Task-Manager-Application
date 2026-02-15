@@ -193,7 +193,8 @@ module.exports = {
                 req.body.chatId,
                 req.body.content,
                 req.body.attachments,
-                req.body.replyTo
+                req.body.replyTo,
+                req.body.postId
             );
             sendSuccess(res, msg);
         } catch (e) {

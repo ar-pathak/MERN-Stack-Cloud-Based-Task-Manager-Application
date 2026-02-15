@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import TaskItem from "./TaskItem";
 import { useAuth } from "../../../../../context/AuthContext";
+import { getMessagePreviewText } from "../utils/messagePreview";
 
 // Helper for time formatting
 const formatActivityTime = (dateString) => {
@@ -150,7 +151,7 @@ const WorkspaceItem = ({
                         <p className="text-xs text-slate-500 truncate">
                             <span className="text-sky-500/80 font-medium">
                                 {user.username === wsLastMsg?.sender?.username ? 'You' : wsLastMsg?.sender?.username?.split(' ')[0] || 'User'}:
-                            </span> {wsLastMsg.content}
+                            </span> {getMessagePreviewText(wsLastMsg)}
                         </p>
                     )}
                 </div>
@@ -291,7 +292,7 @@ const WorkspaceItem = ({
                                             <p className="text-xs text-slate-500 truncate mt-0.5">
                                                 <span className="text-purple-400/80">
                                                     {user.username === projLastMsg?.sender?.username ? 'You' : projLastMsg?.sender?.username?.split(' ')[0] || 'User'}:
-                                                </span> {projLastMsg.content}
+                                                </span> {getMessagePreviewText(projLastMsg)}
                                             </p>
                                         )}
                                     </div>

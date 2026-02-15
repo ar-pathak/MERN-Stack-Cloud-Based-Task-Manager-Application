@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Reply, Pin, Edit2, Trash2, FileText, Download,
-    Check, CheckCheck, Copy, X, Smile, ArrowUpRight
+    Check, CheckCheck, Copy, X, Smile, ArrowUpRight, Image as ImageIcon, PlayCircle
 } from "lucide-react";
 import { useAuth } from "../../../../../../context/AuthContext";
 import { useNavigate } from "react-router";
@@ -31,6 +31,11 @@ const ChatMessage = ({
         : String(senderIdString) === String(currentUserId);
 
     const content = message.content || message.text || '';
+    const sharedPostId =
+        (typeof message.sharedPost === "object" && (message.sharedPost?._id || message.sharedPost?.id)) ||
+        (typeof message.sharedPost === "string" ? message.sharedPost : "");
+    const sharedPost = typeof message.sharedPost === "object" ? message.sharedPost : null;
+    const isPostShare = Boolean(message.type === "post" || sharedPostId);
     const isSystemMessage = Boolean(
         message.isSystem ||
         message.type === "system" ||
@@ -106,7 +111,15 @@ const ChatMessage = ({
     };
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(content);
+        const text = String(content || "").trim();
+        if (text) {
+            navigator.clipboard.writeText(text);
+            return;
+        }
+
+        if (sharedPostId && typeof window !== "undefined") {
+            navigator.clipboard.writeText(`${window.location.origin}/post/${sharedPostId}`);
+        }
     };
 
     const formatSize = (bytes) => {
@@ -120,6 +133,85 @@ const ChatMessage = ({
     const formatTime = (timestamp) => {
         const date = new Date(timestamp || Date.now());
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const getPostAuthorLabel = (post) =>
+        post?.author?.name || post?.author?.username || "Unknown user";
+
+    const renderSharedPostCard = () => {
+        if (!isPostShare) return null;
+
+        const postMedia = Array.isArray(sharedPost?.media) ? sharedPost.media : [];
+        const firstMedia = postMedia[0] || null;
+
+        if (!sharedPost) {
+            return (
+                <div className="mt-2 rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-xs text-slate-300">
+                    Shared post unavailable
+                </div>
+            );
+        }
+
+        return (
+            <button
+                type="button"
+                onClick={() => sharedPostId && navigate(`/post/${sharedPostId}`)}
+                className={`mt-2 block w-full max-w-[320px] rounded-xl border text-left transition hover:opacity-95 ${
+                    isOwnMessage
+                        ? "border-white/20 bg-black/25"
+                        : "border-slate-600/70 bg-slate-900/80"
+                }`}
+            >
+                <div className="flex items-center gap-2 px-3 pt-2.5">
+                    <div className="h-7 w-7 overflow-hidden rounded-full border border-white/20 bg-slate-800">
+                        {sharedPost?.author?.avatar ? (
+                            <img
+                                src={sharedPost.author.avatar}
+                                alt={getPostAuthorLabel(sharedPost)}
+                                className="h-full w-full object-cover"
+                            />
+                        ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-slate-300">
+                                {String(getPostAuthorLabel(sharedPost)).charAt(0).toUpperCase()}
+                            </div>
+                        )}
+                    </div>
+                    <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-slate-100">
+                            {getPostAuthorLabel(sharedPost)}
+                        </p>
+                        <p className="text-[10px] text-slate-400">Shared post</p>
+                    </div>
+                </div>
+
+                {sharedPost?.content ? (
+                    <p className="line-clamp-3 px-3 pb-2 pt-2 text-xs leading-5 text-slate-200">
+                        {sharedPost.content}
+                    </p>
+                ) : null}
+
+                {firstMedia && (
+                    <div className="mx-3 mb-2 overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                        {firstMedia?.type === "image" ? (
+                            <img
+                                src={firstMedia.url}
+                                alt="Shared post media"
+                                className="max-h-44 w-full object-cover"
+                            />
+                        ) : (
+                            <div className="flex items-center gap-1.5 px-2.5 py-2 text-xs text-slate-300">
+                                {firstMedia?.type === "video" ? (
+                                    <PlayCircle className="h-3.5 w-3.5" />
+                                ) : (
+                                    <ImageIcon className="h-3.5 w-3.5" />
+                                )}
+                                {firstMedia?.type === "video" ? "Video attachment" : "Media attachment"}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </button>
+        );
     };
 
     const mentionByUsername = new Map(
@@ -248,7 +340,11 @@ const ChatMessage = ({
                                 <ArrowUpRight className="h-2.5 w-2.5 opacity-0 group-hover/reply:opacity-100 transition-opacity" />
                             </span>
                             <span className="text-[10px] text-slate-500 max-w-[200px] truncate">
-                                {(message.replyTo.content || message.replyTo.text || 'Attachment')}
+                                {(
+                                    message.replyTo.content ||
+                                    message.replyTo.text ||
+                                    (message.replyTo.type === "post" || message.replyTo.sharedPost ? "Shared a post" : "Attachment")
+                                )}
                             </span>
                         </div>
                     </div>
@@ -341,9 +437,13 @@ const ChatMessage = ({
                                     )}
 
                                     {/* Text Content */}
-                                    <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${isOwnMessage ? 'text-white/95' : 'text-slate-100'}`}>
-                                        {renderContentWithMentions(content)}
-                                    </p>
+                                    {content ? (
+                                        <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${isOwnMessage ? 'text-white/95' : 'text-slate-100'}`}>
+                                            {renderContentWithMentions(content)}
+                                        </p>
+                                    ) : null}
+
+                                    {renderSharedPostCard()}
 
                                     {/* Attachments */}
                                     {message.attachments?.length > 0 && (

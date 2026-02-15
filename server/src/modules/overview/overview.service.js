@@ -8,6 +8,22 @@ const Message = require("../../models/message");
 const permissionService = require("./permission.service");
 const WorkspaceMember = require("../../models/workspaceMember");
 
+const buildMessagePreview = (message) => {
+    if (!message) return "";
+
+    const content = String(message.content || "").trim();
+    if (content) return content;
+
+    if (message.type === "post" || message.sharedPost) {
+        return "Shared a post";
+    }
+    if (message.type === "image") return "Sent an image";
+    if (message.type === "video") return "Sent a video";
+    if (message.type === "audio") return "Sent an audio message";
+    if (message.type === "file") return "Sent an attachment";
+    return "Sent a message";
+};
+
 const overviewService = {
     activity: async (userId) => {
         // 1. Get user's permissions and workspace memberships
@@ -31,7 +47,7 @@ const overviewService = {
             select: 'lastMessage',
             populate: {
                 path: 'lastMessage',
-                select: 'content senderId createdAt type',
+                select: 'content senderId createdAt type sharedPost',
                 populate: {
                     path: 'senderId',
                     select: 'username avatar email'
@@ -71,7 +87,7 @@ const overviewService = {
                 .populate({ path: 'members', select: 'name avatar email' })
                 .populate({
                     path: 'lastMessage',
-                    select: 'content senderId createdAt type',
+                    select: 'content senderId createdAt type sharedPost',
                     populate: { path: 'senderId', select: 'username avatar' }
                 })
                 .lean()
@@ -151,9 +167,10 @@ const overviewService = {
             if (!chatObj || !chatObj.lastMessage) return null;
             const msg = chatObj.lastMessage;
             return {
-                content: msg.content,
+                content: buildMessagePreview(msg),
                 createdAt: msg.createdAt,
                 type: msg.type,
+                sharedPost: msg.sharedPost || null,
                 sender: msg.senderId
             };
         };
@@ -353,7 +370,7 @@ const overviewService = {
                     id: chat._id,
                     type: "chat",
                     title: name,
-                    description: chat.lastMessage?.content || "Sent an attachment",
+                    description: buildMessagePreview(chat.lastMessage),
                     avatar: avatar,
                     chatType: chat.type,
                     createdAt: chat.createdAt,
@@ -361,9 +378,10 @@ const overviewService = {
                     latestActivity: getOwnActivityTime(chat),
                     unreadCount: getUnread(chat), // <-- Chat Unread
                     lastMessage: chat.lastMessage ? {
-                        content: chat.lastMessage.content,
+                        content: buildMessagePreview(chat.lastMessage),
                         createdAt: chat.lastMessage.createdAt,
                         type: chat.lastMessage.type,
+                        sharedPost: chat.lastMessage.sharedPost || null,
                         sender: chat.lastMessage.senderId
                     } : null,
                     permissions: { canView: true, canEdit: false }

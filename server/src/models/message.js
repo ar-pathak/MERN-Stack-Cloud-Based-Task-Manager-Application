@@ -24,8 +24,14 @@ const messageSchema = new mongoose.Schema(
         // Message type (overall)
         type: {
             type: String,
-            enum: ["text", "image", "file", "video", "audio"],
+            enum: ["text", "image", "file", "video", "audio", "post"],
             default: "text"
+        },
+        // Shared post reference for in-chat post shares
+        sharedPost: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Post",
+            index: true
         },
         // System / activity messages rendered differently in UI
         isSystem: {
@@ -111,6 +117,7 @@ messageSchema.index({ chatId: 1, status: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, pinned: 1 });
 messageSchema.index({ chatId: 1, mentions: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, isSystem: 1, "meta.activityType": 1, createdAt: -1 });
+messageSchema.index({ chatId: 1, sharedPost: 1, createdAt: -1 });
 
 // Static method: Mark all messages up to a specific message as read by a user
 messageSchema.statics.markReadUpTo = async function (chatId, userId, lastReadMessageId) {

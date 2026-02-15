@@ -92,16 +92,26 @@ const sendMessageSchema = z.object({
         .optional()
         .default([]), // Ensure it defaults to empty array
 
+    postId: objectId.optional(),
+
     replyTo: objectId.optional()
 }).refine((data) => {
     // 2. Add custom logic: Content OR Attachments must exist
     const hasContent = data.content && data.content.length > 0;
     const hasAttachments = data.attachments && data.attachments.length > 0;
+    const hasPost = Boolean(data.postId);
 
-    return hasContent || hasAttachments;
+    return hasContent || hasAttachments || hasPost;
 }, {
-    message: "Message must contain text or at least one attachment",
+    message: "Message must contain text, attachment, or a shared post",
     path: ["content"] // Attach the error to the content field
+}).refine((data) => {
+    // Shared post messages should not include file attachments.
+    if (!data.postId) return true;
+    return !(data.attachments && data.attachments.length > 0);
+}, {
+    message: "Attachments cannot be combined with a shared post",
+    path: ["attachments"]
 });
 
 // ---------------------------------------------------------------------------

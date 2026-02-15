@@ -10,6 +10,8 @@ export const useChatLogic = (selectedChat) => {
     const [chatMessage, setChatMessage] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [uploadingFile, setUploadingFile] = useState(false);
+    const [chatAccessError, setChatAccessError] = useState("");
+    const [sendPermissionError, setSendPermissionError] = useState("");
 
     // UI State
     const [showChatInfo, setShowChatInfo] = useState(false);
@@ -29,6 +31,8 @@ export const useChatLogic = (selectedChat) => {
 
     // Auth Context
     const { user } = useAuth();
+    const viewerRole = String(selectedChat?.permissions?.role || "").toLowerCase() === "viewer";
+    const canSendMessages = !viewerRole && !chatAccessError && !sendPermissionError;
 
     // -------------------------------------------------------------------------
     // 2. Initialize Socket Connection (COOKIE AUTH FIX)
@@ -227,6 +231,8 @@ export const useChatLogic = (selectedChat) => {
 
         const loadMessages = async () => {
             setIsLoading(true);
+            setChatAccessError("");
+            setSendPermissionError("");
             try {
                 const chatId = String(selectedChat.chatId || selectedChat.id || selectedChat._id);
                 const result = await chatService.getMessages(chatId, { page: 1, limit: 50 });
@@ -252,6 +258,7 @@ export const useChatLogic = (selectedChat) => {
                 );
 
                 setMessages(sortedMessages);
+                setChatAccessError("");
 
                 // Scroll to bottom after messages load
                 setTimeout(() => scrollToBottom(), 300);
@@ -270,6 +277,20 @@ export const useChatLogic = (selectedChat) => {
                 }
             } catch (error) {
                 console.error("Failed to load messages", error);
+                const status = Number(error?.status || 0);
+                const message = String(error?.message || "Failed to load messages");
+
+                if (status === 403) {
+                    if (/not a member/i.test(message)) {
+                        setChatAccessError("You are not a member of this section chat.");
+                    } else {
+                        setChatAccessError(message);
+                    }
+                } else if (status === 404) {
+                    setChatAccessError("This chat is not available.");
+                } else {
+                    setChatAccessError("");
+                }
                 setMessages([]);
             } finally {
                 setIsLoading(false);
@@ -301,6 +322,17 @@ export const useChatLogic = (selectedChat) => {
 
         // Validation: Text OR File OR Attachments must exist
         if (!content && !fileToSend && (!options.attachments || options.attachments.length === 0)) return;
+
+        if (viewerRole) {
+            setSendPermissionError("Aapke pass message bhejne ki permission nahi hai.");
+            return;
+        }
+
+        if (chatAccessError) {
+            return;
+        }
+
+        setSendPermissionError("");
 
         const chatId = String(selectedChat.chatId || selectedChat.id || selectedChat._id);
         const tempId = `temp-${Date.now()}`;
@@ -375,12 +407,28 @@ export const useChatLogic = (selectedChat) => {
                     senderId: sentMessage.senderId || tempMessage.senderId
                 } : msg
             ));
+            setSendPermissionError("");
 
             // Emit socket event
             socketService.emitSendMessage(chatId, sentMessage);
 
         } catch (error) {
             console.error("Send failed", error);
+            const status = Number(error?.status || 0);
+            const message = String(error?.message || "Unknown error");
+
+            if (status === 403 && /permission to send/i.test(message)) {
+                setMessages(prev => prev.filter(msg => msg.id !== tempId));
+                setSendPermissionError("Aapke pass message bhejne ki permission nahi hai.");
+                return;
+            }
+
+            if (status === 403 && /not a member/i.test(message)) {
+                setMessages(prev => prev.filter(msg => msg.id !== tempId));
+                setChatAccessError("You are not a member of this section chat.");
+                return;
+            }
+
             // Mark as failed in UI
             setMessages(prev => prev.map(msg =>
                 msg.id === tempId ? { ...msg, status: 'failed' } : msg
@@ -394,6 +442,12 @@ export const useChatLogic = (selectedChat) => {
     const handleFileUpload = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (viewerRole || chatAccessError) {
+            setSendPermissionError("Aapke pass message bhejne ki permission nahi hai.");
+            if (fileInputRef.current) fileInputRef.current.value = "";
+            return;
+        }
 
         setUploadingFile(true);
         try {
@@ -527,6 +581,9 @@ export const useChatLogic = (selectedChat) => {
         chatMessage,
         isLoading,
         uploadingFile,
+        chatAccessError,
+        sendPermissionError,
+        canSendMessages,
         setChatMessage,
         showChatInfo,
         setShowChatInfo,
