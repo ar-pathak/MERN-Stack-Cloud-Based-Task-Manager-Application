@@ -12,7 +12,12 @@ const dashboardQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(20).optional()
 });
 
+const advancedDashboardQuerySchema = z.object({
+    days: z.coerce.number().int().min(7).max(30).optional()
+});
+
 module.exports = {
     listActivityQuerySchema,
-    dashboardQuerySchema
+    dashboardQuerySchema,
+    advancedDashboardQuerySchema
 };

@@ -13,6 +13,12 @@ router.get(
 );
 
 router.get(
+    "/advanced",
+    validate(validation.advancedDashboardQuerySchema, "query"),
+    controller.getAdvancedDashboard
+);
+
+router.get(
     "/me",
     validate(validation.listActivityQuerySchema, "query"),
     controller.listMyActivities

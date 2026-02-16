@@ -24,6 +24,14 @@ export const NAV_ITEMS = [
         color: "rose"
     },
     {
+        label: "Dashboard",
+        icon: "BarChart3",
+        path: "/main/dashboard",
+        exact: true,
+        description: "Advanced insights",
+        color: "violet"
+    },
+    {
         label: "Create",
         icon: "SquarePen",
         path: "/main/create",

@@ -5,6 +5,7 @@ const Comment = require('../../models/comment');
 const PostSave = require('../../models/postSave');
 const Follow = require('../../models/follow');
 const User = require('../../models/user');
+const notificationService = require('../notification/notification.service');
 const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
 
 const createError = (message, statusCode = 400) => {
@@ -660,9 +661,49 @@ class PostService {
      * @returns {Promise<Object>}
      */
     async sharePost(userId, postId, channel = "copy_link") {
-        await this.assertCanAccessPostById(postId, userId, "share this post");
+        const post = await this.assertCanAccessPostById(postId, userId, "share this post");
 
         await Post.findByIdAndUpdate(postId, { $inc: { sharesCount: 1 } });
+
+        const postAuthorId = toIdString(post?.author);
+        const actorId = toIdString(userId);
+
+        if (postAuthorId && actorId && postAuthorId !== actorId) {
+            const [postAuthor, actor] = await Promise.all([
+                User.findById(post.author)
+                    .select("preferences.notifications.likes")
+                    .lean(),
+                User.findById(userId)
+                    .select("name username")
+                    .lean()
+            ]);
+
+            if (postAuthor?.preferences?.notifications?.likes !== false) {
+                const actorLabel = actor?.name || actor?.username || "Someone";
+                try {
+                    await notificationService.createNotifications({
+                        recipientIds: [post.author],
+                        actorId: userId,
+                        title: "Your post was shared",
+                        message: `${actorLabel} shared your post`,
+                        type: "activity",
+                        category: "social",
+                        priority: "normal",
+                        entityType: "none",
+                        entityId: postId,
+                        link: `/post/${String(postId)}`,
+                        metadata: {
+                            kind: "post_share",
+                            postId: String(postId),
+                            channel
+                        },
+                        dedupeKey: `social:post_share:${String(userId)}:${String(postId)}`
+                    });
+                } catch (notificationError) {
+                    console.error("post share notification error", notificationError);
+                }
+            }
+        }
 
         return {
             shared: true,

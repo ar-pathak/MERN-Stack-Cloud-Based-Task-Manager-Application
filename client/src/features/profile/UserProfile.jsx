@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
     Activity,
     ArrowLeft,
+    BarChart3,
     Calendar,
     Check,
     Copy,
@@ -690,6 +691,17 @@ const UserProfile = () => {
                                             >
                                                 <Activity className="h-4 w-4" />
                                                 Activity
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsMenuOpen(false);
+                                                    navigate("/main/dashboard");
+                                                }}
+                                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                            >
+                                                <BarChart3 className="h-4 w-4" />
+                                                Dashboard
                                             </button>
                                             <button
                                                 type="button"

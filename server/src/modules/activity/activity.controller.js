@@ -18,6 +18,15 @@ const activityController = {
         } catch (error) {
             return handleError(error, res);
         }
+    },
+
+    getAdvancedDashboard: async (req, res) => {
+        try {
+            const result = await activityService.getAdvancedDashboard(req.user._id, req.query);
+            return sendSuccess(res, result);
+        } catch (error) {
+            return handleError(error, res);
+        }
     }
 };
 

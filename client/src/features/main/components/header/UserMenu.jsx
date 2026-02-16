@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, User, Settings, ChevronDown, Crown, Activity, Moon, Sun, Bell, HelpCircle, Palette } from "lucide-react";
+import { LogOut, User, Settings, ChevronDown, Crown, Activity, BarChart3, Moon, Sun, Bell, HelpCircle, Palette } from "lucide-react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../../../../context/AuthContext";
 import { toast } from "sonner";
@@ -107,6 +107,17 @@ const UserMenu = ({ user }) => {
                     action: () => {
                         setIsOpen(false);
                         navigate("/main/activity");
+                    }
+                },
+                {
+                    icon: BarChart3,
+                    label: "Dashboard",
+                    description: "View advanced insights",
+                    color: "text-violet-400",
+                    bgColor: "bg-violet-500/10",
+                    action: () => {
+                        setIsOpen(false);
+                        navigate("/main/dashboard");
                     }
                 },
             ]
