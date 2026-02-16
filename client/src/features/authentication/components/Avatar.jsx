@@ -1,11 +1,13 @@
+import { Check } from "lucide-react";
+
 function Avatar() {
   return (
     <div className="relative">
-      <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-400 via-sky-400 to-cyan-300 flex items-center justify-center text-slate-900 text-xs font-semibold shadow-lg shadow-indigo-500/30">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-400 via-cyan-300 to-blue-300 text-xs font-semibold text-slate-900 shadow-lg shadow-cyan-500/30">
         AU
       </div>
-      <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-400 text-[0.6rem] flex items-center justify-center border-2 border-slate-950">
-        ✔
+      <span className="absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-slate-950 bg-emerald-400 text-slate-900">
+        <Check className="h-3 w-3" />
       </span>
     </div>
   );

@@ -1,6 +1,6 @@
 function Badge({ children }) {
     return (
-        <span className="px-3 py-1 rounded-full border border-indigo-400/50 bg-indigo-500/10 text-[0.65rem] tracking-wide">
+        <span className="rounded-full border border-sky-400/40 bg-sky-500/10 px-3 py-1 text-[0.65rem] tracking-wide text-sky-100">
             {children}
         </span>
     );

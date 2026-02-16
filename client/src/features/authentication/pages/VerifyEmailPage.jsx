@@ -42,8 +42,8 @@ const VerifyEmailPage = () => {
     }, [token, refreshUser]);
 
     return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-            <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-6 text-center">
+        <div className="min-h-screen bg-slate-950 flex items-center justify-center px-3 sm:px-4">
+            <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-4 text-center sm:p-6">
                 {status === "verifying" && (
                     <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-slate-800">
                         <Loader2 className="h-6 w-6 animate-spin text-sky-400" />
@@ -62,8 +62,8 @@ const VerifyEmailPage = () => {
                     </div>
                 )}
 
-                <h1 className="text-lg font-semibold text-slate-100">Email Verification</h1>
-                <p className="mt-2 text-sm text-slate-400">{message}</p>
+                <h1 className="text-base sm:text-lg font-semibold text-slate-100">Email Verification</h1>
+                <p className="mt-2 text-sm text-slate-400 break-words">{message}</p>
 
                 {status !== "verifying" && (
                     <button

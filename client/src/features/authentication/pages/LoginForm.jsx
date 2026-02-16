@@ -25,19 +25,17 @@ function LoginForm({ onSwitch, onSubmit, loading }) {
   return (
     <form onSubmit={handleFormSubmit} className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-slate-50">
-          Welcome back 👋
-        </h2>
-        <p className="text-xs text-slate-400 mt-1">
-          Log in to your account to continue.
+        <h2 className="text-base font-semibold text-slate-50 sm:text-lg">Welcome back</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Log in to open your Aurora workspace and continue your flow.
         </p>
       </div>
 
-      {error && (
-        <p className="text-[0.7rem] text-rose-400 bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2">
+      {error ? (
+        <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[0.75rem] text-rose-300">
           {error}
         </p>
-      )}
+      ) : null}
 
       <div className="space-y-3">
         <TextInput
@@ -54,26 +52,26 @@ function LoginForm({ onSwitch, onSubmit, loading }) {
           type="password"
           name="password"
           value={password}
-          placeholder="••••••••"
+          placeholder="Enter your password"
           autoComplete="current-password"
           onChange={setPassword}
         />
       </div>
 
-      <div className="flex items-center justify-between text-[0.7rem] text-slate-300/90">
-        <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+      <div className="flex flex-col gap-2 text-[0.72rem] text-slate-300/90 min-[380px]:flex-row min-[380px]:items-center min-[380px]:justify-between">
+        <label className="inline-flex items-center gap-2">
           <input
             type="checkbox"
             checked={remember}
             onChange={(e) => setRemember(e.target.checked)}
-            className="rounded border-slate-600/80 bg-slate-900 text-indigo-500 focus:ring-indigo-500/70 focus:ring-offset-0"
+            className="rounded border-slate-600/80 bg-slate-900 text-sky-500 focus:ring-sky-500/60 focus:ring-offset-0"
           />
           <span>Remember me</span>
         </label>
         <button
           type="button"
           onClick={() => onSwitch(views.FORGOT)}
-          className="text-indigo-300 hover:text-indigo-200 underline underline-offset-2"
+          className="text-left text-sky-300 underline underline-offset-2 transition-colors hover:text-sky-200 min-[380px]:text-right"
         >
           Forgot password?
         </button>
@@ -85,12 +83,12 @@ function LoginForm({ onSwitch, onSubmit, loading }) {
 
       <SocialAuthSection />
 
-      <p className="text-[0.7rem] text-slate-400 text-center">
+      <p className="text-center text-[0.72rem] text-slate-400">
         Don&apos;t have an account?{" "}
         <button
           type="button"
           onClick={() => onSwitch(views.SIGNUP)}
-          className="text-indigo-300 hover:text-indigo-200 font-medium"
+          className="font-medium text-sky-300 transition-colors hover:text-sky-200"
         >
           Sign up
         </button>
@@ -98,4 +96,5 @@ function LoginForm({ onSwitch, onSubmit, loading }) {
     </form>
   );
 }
+
 export default LoginForm;

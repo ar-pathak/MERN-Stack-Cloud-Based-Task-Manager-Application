@@ -11,9 +11,8 @@ function SocialAuthSection() {
                 <div className="h-[1px] flex-1 bg-slate-700/70" />
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
                 <GhostButton type="button">
-                    {/* Yaha icon add kar sakte ho (react-icons) */}
                     Google
                 </GhostButton>
                 <GhostButton type="button">GitHub</GhostButton>

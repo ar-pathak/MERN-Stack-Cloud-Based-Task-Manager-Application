@@ -7,17 +7,18 @@ function AuthTabs({ activeView, setActiveView }) {
   ];
 
   return (
-    <div className="inline-flex p-1 bg-slate-800/80 rounded-full border border-slate-700/80 text-xs">
+    <div className="grid w-full grid-cols-2 gap-1 rounded-2xl border border-slate-700/80 bg-slate-800/80 p-1 text-xs">
       {tabs.map((tab) => {
         const isActive = activeView === tab.id;
         return (
           <button
             key={tab.id}
             onClick={() => setActiveView(tab.id)}
-            className={`relative px-4 py-1.5 rounded-full transition-all duration-200 ${isActive
+            className={`relative rounded-xl px-3 py-2 text-[11px] font-medium transition-all duration-200 sm:text-xs ${
+              isActive
                 ? "bg-slate-950/90 text-slate-50 shadow-sm shadow-slate-900"
-                : "text-slate-300/80 hover:text-slate-100/90"
-              }`}
+                : "text-slate-300/90 hover:text-slate-100"
+            }`}
           >
             {tab.label}
           </button>

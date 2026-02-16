@@ -38,26 +38,24 @@ function SignupForm({ onSwitch, onSubmit, loading }) {
   return (
     <form onSubmit={handleFormSubmit} className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-slate-50">
-          Create your account ✨
-        </h2>
-        <p className="text-xs text-slate-400 mt-1">
-          Sign up and start using your dashboard within minutes.
+        <h2 className="text-base font-semibold text-slate-50 sm:text-lg">Create your Aurora account</h2>
+        <p className="mt-1 text-xs text-slate-400">
+          Set up your profile and start collaborating in Aurora Workspace.
         </p>
       </div>
 
-      {error && (
-        <p className="text-[0.7rem] text-rose-400 bg-rose-500/10 border border-rose-500/40 rounded-lg px-3 py-2">
+      {error ? (
+        <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[0.75rem] text-rose-300">
           {error}
         </p>
-      )}
+      ) : null}
 
       <div className="space-y-3">
         <TextInput
           label="Full name"
           name="name"
           value={name}
-          placeholder="Arsan Pathak"
+          placeholder="Your name"
           autoComplete="name"
           onChange={setName}
         />
@@ -90,10 +88,8 @@ function SignupForm({ onSwitch, onSubmit, loading }) {
         />
       </div>
 
-      <p className="text-[0.67rem] text-slate-400">
-        By signing up, you agree to our{" "}
-        <span className="text-indigo-300">Terms</span> and{" "}
-        <span className="text-indigo-300">Privacy Policy</span>.
+      <p className="text-[0.7rem] leading-relaxed text-slate-400">
+        By signing up, you agree to Aurora&apos;s Terms and Privacy Policy.
       </p>
 
       <PrimaryButton type="submit" loading={loading}>
@@ -102,12 +98,12 @@ function SignupForm({ onSwitch, onSubmit, loading }) {
 
       <SocialAuthSection />
 
-      <p className="text-[0.7rem] text-slate-400 text-center">
+      <p className="text-center text-[0.72rem] text-slate-400">
         Already have an account?{" "}
         <button
           type="button"
           onClick={() => onSwitch(views.LOGIN)}
-          className="text-indigo-300 hover:text-indigo-200 font-medium"
+          className="font-medium text-sky-300 transition-colors hover:text-sky-200"
         >
           Log in
         </button>
@@ -115,4 +111,5 @@ function SignupForm({ onSwitch, onSubmit, loading }) {
     </form>
   );
 }
+
 export default SignupForm;

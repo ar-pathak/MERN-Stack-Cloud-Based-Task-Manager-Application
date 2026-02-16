@@ -1,30 +1,26 @@
-
-import { motion, AnimatePresence } from "framer-motion";
-
 function PrimaryButton({ children, loading, ...rest }) {
   return (
-    <motion.button
-      whileTap={{ scale: 0.97 }}
-      className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-500 via-sky-500 to-cyan-400 text-slate-950 text-xs font-semibold py-2.5 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-400/50 transition-shadow disabled:opacity-60 disabled:cursor-not-allowed"
+    <button
+      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-400 via-cyan-400 to-blue-400 px-3 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/30 transition-shadow hover:shadow-cyan-400/40 disabled:cursor-not-allowed disabled:opacity-60"
       disabled={loading}
       {...rest}
     >
       {loading ? (
         <>
-          <span className="h-3 w-3 border-2 border-slate-900/40 border-t-slate-900 rounded-full animate-spin" />
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" />
           Processing...
         </>
       ) : (
         children
       )}
-    </motion.button>
+    </button>
   );
 }
 
 function GhostButton({ children, ...rest }) {
   return (
     <button
-      className="w-full inline-flex items-center justify-center rounded-xl border border-slate-600/80 bg-slate-900/40 text-[0.7rem] text-slate-200 py-2.5 hover:bg-slate-800/80 transition-all"
+      className="inline-flex w-full items-center justify-center rounded-xl border border-slate-600/80 bg-slate-900/40 px-3 py-2.5 text-xs text-slate-200 transition-all hover:bg-slate-800/80 sm:text-sm"
       {...rest}
     >
       {children}
