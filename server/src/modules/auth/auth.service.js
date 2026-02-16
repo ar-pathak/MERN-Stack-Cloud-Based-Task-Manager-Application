@@ -7,23 +7,59 @@ const { generateAccessToken, generateRefreshToken } = require('../../helpers/tok
 const sendEmail = require('../../helpers/sendEmail');
 const generateUniqueUsername = require('../utils/generateUniqueUsername');
 
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const RESET_PASSWORD_TTL_MS = 60 * 60 * 1000;
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+const BCRYPT_SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUNDS) || 10;
+
+const createAuthError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+
+const hashToken = (value) =>
+  crypto.createHash('sha256').update(String(value || '')).digest('hex');
+
+const refreshTokenLookupCandidates = (token) => [hashToken(token), token];
+
+const persistRefreshToken = async (userId, rawToken) => {
+  await RefreshToken.create({
+    user: userId,
+    token: hashToken(rawToken),
+    expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+  });
+};
+
+const deleteRefreshTokenByRawValue = async (token) => {
+  if (!token) return;
+
+  await RefreshToken.deleteMany({
+    token: { $in: refreshTokenLookupCandidates(token) }
+  });
+};
+
 const AuthService = {
   signUp: async ({ name, email, password }) => {
+    const normalizedEmail = normalizeEmail(email);
+
     //  Check if user already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
-      throw new Error("Email already registered");
+      throw createAuthError("Email already registered", 409);
     }
 
     //  Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     //GENERATE UNIQUE USERNAME
-    const username = await generateUniqueUsername(email);
+    const username = await generateUniqueUsername(normalizedEmail);
     //  Create user
     const user = new User({
-      name,
-      email,
+      name: String(name || "").trim(),
+      email: normalizedEmail,
       username,
       passwordHash: hashedPassword,
     });
@@ -31,31 +67,68 @@ const AuthService = {
     //  Save to DB
     await user.save();
 
-    return user;
+    const accessToken = generateAccessToken(user._id);
+    const refreshToken = generateRefreshToken(user._id);
+
+    await persistRefreshToken(user._id, refreshToken);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        username: user.username
+      }
+    };
   },
   logIn: async ({ email, password }) => {
-    const user = await User.findOne({ email }).select("+passwordHash");
+    const normalizedEmail = normalizeEmail(email);
+    const user = await User.findOne({ email: normalizedEmail }).select("+passwordHash +loginAttempts +lockUntil");
 
     if (!user) {
-      throw new Error("Invalid email or password");
+      throw createAuthError("Invalid email or password", 401);
     }
+
+    if (user.accountStatus !== "active") {
+      throw createAuthError("Account is not active", 403);
+    }
+
+    if (user.lockUntil && user.lockUntil < Date.now()) {
+      await user.resetLoginAttempts();
+      user.loginAttempts = 0;
+      user.lockUntil = undefined;
+    }
+
+    if (user.isLocked) {
+      const unlockInMs = user.lockUntil.getTime() - Date.now();
+      const unlockInMinutes = Math.max(1, Math.ceil(unlockInMs / (60 * 1000)));
+      throw createAuthError(
+        `Account is temporarily locked. Try again in ${unlockInMinutes} minute${unlockInMinutes === 1 ? "" : "s"}.`,
+        423
+      );
+    }
+
     const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {
-      throw new Error("Invalid email or password");
+      await user.incLoginAttempts();
+      throw createAuthError("Invalid email or password", 401);
     }
+
+    if (user.loginAttempts > 0 || user.lockUntil) {
+      await user.resetLoginAttempts();
+    }
+
     const accessToken = generateAccessToken(user._id);
     const refreshToken = generateRefreshToken(user._id);
 
     //Invalidate old tokens on login
     await RefreshToken.deleteMany({ user: user._id });
 
-    // Store refresh token in DB
-    await RefreshToken.create({
-      user: user._id,
-      token: refreshToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-    });
+    // Store refresh token hash in DB
+    await persistRefreshToken(user._id, refreshToken);
 
     return {
       accessToken,
@@ -72,7 +145,7 @@ const AuthService = {
     try {
       // Delete the specific refresh token if provided
       if (token) {
-        await RefreshToken.deleteOne({ token });
+        await deleteRefreshTokenByRawValue(token);
       }
 
       // If userId is provided, delete all refresh tokens for that user (logout from all devices)
@@ -90,7 +163,7 @@ const AuthService = {
   refresh: async (token) => {
     try {
       if (!token) {
-        throw new Error("No refresh token provided");
+        throw createAuthError("No refresh token provided", 401);
       }
 
       // Verify JWT signature
@@ -100,44 +173,47 @@ const AuthService = {
       } catch (jwtError) {
         if (jwtError.name === 'TokenExpiredError') {
           // Clean up expired token from DB
-          await RefreshToken.deleteOne({ token });
-          throw new Error("Refresh token expired. Please login again.");
+          await deleteRefreshTokenByRawValue(token);
+          throw createAuthError("Refresh token expired. Please login again.", 403);
         }
-        throw new Error("Invalid refresh token");
+        throw createAuthError("Invalid refresh token", 403);
       }
 
       // Check if token exists in DB and is not expired
-      const storedToken = await RefreshToken.findOne({ token });
+      const storedToken = await RefreshToken.findOne({
+        token: { $in: refreshTokenLookupCandidates(token) }
+      });
       if (!storedToken) {
-        throw new Error("Refresh token not found or already used");
+        throw createAuthError("Refresh token not found or already used", 403);
       }
 
       // Check if token is expired (additional check beyond JWT expiration)
       if (storedToken.expiresAt < new Date()) {
-        await RefreshToken.deleteOne({ token });
-        throw new Error("Refresh token expired. Please login again.");
+        await RefreshToken.deleteOne({ _id: storedToken._id });
+        throw createAuthError("Refresh token expired. Please login again.", 403);
+      }
+
+      if (String(storedToken.user) !== String(decoded.id)) {
+        await RefreshToken.deleteOne({ _id: storedToken._id });
+        throw createAuthError("Invalid refresh token", 403);
       }
 
       // Verify user still exists
-      const user = await User.findById(decoded.id);
-      if (!user) {
-        await RefreshToken.deleteOne({ token });
-        throw new Error("User not found");
+      const user = await User.findById(decoded.id).select("accountStatus");
+      if (!user || user.accountStatus !== "active") {
+        await RefreshToken.deleteMany({ user: decoded.id });
+        throw createAuthError("User account is not active", 403);
       }
 
       // Rotate refresh token (delete old, create new)
-      await RefreshToken.deleteOne({ token });
+      await RefreshToken.deleteOne({ _id: storedToken._id });
 
       // Generate new tokens
       const newAccessToken = generateAccessToken(decoded.id);
       const newRefreshToken = generateRefreshToken(decoded.id);
 
-      // Store new refresh token
-      await RefreshToken.create({
-        user: decoded.id,
-        token: newRefreshToken,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-      });
+      // Store new refresh token hash
+      await persistRefreshToken(decoded.id, newRefreshToken);
 
       return {
         accessToken: newAccessToken,
@@ -145,15 +221,17 @@ const AuthService = {
       };
     } catch (error) {
       // Re-throw with proper error message
-      throw error instanceof Error ? error : new Error(error.message || "Token refresh failed");
+      throw error instanceof Error ? error : createAuthError(error.message || "Token refresh failed", 403);
     }
   },
   forgotPassword: async ({ email }) => {
+    const normalizedEmail = normalizeEmail(email);
+
     // 1. Find user by email
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
 
     // Don't reveal if email exists or not (security best practice)
-    if (!user) {
+    if (!user || user.accountStatus !== "active") {
       // Still return success to prevent email enumeration
       return { message: "If that email exists, we've sent a password reset link." };
     }
@@ -164,12 +242,11 @@ const AuthService = {
 
     // 3. Save token and expiration (1 hour from now)
     user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+    user.resetPasswordExpires = Date.now() + RESET_PASSWORD_TTL_MS;
     await user.save({ validateBeforeSave: false });
 
     // 4. Send email with reset link
     try {
-      const resetURL = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/home/auth/reset-password/${resetToken}`;
       await sendEmail({
         to: user.email,
         subject: 'Reset Your Password - Task Manager',
@@ -184,7 +261,7 @@ const AuthService = {
       user.resetPasswordExpires = undefined;
       await user.save({ validateBeforeSave: false });
 
-      throw new Error("Email could not be sent. Please try again later.");
+      throw createAuthError("Email could not be sent. Please try again later.", 500);
     }
   },
   resetPassword: async ({ token, password }) => {
@@ -195,25 +272,86 @@ const AuthService = {
     const user = await User.findOne({
       resetPasswordToken: hashedToken,
       resetPasswordExpires: { $gt: Date.now() }
-    }).select('+resetPasswordToken +resetPasswordExpires');
+    }).select('+resetPasswordToken +resetPasswordExpires +loginAttempts +lockUntil');
 
     if (!user) {
-      throw new Error("Invalid or expired reset token");
+      throw createAuthError("Invalid or expired reset token", 400);
     }
 
     // 3. Hash new password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
     // 4. Update password and clear reset token fields
     user.passwordHash = hashedPassword;
     user.resetPasswordToken = undefined;
     user.resetPasswordExpires = undefined;
+    user.loginAttempts = 0;
+    user.lockUntil = undefined;
     await user.save();
 
     // 5. Invalidate all refresh tokens for security
     await RefreshToken.deleteMany({ user: user._id });
 
     return { message: "Password has been reset successfully" };
+  },
+  sendVerificationEmail: async (userId) => {
+    const user = await User.findById(userId)
+      .select("+emailVerificationToken +emailVerificationExpires email emailVerified accountStatus");
+
+    if (!user) {
+      throw createAuthError("User not found", 404);
+    }
+
+    if (user.accountStatus !== "active") {
+      throw createAuthError("Account is not active", 403);
+    }
+
+    if (user.emailVerified) {
+      return { message: "Email is already verified." };
+    }
+
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    user.emailVerificationToken = hashToken(verificationToken);
+    user.emailVerificationExpires = Date.now() + EMAIL_VERIFICATION_TTL_MS;
+
+    await user.save({ validateBeforeSave: false });
+
+    try {
+      await sendEmail({
+        to: user.email,
+        subject: 'Verify Your Email - Task Manager',
+        token: verificationToken,
+        type: 'email-verification'
+      });
+    } catch (error) {
+      user.emailVerificationToken = undefined;
+      user.emailVerificationExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+      throw createAuthError("Verification email could not be sent. Please try again later.", 500);
+    }
+
+    return { message: "Verification email sent successfully." };
+  },
+  verifyEmail: async (token) => {
+    const hashedToken = hashToken(token);
+
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() }
+    }).select("+emailVerificationToken +emailVerificationExpires emailVerified");
+
+    if (!user) {
+      throw createAuthError("Invalid or expired verification token", 400);
+    }
+
+    if (!user.emailVerified) {
+      user.emailVerified = true;
+    }
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+    return { message: "Email verified successfully." };
   }
 };
 

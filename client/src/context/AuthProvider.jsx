@@ -1,14 +1,25 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { AuthContext } from "./AuthContext";
 import { login as loginService, logout as logoutService, register as registerService, getUserInfo } from "../service/auth.service";
 import { updateActivity as updateUserActivity } from "../service/user.service";
+
+const isProtectedRoutePath = (pathname = "") => {
+    const path = String(pathname || "");
+    return (
+        path.startsWith("/main")
+        || path.startsWith("/profile/")
+        || path.startsWith("/chat/")
+        || path.startsWith("/post/")
+    );
+};
 
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
+    const location = useLocation();
 
     const loadUser = useCallback(async () => {
         // Ensure we don't stay on the loading screen indefinitely if the
@@ -81,12 +92,15 @@ export const AuthProvider = ({ children }) => {
         const handleSessionExpired = () => {
             setUser(null);
             localStorage.removeItem("user");
-            navigate('/home/auth', { replace: true });
+
+            if (isProtectedRoutePath(location.pathname)) {
+                navigate('/home/auth', { replace: true });
+            }
         };
 
         window.addEventListener("auth:session-expired", handleSessionExpired);
         return () => window.removeEventListener("auth:session-expired", handleSessionExpired);
-    }, [navigate]);
+    }, [location.pathname, navigate]);
 
     // Wrapped login function that updates user state
     const login = useCallback(async (credentials) => {

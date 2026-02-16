@@ -4,19 +4,37 @@ const path = require('path');
 
 const inviteTemplatePath = path.join(__dirname, '../emails/inviteEmail.html');
 const resetPasswordTemplatePath = path.join(__dirname, '../emails/resetPasswordEmail.html');
+const emailVerificationTemplatePath = path.join(__dirname, '../emails/emailVerificationEmail.html');
 
-async function sendEmail({ to, subject, token, type = 'invite' }) {
-    let htmlTemplate;
-    let html;
+const getFrontendBaseUrl = () =>
+    String(process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
 
-    if (type === 'reset-password') {
-        htmlTemplate = fs.readFileSync(resetPasswordTemplatePath, 'utf-8');
-        const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/home/auth/reset-password/${token}`;
-        html = htmlTemplate.replace(/{{RESET_LINK}}/g, resetLink);
-    } else {
-        htmlTemplate = fs.readFileSync(inviteTemplatePath, 'utf-8');
-        const inviteLink = `${process.env.FRONTEND_URL}/accept-invite/${token}`;
-        html = htmlTemplate.replace(/{{INVITE_LINK}}/g, inviteLink);
+const applyTemplateToken = (template, placeholder, value) =>
+    template.replace(new RegExp(placeholder, 'g'), value);
+
+async function sendEmail({ to, subject, token, type = 'invite', html }) {
+    let htmlContent = html;
+
+    if (!htmlContent) {
+        if (!token) {
+            throw new Error('Email token is required when HTML content is not provided');
+        }
+
+        const frontendBaseUrl = getFrontendBaseUrl();
+
+        if (type === 'reset-password') {
+            const template = fs.readFileSync(resetPasswordTemplatePath, 'utf-8');
+            const resetLink = `${frontendBaseUrl}/home/auth/reset-password/${token}`;
+            htmlContent = applyTemplateToken(template, '{{RESET_LINK}}', resetLink);
+        } else if (type === 'email-verification') {
+            const template = fs.readFileSync(emailVerificationTemplatePath, 'utf-8');
+            const verificationLink = `${frontendBaseUrl}/email-verification/${token}`;
+            htmlContent = applyTemplateToken(template, '{{VERIFY_LINK}}', verificationLink);
+        } else {
+            const template = fs.readFileSync(inviteTemplatePath, 'utf-8');
+            const inviteLink = `${frontendBaseUrl}/invites/accept/${token}`;
+            htmlContent = applyTemplateToken(template, '{{INVITE_LINK}}', inviteLink);
+        }
     }
 
     const transporter = nodemailer.createTransport({
@@ -31,26 +49,9 @@ async function sendEmail({ to, subject, token, type = 'invite' }) {
         from: `"Task Manager" <${process.env.EMAIL_USER}>`,
         to,
         subject,
-        html
+        html: htmlContent
     });
 }
-const sendSuccess = (res, data, message = 'Success', statusCode = 200) => {
-    return res.status(statusCode).json({
-        success: true,
-        message,
-        data
-    });
-};
 
-const handleError = (error, res) => {
-    console.error(error); // Log for server debug
-    const statusCode = error.statusCode || 500;
-    const message = error.message || 'Internal Server Error';
-
-    return res.status(statusCode).json({
-        success: false,
-        message
-    });
-};
-
-module.exports = { sendSuccess, handleError, sendEmail };
+module.exports = sendEmail;
+module.exports.sendEmail = sendEmail;

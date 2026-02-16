@@ -1,4 +1,10 @@
-const { signupSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } = require('./auth.validation')
+const {
+    signupSchema,
+    loginSchema,
+    forgotPasswordSchema,
+    resetPasswordSchema,
+    verifyEmailSchema
+} = require('./auth.validation')
 const AuthService = require('./auth.service')
 const {
     setAccessTokenCookie,
@@ -12,23 +18,24 @@ const AuthController = {
         try {
             const data = signupSchema.parse(req.body);
             const result = await AuthService.signUp(data);
-            return res.status(201).json({
-                success: true,
-                message: 'User registered successfully',
-                data: {
+            setAccessTokenCookie(res, result.accessToken);
+            setRefreshTokenCookie(res, result.refreshToken);
+
+            return sendSuccess(
+                res,
+                {
                     user: {
-                        id: result._id,
-                        username: result.username,
-                        name: result.name,
-                        email: result.email
+                        id: result.user._id,
+                        username: result.user.username,
+                        name: result.user.name,
+                        email: result.user.email
                     }
-                }
-            });
+                },
+                'User registered successfully',
+                201
+            );
         } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            return handleError(error, res);
         }
     },
     logIn: async (req, res) => {
@@ -39,23 +46,21 @@ const AuthController = {
             setAccessTokenCookie(res, result.accessToken);
             setRefreshTokenCookie(res, result.refreshToken);
 
-            return res.status(200).json({
-                success: true,
-                message: "Login successful",
-                data: {
+            return sendSuccess(
+                res,
+                {
                     user: {
                         id: result.user._id,
                         name: result.user.name,
-                        email: result.user.email
+                        email: result.user.email,
+                        username: result.user.username
                     }
-                }
-            });
+                },
+                "Login successful"
+            );
 
         } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message
-            });
+            return handleError(error, res);
         }
     },
     logOut: async (req, res) => {
@@ -133,6 +138,24 @@ const AuthController = {
             const result = await AuthService.resetPassword({ token, password });
 
             return sendSuccess(res, null, result.message || "Password has been reset successfully");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+    sendVerificationEmail: async (req, res) => {
+        try {
+            const result = await AuthService.sendVerificationEmail(req.user._id);
+            return sendSuccess(res, null, result.message || "Verification email sent successfully.");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+    verifyEmail: async (req, res) => {
+        try {
+            const token = req.params?.token || req.body?.token;
+            const parsed = verifyEmailSchema.parse({ token });
+            const result = await AuthService.verifyEmail(parsed.token);
+            return sendSuccess(res, null, result.message || "Email verified successfully.");
         } catch (error) {
             return handleError(error, res);
         }

@@ -5,6 +5,7 @@ import {
     Bell,
     Loader2,
     Lock,
+    ShieldCheck,
     UserRound,
     UserX
 } from "lucide-react";
@@ -12,6 +13,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "../../context/AuthContext";
 import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
+import { sendVerificationEmail } from "../../service/auth.service";
 import {
     getBlockedUsers,
     getMyProfile,
@@ -54,6 +56,7 @@ const SettingsPage = () => {
     );
     const [loading, setLoading] = useState(true);
     const [savingKey, setSavingKey] = useState("");
+    const [emailVerified, setEmailVerified] = useState(Boolean(user?.emailVerified));
 
     const [isPrivate, setIsPrivate] = useState(false);
     const [preferences, setPreferences] = useState({
@@ -92,6 +95,10 @@ const SettingsPage = () => {
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
+    useEffect(() => {
+        setEmailVerified(Boolean(user?.emailVerified));
+    }, [user?.emailVerified]);
+
     const loadBlockedUsers = useCallback(async (page = 1, append = false) => {
         setBlockedLoading(true);
         try {
@@ -129,6 +136,7 @@ const SettingsPage = () => {
             const profile = payload?.user || payload;
             const nextPreferences = profile?.preferences || {};
 
+            setEmailVerified(Boolean(profile?.emailVerified));
             setIsPrivate(Boolean(profile?.isPrivate));
             setPreferences({
                 notifications: {
@@ -189,6 +197,20 @@ const SettingsPage = () => {
             }
         } catch (error) {
             toast.error(error?.message || "Failed to update privacy");
+        } finally {
+            setSavingKey("");
+        }
+    };
+
+    const requestVerificationEmail = async () => {
+        if (emailVerified) return;
+
+        setSavingKey("emailVerification");
+        try {
+            const result = await sendVerificationEmail();
+            toast.success(result?.message || "Verification email sent. Please check your inbox.");
+        } catch (error) {
+            toast.error(error?.message || "Failed to send verification email");
         } finally {
             setSavingKey("");
         }
@@ -264,7 +286,8 @@ const SettingsPage = () => {
             comments: savingKey === "notifications.comments",
             likes: savingKey === "notifications.likes",
             push: savingKey === "notifications.push",
-            email: savingKey === "notifications.email"
+            email: savingKey === "notifications.email",
+            emailVerification: savingKey === "emailVerification"
         }),
         [savingKey]
     );
@@ -295,6 +318,43 @@ const SettingsPage = () => {
                         Control who can follow, message, and interact with your profile.
                     </p>
                 </div>
+
+                <section className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-sky-300" />
+                        <h2 className="text-sm font-semibold text-slate-100">Email Verification</h2>
+                    </div>
+
+                    <div className="flex flex-col gap-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-semibold text-slate-100">
+                                Status: {emailVerified ? "Verified" : "Not Verified"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                                {emailVerified
+                                    ? "Your email is confirmed."
+                                    : "Verify your email to secure your account and receive critical alerts."}
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={requestVerificationEmail}
+                            disabled={emailVerified || loadingState.emailVerification}
+                            className={`inline-flex min-w-[11rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                                emailVerified
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                    : "border-sky-500/35 bg-sky-500/10 text-sky-200 hover:bg-sky-500/20"
+                            } disabled:opacity-60`}
+                        >
+                            {loadingState.emailVerification
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : emailVerified
+                                    ? "Email Verified"
+                                    : "Send Verification Link"}
+                        </button>
+                    </div>
+                </section>
 
                 <section className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
                     <div className="mb-3 flex items-center gap-2">

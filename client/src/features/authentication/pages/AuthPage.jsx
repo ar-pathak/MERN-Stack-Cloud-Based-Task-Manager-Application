@@ -61,13 +61,10 @@ export default function AuthPage() {
                 result = await register(payload);
 
                 if (result?.success) {
-                    toast.success("Account created successfully!");
-                    // Optionally show verification notice or redirect to dashboard
-                    setActiveView(views.VERIFY);
-                    // Or redirect to dashboard after a delay
+                    toast.success("Account created successfully! Redirecting...");
                     setTimeout(() => {
                         navigate("/main");
-                    }, 2000);
+                    }, 500);
                 } else {
                     toast.error(result?.message || result?.error || "Registration failed");
                 }

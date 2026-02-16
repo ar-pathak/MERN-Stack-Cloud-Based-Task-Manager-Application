@@ -4,6 +4,8 @@ import { GhostButton, PrimaryButton } from "../components/Buttons";
 import TextInput from "../components/TextInput";
 import { views } from "../utils/view";
 
+const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,72}$/;
+
 function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
   const { token } = useParams();
   const [password, setPassword] = useState("");
@@ -23,8 +25,10 @@ function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
       setError("Both fields are required.");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (!STRONG_PASSWORD_REGEX.test(password)) {
+      setError(
+        "Password must be 8+ chars with uppercase, lowercase, number, and special character."
+      );
       return;
     }
     if (password !== confirm) {
@@ -58,7 +62,7 @@ function ResetPasswordForm({ onSwitch, onSubmit, loading }) {
           type="password"
           name="password"
           value={password}
-          placeholder="Min. 6 characters"
+          placeholder="8+ chars, mixed types"
           autoComplete="new-password"
           onChange={setPassword}
         />

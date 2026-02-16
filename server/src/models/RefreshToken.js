@@ -10,6 +10,7 @@ const refreshTokenSchema = new mongoose.Schema({
     token: {
         type: String,
         required: true,
+        // Stores SHA-256 hash of the raw refresh token.
         unique: true, // Ensure token uniqueness
         index: true, // Index for faster token lookups
     },

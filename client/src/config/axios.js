@@ -17,6 +17,19 @@ const api = axios.create({
 let isRefreshing = false;
 let failedQueue = [];
 
+const shouldSkipTokenRefresh = (requestUrl = "") => {
+    const url = String(requestUrl || "");
+    const authEndpoints = [
+        "/api/auth/login",
+        "/api/auth/signup",
+        "/api/auth/refresh",
+        "/api/auth/forgot-password",
+        "/api/auth/reset-password",
+    ];
+
+    return authEndpoints.some((endpoint) => url.includes(endpoint));
+};
+
 const processQueue = (error = null) => {
     failedQueue.forEach(prom => {
         if (error) {
@@ -42,6 +55,10 @@ api.interceptors.response.use(
 
         // If error is 401 and we haven't already tried to refresh
         if (error.response?.status === 401 && !originalRequest._retry) {
+            if (shouldSkipTokenRefresh(originalRequest.url)) {
+                return Promise.reject(error);
+            }
+
             // If we're already refreshing, queue this request
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
@@ -54,11 +71,6 @@ api.interceptors.response.use(
                     .catch(err => {
                         return Promise.reject(err);
                     });
-            }
-
-            // Don't retry refresh endpoint itself
-            if (originalRequest.url?.includes('/api/auth/refresh')) {
-                return Promise.reject(error);
             }
 
             originalRequest._retry = true;

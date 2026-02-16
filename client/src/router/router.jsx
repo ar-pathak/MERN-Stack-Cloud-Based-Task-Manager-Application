@@ -7,6 +7,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import PublicRoute from "./PublicRoute";
 
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
+const VerifyEmailPage = lazy(() => import("../features/authentication/pages/VerifyEmailPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
 const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
 const OverviewLayout = lazy(() => import("../features/main/features/overview/pages/OverviewLayout.jsx"));
@@ -18,8 +19,8 @@ const ActivityPage = lazy(() => import("../features/main/features/activity/pages
 const AdvancedDashboardPage = lazy(() => import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx"));
 const HelpSupportPage = lazy(() => import("../features/main/features/support/pages/HelpSupportPage.jsx"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
-const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"))
-const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"))
+const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"));
+const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"));
 
 const withSuspense = (Component) => (
   <Suspense fallback={<LoadingPage />}>
@@ -37,8 +38,12 @@ const router = createBrowserRouter([
         index: true,
         element: <Navigate to="/home" replace />,
       },
+      {
+        path: "email-verification/:token",
+        element: withSuspense(VerifyEmailPage),
+      },
 
-      // 🌐 Public Routes (only for non-auth users)
+      // Public routes (only for non-auth users)
       {
         element: <PublicRoute />,
         children: [
@@ -57,7 +62,7 @@ const router = createBrowserRouter([
         ],
       },
 
-      // 🔒 Protected Routes (only for logged-in users)
+      // Protected routes (only for logged-in users)
       {
         element: <ProtectedRoute />,
         children: [
@@ -86,7 +91,7 @@ const router = createBrowserRouter([
           {
             path: "post/:id",
             element: withSuspense(PostDetailPage),
-          }
+          },
         ],
       },
     ],

@@ -3,7 +3,6 @@ const User = require("../models/user");
 
 const authMiddleware = async (req, res, next) => {
   try {
-    // 1️⃣ Get token from cookies
     const token = req.cookies?.accessToken;
 
     if (!token) {
@@ -13,27 +12,25 @@ const authMiddleware = async (req, res, next) => {
       });
     }
 
-    // 2️⃣ Verify token
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     } catch (jwtError) {
-      // Distinguish between expired and invalid tokens
-      if (jwtError.name === 'TokenExpiredError') {
+      if (jwtError.name === "TokenExpiredError") {
         return res.status(401).json({
           success: false,
           message: "Token expired. Please refresh your session.",
-          code: "TOKEN_EXPIRED"
+          code: "TOKEN_EXPIRED",
         });
       }
+
       return res.status(401).json({
         success: false,
         message: "Invalid token",
-        code: "TOKEN_INVALID"
+        code: "TOKEN_INVALID",
       });
     }
 
-    // 3️⃣ Fetch user from DB
     const user = await User.findById(decoded.id);
 
     if (!user) {
@@ -43,15 +40,21 @@ const authMiddleware = async (req, res, next) => {
       });
     }
 
-    // 4️⃣ Attach user to request
-    req.user = user;
+    if (user.accountStatus !== "active") {
+      return res.status(403).json({
+        success: false,
+        message: "Account is not active",
+        code: "ACCOUNT_INACTIVE",
+      });
+    }
 
-    next();
+    req.user = user;
+    return next();
   } catch (error) {
     return res.status(401).json({
       success: false,
       message: "Authentication failed",
-      error: error.message
+      error: error.message,
     });
   }
 };
