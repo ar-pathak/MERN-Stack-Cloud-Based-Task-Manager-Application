@@ -32,6 +32,14 @@ export const NAV_ITEMS = [
         color: "violet"
     },
     {
+        label: "Support",
+        icon: "LifeBuoy",
+        path: "/main/support",
+        exact: true,
+        description: "Help and tickets",
+        color: "cyan"
+    },
+    {
         label: "Create",
         icon: "SquarePen",
         path: "/main/create",
@@ -101,5 +109,17 @@ export const COLOR_THEMES = {
         glow: "shadow-[0_0_20px_rgba(244,63,94,0.15)]",
         hover: "hover:bg-rose-500/10",
         gradient: "from-rose-400 to-pink-400"
+    },
+    cyan: {
+        bg: "bg-cyan-500/20",
+        bgInactive: "bg-cyan-500/5",
+        border: "border-cyan-500/30",
+        text: "text-cyan-100",
+        textInactive: "text-cyan-400",
+        icon: "text-cyan-300",
+        iconInactive: "text-cyan-400",
+        glow: "shadow-[0_0_20px_rgba(6,182,212,0.15)]",
+        hover: "hover:bg-cyan-500/10",
+        gradient: "from-cyan-400 to-sky-400"
     }
 };

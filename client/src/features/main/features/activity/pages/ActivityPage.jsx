@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import {
     Activity,
+    ArrowLeft,
     Clock3,
     Heart,
     Loader2,
@@ -320,6 +321,14 @@ const ActivityPage = () => {
                 <div className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
+                            <button
+                                type="button"
+                                onClick={() => navigate(-1)}
+                                className="mb-2 inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900/70 px-2.5 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+                            >
+                                <ArrowLeft className="h-3.5 w-3.5" />
+                                Back
+                            </button>
                             <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
                                 Activity
                             </p>

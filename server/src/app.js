@@ -28,6 +28,7 @@ const chatRoutes = require("./modules/chat/chat.routes");
 const uploadRoutes = require("./modules/upload/upload.routes");
 const callsRoutes = require("./modules/call/call.routes");
 const notificationRoutes = require("./modules/notification/notification.routes");
+const supportRoutes = require("./modules/support/support.routes");
 const postService = require("./modules/posts/post.service");
 
 // Socket handler + auth middleware for Socket.IO
@@ -130,6 +131,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/upload", uploadRoutes);
 app.use("/api/calls", callsRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/support", supportRoutes);
 
 // ---------------------------------------------------------------------------
 // 404 handler  –  must come after all routes, before the error handler

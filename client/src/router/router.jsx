@@ -16,6 +16,7 @@ const NotificationsPage = lazy(() => import("../features/main/features/notificat
 const CreatePostPage = lazy(() => import("../features/main/features/create/pages/CreatePostPage.jsx"));
 const ActivityPage = lazy(() => import("../features/main/features/activity/pages/ActivityPage.jsx"));
 const AdvancedDashboardPage = lazy(() => import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx"));
+const HelpSupportPage = lazy(() => import("../features/main/features/support/pages/HelpSupportPage.jsx"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
 const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"))
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"))
@@ -69,6 +70,7 @@ const router = createBrowserRouter([
               { path: "notifications", element: withSuspense(NotificationsPage) },
               { path: "activity", element: withSuspense(ActivityPage) },
               { path: "dashboard", element: withSuspense(AdvancedDashboardPage) },
+              { path: "support", element: withSuspense(HelpSupportPage) },
               { path: "create", element: withSuspense(CreatePostPage) },
               { path: "settings", element: withSuspense(SettingsPage) },
             ],

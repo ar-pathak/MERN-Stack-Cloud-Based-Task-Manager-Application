@@ -154,7 +154,7 @@ const UserMenu = ({ user }) => {
                     bgColor: "bg-cyan-500/10",
                     action: () => {
                         setIsOpen(false);
-                        toast.info("Help center coming soon");
+                        navigate("/main/support");
                     }
                 }
             ]

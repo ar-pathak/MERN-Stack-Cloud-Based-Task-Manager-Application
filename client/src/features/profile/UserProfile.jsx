@@ -9,6 +9,7 @@ import {
     Check,
     Copy,
     ExternalLink,
+    LifeBuoy,
     Loader2,
     Lock,
     MapPin,
@@ -678,6 +679,17 @@ const UserProfile = () => {
                                     >
                                         {copiedLink ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                                         Copy profile link
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsMenuOpen(false);
+                                            navigate("/main/support");
+                                        }}
+                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-800"
+                                    >
+                                        <LifeBuoy className="h-4 w-4" />
+                                        Help & Support
                                     </button>
                                     {isOwnProfile && (
                                         <>
