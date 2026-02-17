@@ -1,9 +1,30 @@
 const express = require('express');
+const multer = require('multer');
 const workspaceController = require('./workspace.controller');
 const authMiddleware = require('../../middleware/authMiddleware');
 const { checkWorkspaceMemberRole } = require('../../middleware/checkRoleMiddleware');
 
 const router = express.Router();
+const inviteCsvUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        const fileName = String(file?.originalname || "").toLowerCase();
+        const mimeType = String(file?.mimetype || "").toLowerCase();
+        const isCsv = fileName.endsWith(".csv")
+            || mimeType.includes("csv")
+            || mimeType === "application/vnd.ms-excel";
+
+        if (!isCsv) {
+            const error = new Error("Only CSV files are allowed");
+            error.statusCode = 400;
+            error.status = 400;
+            return cb(error);
+        }
+
+        cb(null, true);
+    }
+});
 
 router.use(authMiddleware);
 
@@ -21,8 +42,14 @@ router.delete('/:workspaceId/members/:memberId', checkWorkspaceMemberRole("owner
 router.patch('/:workspaceId/members/:memberId/role', checkWorkspaceMemberRole("owner", "admin"), workspaceController.updateMemberRole);
 
 // Invite management routes
-router.post('/:workspaceId/invites', checkWorkspaceMemberRole("owner", "admin"), workspaceController.sendInvite);
+router.post(
+    '/:workspaceId/invites',
+    checkWorkspaceMemberRole("owner", "admin"),
+    inviteCsvUpload.single("emailsFile"),
+    workspaceController.sendInvite
+);
 router.post('/invites/accept/:token', workspaceController.acceptInvite);
+router.post('/invites/:inviteId/respond', workspaceController.respondInvite);
 
 // Workspace actions
 router.post('/:workspaceId/leave', checkWorkspaceMemberRole("owner", "admin", "member", "viewer"), workspaceController.leaveWorkspace);

@@ -529,7 +529,8 @@ class UserService {
             'preferences.privacy.showOnlineStatus',
             'preferences.privacy.allowTagging',
             'preferences.privacy.allowMentions',
-            'preferences.privacy.disablePublicMessages'
+            'preferences.privacy.disablePublicMessages',
+            'preferences.workspace.autoApproveWorkspaceInvites'
         ];
 
         const updates = {};

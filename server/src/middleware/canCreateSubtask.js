@@ -1,66 +1,54 @@
-const Workspace = require("../models/workspace");
+const WorkspaceMember = require("../models/workspaceMember");
 const Project = require("../models/project");
 const Task = require("../models/tasks");
 
 const canCreateSubtask = async (req, res, next) => {
     try {
-        const userId = req.user.id;
+        const userId = req.user?._id || req.user?.id;
         const { taskId } = req.body;
 
-        const task = await Task.findById(taskId)
-            .populate("workspace")
-            .populate("project");
-
+        const task = await Task.findById(taskId).select("createdBy assignees workspace project");
         if (!task) {
             return res.status(404).json({ message: "Task not found" });
         }
 
-        /**
-         * Case 1: Task -> Subtask 
-         */
         const isTaskOwner =
             String(task.createdBy) === String(userId) ||
-            task.assignees?.some(id => String(id) === String(userId));
+            task.assignees?.some((id) => String(id) === String(userId));
 
-        /**
-         * Case 2: Workspace -> Task -> Subtask
-         */
-        let isWorkspaceOwner = false;
+        let hasWorkspacePermission = false;
         if (task.workspace) {
-            const ws = await Workspace.findById(task.workspace);
-            if (ws && String(ws.createdBy) === String(userId)) {
-                isWorkspaceOwner = true;
-            }
+            const workspaceMember = await WorkspaceMember.findOne({
+                workspace: task.workspace,
+                user: userId
+            }).select("role");
+            hasWorkspacePermission = !!workspaceMember && ["owner", "admin", "member"].includes(workspaceMember.role);
         }
 
-        /**
-         * Case 3: Workspace -> Project -> Task -> Subtask
-         */
-        let isProjectMember = false;
+        let hasProjectPermission = false;
         if (task.project) {
-            const project = await Project.findById(task.project);
+            const project = await Project.findById(task.project).select("owner members");
             if (project) {
-                if (String(project.owner) === String(userId)) {
-                    isProjectMember = true;
-                } else {
-                    isProjectMember = project.members.some(
-                        m => String(m.user) === String(userId) && m.role !== "viewer"
+                hasProjectPermission =
+                    String(project.owner) === String(userId) ||
+                    project.members.some(
+                        (member) =>
+                            String(member.user) === String(userId) &&
+                            ["admin", "member"].includes(member.role)
                     );
-                }
             }
         }
 
-        if (isTaskOwner || isWorkspaceOwner || isProjectMember) {
+        if (isTaskOwner || hasWorkspacePermission || hasProjectPermission) {
             return next();
         }
 
         return res.status(403).json({
-            message: "You do not have permission to create subtask here"
+            message: "You do not have permission to create subtasks for this task"
         });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Permission check failed" });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Permission check failed" });
     }
 };
 

@@ -122,8 +122,8 @@ const MetaDetails = ({ item }) => {
             if (item.type === 'task') {
                 result = await updateTask(item.id || item._id, updateData);
             } else if (item.type === 'project') {
-                
-                result = await updateProject(item.workspace, item.id || item._id, updateData);
+                const workspaceId = item.workspace?._id || item.workspace;
+                result = await updateProject(workspaceId, item.id || item._id, updateData);
             } else if (item.type === 'subtask') {
                 result = await updateSubtask(item.id || item._id, updateData);
             } else {
@@ -166,7 +166,8 @@ const MetaDetails = ({ item }) => {
             if (item.type === 'task') {
                 result = await updateTask(item.id || item._id, updateData);
             } else if (item.type === 'project') {
-                result = await updateProject(item.workspace, item.id || item._id, updateData);
+                const workspaceId = item.workspace?._id || item.workspace;
+                result = await updateProject(workspaceId, item.id || item._id, updateData);
             } else if (item.type === 'subtask') {
                 result = await updateSubtask(item.id || item._id, updateData);
             }

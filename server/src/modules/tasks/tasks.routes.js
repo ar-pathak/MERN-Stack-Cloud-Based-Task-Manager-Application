@@ -1,7 +1,7 @@
 const express = require('express')
 const authMiddleware = require('../../middleware/authMiddleware');
 const taskController = require('./tasks.controller');
-const { checkWorkspaceMemberRole, checkProjectMemberRole, checkTeamMemberRole, checkCanCreateTask } = require('../../middleware/checkRoleMiddleware');
+const { checkWorkspaceMemberRole, checkCanCreateTask } = require('../../middleware/checkRoleMiddleware');
 const router = express.Router()
 
 router.use(authMiddleware);
@@ -26,6 +26,7 @@ router.delete('/:taskId/assignees/remove', taskController.removeTaskAssignees)
 
 //change status of task
 router.patch('/:taskId/status', taskController.changeTaskStatus)
+router.patch('/:taskId/toggle', taskController.toggleTaskCompletion)
 
 //soft delete tasks
 router.delete('/:taskId/softDelete', taskController.deleteTask)

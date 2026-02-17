@@ -1,12 +1,16 @@
-// services/project.service.js
 import api from "../config/axios";
 
+const unwrap = (response) => response?.data?.data ?? response?.data ?? null;
 
+const resolveProjectArgs = (workspaceIdOrProjectId, maybeProjectId) => ({
+    workspaceId: maybeProjectId ? workspaceIdOrProjectId : null,
+    projectId: maybeProjectId || workspaceIdOrProjectId
+});
 
 export const getProjectsByWorkspace = async (workspaceId) => {
     try {
         const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects`);
-        return response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch projects",
@@ -15,10 +19,11 @@ export const getProjectsByWorkspace = async (workspaceId) => {
     }
 };
 
-export const getProjectById = async (projectId) => {
+export const getProjectById = async (workspaceIdOrProjectId, maybeProjectId) => {
     try {
+        const { projectId } = resolveProjectArgs(workspaceIdOrProjectId, maybeProjectId);
         const response = await api.get(`/api/projects/${projectId}`);
-        return response.data || null;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch project",
@@ -30,7 +35,7 @@ export const getProjectById = async (projectId) => {
 export const createProject = async (workspaceId, projectData) => {
     try {
         const response = await api.post(`/api/projects/workspaces/${workspaceId}/projects`, projectData);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to create project",
@@ -41,8 +46,11 @@ export const createProject = async (workspaceId, projectData) => {
 
 export const updateProject = async (workspaceId, projectId, projectData) => {
     try {
-        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`, projectData);
-        return response.data;
+        const response = await api.patch(
+            `/api/projects/workspaces/${workspaceId}/projects/${projectId}`,
+            projectData
+        );
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update project",
@@ -51,31 +59,33 @@ export const updateProject = async (workspaceId, projectId, projectData) => {
     }
 };
 
-export const deleteProject = async (projectId) => {
+export const deleteProject = async (workspaceIdOrProjectId, maybeProjectId) => {
     try {
-        // Extract workspaceId from project if needed, or fetch it first
-        const project = await api.get(`/api/projects/${projectId}`).catch(() => null);
-        const workspaceId = project?.data?.workspace;
+        let { workspaceId, projectId } = resolveProjectArgs(workspaceIdOrProjectId, maybeProjectId);
+
+        if (!workspaceId) {
+            const project = await getProjectById(projectId);
+            workspaceId = project?.workspace?._id || project?.workspace;
+        }
 
         if (!workspaceId) {
             throw new Error("Workspace ID required for project deletion");
         }
 
         const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
-            message: error.response?.data?.message || "Failed to delete project",
+            message: error.response?.data?.message || error.message || "Failed to delete project",
             status: error.response?.status,
         };
     }
 };
 
-// Project Teams Management
 export const getProjectTeams = async (workspaceId, projectId) => {
     try {
         const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`);
-        return response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch project teams",
@@ -89,7 +99,7 @@ export const addProjectTeams = async (workspaceId, projectId, teams) => {
         const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`, {
             teams
         });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to add teams to project",
@@ -97,18 +107,14 @@ export const addProjectTeams = async (workspaceId, projectId, teams) => {
         };
     }
 };
+
 export const removeProjectTeams = async (workspaceId, projectId, teams) => {
     try {
         const teamArray = Array.isArray(teams) ? teams : [teams];
-
-        const response = await api.delete(
-            `/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`,
-            {
-                data: { teams: teamArray },
-            }
-        );
-
-        return response.data;
+        const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/teams`, {
+            data: { teams: teamArray }
+        });
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to remove teams from project",
@@ -117,12 +123,10 @@ export const removeProjectTeams = async (workspaceId, projectId, teams) => {
     }
 };
 
-
-// Project Members Management
 export const getProjectMembers = async (workspaceId, projectId) => {
     try {
         const response = await api.get(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`);
-        return response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch project members",
@@ -134,7 +138,7 @@ export const getProjectMembers = async (workspaceId, projectId) => {
 export const addProjectMembers = async (workspaceId, projectId, data) => {
     try {
         const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, data);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to add members to project",
@@ -146,9 +150,9 @@ export const addProjectMembers = async (workspaceId, projectId, data) => {
 export const removeProjectMembers = async (workspaceId, projectId, data) => {
     try {
         const response = await api.delete(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members`, {
-            data: data
+            data
         });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to remove members from project",
@@ -159,10 +163,11 @@ export const removeProjectMembers = async (workspaceId, projectId, data) => {
 
 export const updateProjectMemberRole = async (workspaceId, projectId, memberId, role) => {
     try {
-        const response = await api.patch(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/members/${memberId}`, {
-            role
-        });
-        return response.data;
+        const response = await api.patch(
+            `/api/projects/workspaces/${workspaceId}/projects/${projectId}/members/${memberId}`,
+            { role }
+        );
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update member role",
@@ -171,11 +176,10 @@ export const updateProjectMemberRole = async (workspaceId, projectId, memberId, 
     }
 };
 
-
 export const leaveProject = async (workspaceId, projectId) => {
     try {
         const response = await api.post(`/api/projects/workspaces/${workspaceId}/projects/${projectId}/leave`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to leave project",

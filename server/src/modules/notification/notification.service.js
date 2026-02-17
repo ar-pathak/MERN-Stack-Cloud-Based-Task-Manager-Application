@@ -454,6 +454,52 @@ const setFollowRequestNotificationState = async ({
     return notification;
 };
 
+const setWorkspaceInviteNotificationState = async ({
+    recipientUserId,
+    inviteId,
+    requestState,
+    read = true
+}) => {
+    const recipientId = toObjectId(recipientUserId);
+    const inviteIdString = normalizeIdString(inviteId);
+
+    if (!recipientId || !inviteIdString || !requestState) {
+        return null;
+    }
+
+    const now = new Date();
+    const setPayload = {
+        "metadata.requestState": requestState
+    };
+
+    if (read) {
+        setPayload.read = true;
+        setPayload.readAt = now;
+        setPayload.seenAt = now;
+    }
+
+    const notification = await Notification.findOneAndUpdate(
+        {
+            user: recipientId,
+            "metadata.kind": "workspace_invite_request",
+            "metadata.inviteId": inviteIdString
+        },
+        { $set: setPayload },
+        { new: true }
+    )
+        .populate("actor", "name username avatar")
+        .lean();
+
+    if (!notification) {
+        return null;
+    }
+
+    emitToUser(String(recipientUserId), "notification:updated", { notification });
+    await emitUnreadCounts([recipientUserId]);
+
+    return notification;
+};
+
 const markAsRead = async (userId, notificationId) => {
     const notification = await Notification.findOneAndUpdate(
         { _id: notificationId, user: userId },
@@ -590,6 +636,7 @@ module.exports = {
     listNotifications,
     getUnreadCount,
     setFollowRequestNotificationState,
+    setWorkspaceInviteNotificationState,
     markAsRead,
     markAsUnread,
     markAllAsRead,

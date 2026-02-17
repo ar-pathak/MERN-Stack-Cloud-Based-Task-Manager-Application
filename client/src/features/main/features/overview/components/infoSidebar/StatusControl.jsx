@@ -60,12 +60,12 @@ const StatusControl = ({ item }) => {
             }
             else if (item.type === 'project') {
                 //  Check if we already have the workspace ID
-                let workspaceId = item.workspace;
+                let workspaceId = item.workspace?._id || item.workspace;
 
                 // Only fetch if absolutely necessary
                 if (!workspaceId) {
                     const project = await fetchProjectById(item.id);
-                    workspaceId = project?.data?.workspace;
+                    workspaceId = project?.data?.workspace?._id || project?.data?.workspace;
                 }
 
                 if (!workspaceId) throw new Error('Project workspace not found');
@@ -110,10 +110,10 @@ const StatusControl = ({ item }) => {
             }
             else if (item.type === 'project') {
                 // Same optimization for priority
-                let workspaceId = item.workspace;
+                let workspaceId = item.workspace?._id || item.workspace;
                 if (!workspaceId) {
                     const project = await fetchProjectById(item.id);
-                    workspaceId = project?.data?.workspace;
+                    workspaceId = project?.data?.workspace?._id || project?.data?.workspace;
                 }
                 if (!workspaceId) throw new Error('Project workspace not found');
 

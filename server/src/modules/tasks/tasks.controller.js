@@ -1,50 +1,64 @@
 const mongoose = require("mongoose");
 const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 const taskService = require("./tasks.service");
-const { createTaskSchema, updateTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema } = require('./tasks.validation')
+const {
+    createTaskSchema,
+    updateTaskSchema,
+    addTaskAssigneesSchema,
+    removeTaskAssigneesSchema,
+    changeTaskStatusSchema
+} = require("./tasks.validation");
 
 const taskController = {
     createTaskAtGlobalLevel: async (req, res) => {
         try {
             const userId = req.user._id;
             const data = createTaskSchema.parse(req.body);
-            const task = await taskService.createTask(userId, data)
-            sendSuccess(res, task)
+            const task = await taskService.createTask(userId, data);
+            return sendSuccess(res, task, "Task created successfully", 201);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     createTaskAtWorkspaceLevel: async (req, res) => {
         try {
             const userId = req.user._id;
             const { workspaceId } = req.params;
+
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-                throw new Error('Invalid workspace Id')
+                throw new Error("Invalid workspace ID");
             }
+
             const data = createTaskSchema.parse(req.body);
-            const task = await taskService.createTask(userId, data, { workspaceId })
-            sendSuccess(res, task)
+            const task = await taskService.createTask(userId, data, { workspaceId });
+            return sendSuccess(res, task, "Task created successfully", 201);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     createTaskAtProjectLevel: async (req, res) => {
         try {
             const userId = req.user._id;
             const { workspaceId, projectId } = req.params;
+
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
-                throw new Error('Invalid workspace Id')
+                throw new Error("Invalid workspace ID");
             }
+
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
-                throw new Error('Invalid project Id')
+                throw new Error("Invalid project ID");
             }
+
             const data = createTaskSchema.parse(req.body);
-            const task = await taskService.createTask(userId, data, { workspaceId, projectId })
-            sendSuccess(res, task)
+            const task = await taskService.createTask(userId, data, { workspaceId, projectId });
+            return sendSuccess(res, task, "Task created successfully", 201);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     updateTask: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -55,18 +69,13 @@ const taskController = {
             }
 
             const data = updateTaskSchema.parse(req.body);
-
-            const result = await taskService.updateTask(
-                userId,
-                taskId,
-                data
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.updateTask(userId, taskId, data);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     addTaskAssignees: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -77,18 +86,13 @@ const taskController = {
             }
 
             const assigneesData = addTaskAssigneesSchema.parse(req.body);
-
-            const result = await taskService.addTaskAssignees(
-                userId,
-                taskId,
-                assigneesData
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.addTaskAssignees(userId, taskId, assigneesData);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     removeTaskAssignees: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -99,18 +103,13 @@ const taskController = {
             }
 
             const data = removeTaskAssigneesSchema.parse(req.body);
-
-            const result = await taskService.removeTaskAssignees(
-                userId,
-                taskId,
-                data
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.removeTaskAssignees(userId, taskId, data);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     changeTaskStatus: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -121,19 +120,14 @@ const taskController = {
             }
 
             const { status } = changeTaskStatusSchema.parse(req.body);
-
-            const result = await taskService.changeTaskStatus(
-                userId,
-                taskId,
-                status
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.changeTaskStatus(userId, taskId, status);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
-    changeTaskStatus: async (req, res) => {
+
+    toggleTaskCompletion: async (req, res) => {
         try {
             const userId = req.user._id;
             const { taskId } = req.params;
@@ -142,19 +136,14 @@ const taskController = {
                 throw new Error("Invalid task ID");
             }
 
-            const { status } = changeTaskStatusSchema.parse(req.body);
-
-            const result = await taskService.changeTaskStatus(
-                userId,
-                taskId,
-                status
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.toggleTaskCompletion(userId, taskId);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
-    }, deleteTask: async (req, res) => {
+    },
+
+    deleteTask: async (req, res) => {
         try {
             const userId = req.user._id;
             const { taskId } = req.params;
@@ -164,13 +153,12 @@ const taskController = {
             }
 
             const result = await taskService.deleteTask(userId, taskId);
-
-            sendSuccess(res, null, result.message);
+            return sendSuccess(res, null, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
-    }
-    ,
+    },
+
     restoreTask: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -181,12 +169,12 @@ const taskController = {
             }
 
             const result = await taskService.restoreTask(userId, taskId);
-
-            sendSuccess(res, null, result.message);
+            return sendSuccess(res, result.task, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     permanentDeleteTask: async (req, res) => {
         try {
             const userId = req.user._id;
@@ -196,19 +184,16 @@ const taskController = {
                 throw new Error("Invalid task ID");
             }
 
-            const result = await taskService.permanentDeleteTask(
-                userId,
-                taskId
-            );
-
-            sendSuccess(res, null, result.message);
+            const result = await taskService.permanentDeleteTask(userId, taskId);
+            return sendSuccess(res, null, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     getAllGlobalLevelTasks: async (req, res) => {
         try {
-            const userId = req.user._id
+            const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(userId)) {
                 return res.status(400).json({
@@ -217,12 +202,13 @@ const taskController = {
                 });
             }
 
-            const task = await taskService.getAllGlobalLevelTasks(userId);
-            sendSuccess(res, task, "Task retrieved successfully");
+            const tasks = await taskService.getAllGlobalLevelTasks(userId);
+            return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     getTask: async (req, res) => {
         try {
             const { taskId } = req.params;
@@ -235,11 +221,12 @@ const taskController = {
             }
 
             const task = await taskService.getTaskById(taskId);
-            sendSuccess(res, task, "Task retrieved successfully");
+            return sendSuccess(res, task, "Task retrieved successfully");
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     getTasksByWorkspace: async (req, res) => {
         try {
             const { workspaceId } = req.params;
@@ -252,11 +239,12 @@ const taskController = {
             }
 
             const tasks = await taskService.getTasksByWorkspace(workspaceId);
-            sendSuccess(res, tasks, "Tasks retrieved successfully");
+            return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     getTasksByProject: async (req, res) => {
         try {
             const { workspaceId, projectId } = req.params;
@@ -276,27 +264,27 @@ const taskController = {
             }
 
             const tasks = await taskService.getTasksByProject(projectId);
-            sendSuccess(res, tasks, "Tasks retrieved successfully");
+            return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     },
+
     leaveTask: async (req, res) => {
         try {
             const { taskId } = req.params;
             const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(taskId)) {
-                throw new Error("Invalid Task ID");
+                throw new Error("Invalid task ID");
             }
 
             const result = await taskService.leaveTask(taskId, userId);
-            sendSuccess(res, null, result.message);
+            return sendSuccess(res, null, result.message);
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     }
-}
-
+};
 
 module.exports = taskController;

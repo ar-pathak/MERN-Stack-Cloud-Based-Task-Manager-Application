@@ -121,12 +121,31 @@ export const updateMemberRole = async ({ workspaceId, memberId, role }) => {
 };
 
 // Invite Management
-export const sendWorkspaceInvite = async ({ workspaceId, email, role }) => {
+export const sendWorkspaceInvite = async ({ workspaceId, email, role, file }) => {
     try {
-        const response = await api.post(`/api/workspace/${workspaceId}/invites`, {
-            email,
-            role
-        });
+        const hasCsvFile = file instanceof File;
+        let response;
+
+        if (hasCsvFile) {
+            const formData = new FormData();
+            formData.append("role", role || "member");
+            formData.append("emailsFile", file);
+            if (email) {
+                formData.append("email", email);
+            }
+
+            response = await api.post(`/api/workspace/${workspaceId}/invites`, formData, {
+                headers: {
+                    "Content-Type": "multipart/form-data"
+                }
+            });
+        } else {
+            response = await api.post(`/api/workspace/${workspaceId}/invites`, {
+                email,
+                role
+            });
+        }
+
         return response.data?.data || response.data;
     } catch (error) {
         throw {
@@ -143,6 +162,20 @@ export const acceptWorkspaceInvite = async (token) => {
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to accept invite",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const respondWorkspaceInvite = async ({ inviteId, action }) => {
+    try {
+        const response = await api.post(`/api/workspace/invites/${inviteId}/respond`, {
+            action
+        });
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to process invite action",
             status: error.response?.status,
         };
     }

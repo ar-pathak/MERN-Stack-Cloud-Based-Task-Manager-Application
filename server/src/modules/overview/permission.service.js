@@ -26,7 +26,7 @@ class PermissionService {
                 canEdit: ['owner', 'admin', 'member'].includes(member.role),
                 canManage: ['owner', 'admin'].includes(member.role),
                 canCreateProject: ['owner', 'admin'].includes(member.role),
-                canCreateTask: ['owner', 'admin', 'member'].includes(member.role)
+                canCreateTask: ['owner', 'admin'].includes(member.role)
             };
         } catch (error) {
             console.error('Error checking workspace permissions:', error);
@@ -39,8 +39,20 @@ class PermissionService {
             const project = await Project.findById(projectId).populate('workspace');
             if (!project) return { canView: false, canEdit: false, canManage: false, role: null };
 
+            const workspaceId = project.workspace?._id || project.workspace || null;
+            const wsPerms = workspaceId
+                ? await this.getWorkspacePermissions(workspaceId, userId)
+                : { canCreateTask: false, canManage: false, role: null };
+            const workspaceCanCreateTask = Boolean(wsPerms.canCreateTask);
+
             if (String(project.owner) === String(userId)) {
-                return { canView: true, canEdit: true, canManage: true, role: 'owner', canCreateTask: true };
+                return {
+                    canView: true,
+                    canEdit: true,
+                    canManage: true,
+                    role: 'owner',
+                    canCreateTask: workspaceCanCreateTask
+                };
             }
 
             const projectMember = project.members.find(m => String(m.user) === String(userId));
@@ -48,16 +60,22 @@ class PermissionService {
                 return {
                     role: projectMember.role,
                     canView: true,
-                    canEdit: ['admin', 'editor'].includes(projectMember.role),
+                    canEdit: ['admin', 'member'].includes(projectMember.role),
                     canManage: projectMember.role === 'admin',
-                    canCreateTask: ['admin', 'editor'].includes(projectMember.role)
+                    canCreateTask: workspaceCanCreateTask
                 };
             }
 
             if (project.workspace) {
-                const wsPerms = await this.getWorkspacePermissions(project.workspace._id, userId);
                 if (wsPerms.canManage) {
-                    return { role: wsPerms.role, canView: true, canEdit: true, canManage: true, canCreateTask: true, inheritedFromWorkspace: true };
+                    return {
+                        role: wsPerms.role,
+                        canView: true,
+                        canEdit: true,
+                        canManage: true,
+                        canCreateTask: workspaceCanCreateTask,
+                        inheritedFromWorkspace: true
+                    };
                 }
             }
             return { canView: false, canEdit: false, canManage: false, role: null };
@@ -114,7 +132,7 @@ class PermissionService {
                 permissions.workspaces[wsId] = {
                     role: m.role,
                     canCreateProject: ['owner', 'admin'].includes(m.role),
-                    canCreateTask: ['owner', 'admin', 'member'].includes(m.role)
+                    canCreateTask: ['owner', 'admin'].includes(m.role)
                 };
             });
 
@@ -128,22 +146,29 @@ class PermissionService {
             projects.forEach(p => {
                 const projId = String(p._id);
                 const isOwner = String(p.owner) === String(userId);
+                const workspaceId = String(p.workspace?._id || p.workspace || "");
+                const wsPerms = workspaceId ? workspacePermissionLookup[workspaceId] : null;
+                const workspaceCanCreateTask = Boolean(wsPerms?.canCreateTask);
 
                 if (isOwner) {
-                    permissions.projects[projId] = { role: 'owner', canCreateTask: true };
+                    permissions.projects[projId] = { role: 'owner', canCreateTask: workspaceCanCreateTask };
                 } else {
                     const member = p.members.find(m => String(m.user) === String(userId));
                     if (member) {
                         permissions.projects[projId] = {
                             role: member.role,
-                            canCreateTask: ['admin', 'editor'].includes(member.role)
+                            canCreateTask: workspaceCanCreateTask
                         };
                     } else if (p.workspace) {
                         // FIX: Ensure workspace object and ID exist
                         const wsId = String(p.workspace._id || p.workspace);
-                        const wsPerms = workspacePermissionLookup[wsId];
-                        if (wsPerms && ['owner', 'admin'].includes(wsPerms.role)) {
-                            permissions.projects[projId] = { role: wsPerms.role, canCreateTask: true, inheritedFromWorkspace: true };
+                        const inheritedWsPerms = workspacePermissionLookup[wsId];
+                        if (inheritedWsPerms && ['owner', 'admin'].includes(inheritedWsPerms.role)) {
+                            permissions.projects[projId] = {
+                                role: inheritedWsPerms.role,
+                                canCreateTask: Boolean(inheritedWsPerms.canCreateTask),
+                                inheritedFromWorkspace: true
+                            };
                         }
                     }
                 }

@@ -1,59 +1,59 @@
 const Subtask = require("../models/subtasks");
 const Task = require("../models/tasks");
-const Workspace = require("../models/workspace");
+const WorkspaceMember = require("../models/workspaceMember");
 const Project = require("../models/project");
 
 const canModifySubtask = async (req, res, next) => {
     try {
-        const userId = req.user.id;
-        const { subtaskId } = req.params;
+        const userId = req.user?._id || req.user?.id;
+        const { subtaskId, taskId } = req.params;
 
-        const subtask = await Subtask.findById(subtaskId).populate({
-            path: 'task',
-            populate: [
-                { path: 'workspace' },
-                { path: 'project' }
-                
-            ]
-        });
+        let subtask = null;
+        let task = null;
 
-        if (!subtask) {
-            return res.status(404).json({ message: "Subtask not found" });
+        if (subtaskId) {
+            subtask = await Subtask.findById(subtaskId).select("createdBy assignedTo task");
+            if (!subtask) {
+                return res.status(404).json({ message: "Subtask not found" });
+            }
+            task = await Task.findById(subtask.task).select("createdBy assignees workspace project");
+        } else if (taskId) {
+            task = await Task.findById(taskId).select("createdBy assignees workspace project");
         }
 
-        const task = subtask.task;
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
 
-        // Check if user is task owner or assignee
         const isTaskOwner =
             String(task.createdBy) === String(userId) ||
-            task.assignees?.some(id => String(id) === String(userId));
+            task.assignees?.some((id) => String(id) === String(userId));
 
-        // Check if user is subtask creator or assigned to
-        const isSubtaskOwner =
-            String(subtask.createdBy) === String(userId) ||
-            (subtask.assignedTo && String(subtask.assignedTo) === String(userId));
+        const isSubtaskOwner = subtask
+            ? String(subtask.createdBy) === String(userId) ||
+            subtask.assignedTo?.some((id) => String(id) === String(userId))
+            : false;
 
-        // Check workspace permission
         let hasWorkspacePermission = false;
         if (task.workspace) {
-            const ws = await Workspace.findById(task.workspace);
-            if (ws && String(ws.createdBy) === String(userId)) {
-                hasWorkspacePermission = true;
-            }
+            const workspaceMember = await WorkspaceMember.findOne({
+                workspace: task.workspace,
+                user: userId
+            }).select("role");
+            hasWorkspacePermission = !!workspaceMember && ["owner", "admin", "member"].includes(workspaceMember.role);
         }
 
-        // Check project permission
         let hasProjectPermission = false;
         if (task.project) {
-            const project = await Project.findById(task.project);
+            const project = await Project.findById(task.project).select("owner members");
             if (project) {
-                if (String(project.owner) === String(userId)) {
-                    hasProjectPermission = true;
-                } else {
-                    hasProjectPermission = project.members.some(
-                        m => String(m.user) === String(userId) && m.role !== "viewer"
+                hasProjectPermission =
+                    String(project.owner) === String(userId) ||
+                    project.members.some(
+                        (member) =>
+                            String(member.user) === String(userId) &&
+                            ["admin", "member"].includes(member.role)
                     );
-                }
             }
         }
 
@@ -64,10 +64,9 @@ const canModifySubtask = async (req, res, next) => {
         return res.status(403).json({
             message: "You do not have permission to modify this subtask"
         });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Permission check failed" });
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Permission check failed" });
     }
 };
 

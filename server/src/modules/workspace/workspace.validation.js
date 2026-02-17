@@ -48,10 +48,17 @@ const sendInviteSchema = z.object({
     email: z.string()
         .email("Invalid email address")
         .toLowerCase()
-        .trim(),
+        .trim()
+        .optional(),
     role: z.enum(["admin", "member", "viewer"], {
         errorMap: () => ({ message: "Role must be one of: admin, member, viewer" })
     }).default("member")
+});
+
+const respondInviteSchema = z.object({
+    action: z.enum(["accept", "reject"], {
+        errorMap: () => ({ message: "Action must be accept or reject" })
+    })
 });
 
 const transferOwnershipSchema = z.object({
@@ -68,5 +75,6 @@ module.exports = {
     updateMemberRoleSchema,
     sendInviteSchema,
     addMemberSchema,
-    transferOwnershipSchema
+    transferOwnershipSchema,
+    respondInviteSchema
 };

@@ -208,6 +208,9 @@ const userSchema = new Schema({
             allowTagging: { type: Boolean, default: true },
             allowMentions: { type: Boolean, default: true },
             disablePublicMessages: { type: Boolean, default: false }
+        },
+        workspace: {
+            autoApproveWorkspaceInvites: { type: Boolean, default: true }
         }
     },
     blockedUsers: [{

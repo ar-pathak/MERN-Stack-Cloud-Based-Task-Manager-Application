@@ -55,7 +55,7 @@ export const useMembersLogic = (item) => {
             } else if (item.type === 'project') {
                 const memberData = await fetchProjectMembers(item.workspace, item.id);
                 if (memberData?.data) {
-                    setMembers(memberData.data.data);
+                    setMembers(memberData.data);
                     setInitialLoadComplete(true);
                 }
             } else if (item.type === 'task') {
@@ -69,8 +69,8 @@ export const useMembersLogic = (item) => {
                 // NEW: Subtask Loading Logic
                 const subtaskRes = await fetchSubtaskById(item.id);
                 if (subtaskRes?.data) {
-                    setSubtaskData(subtaskRes.data.data);
-                    setMembers(subtaskRes.data.data.assignedTo || []);
+                    setSubtaskData(subtaskRes.data);
+                    setMembers(subtaskRes.data.assignedTo || []);
                     setInitialLoadComplete(true);
                 }
             }
@@ -134,8 +134,13 @@ export const useMembersLogic = (item) => {
             if (item.type === 'workspace') {
                 const result = await addMember({ workspaceId, username, role });
                 if (result?.success) {
-                    notify("success", `${username} added successfully!`);
-                    await loadMembers(false);
+                    const mode = result?.data?.mode;
+                    if (mode === "invite_request") {
+                        notify("success", `Invite request sent to ${username}.`);
+                    } else {
+                        notify("success", `${username} added successfully!`);
+                        await loadMembers(false);
+                    }
                     return true;
                 }
                 notify("error", result?.message || "Failed to add member");
@@ -202,12 +207,24 @@ export const useMembersLogic = (item) => {
         }
     };
 
-    const handleInvite = async (email, role) => {
+    const handleInvite = async ({ email, role, file }) => {
         // Invite is typically workspace only
         setIsGlobalLoading(true);
         try {
-            const result = await sendInvite({ workspaceId, email, role });
+            const result = await sendInvite({ workspaceId, email, role, file });
             if (result?.success) {
+                const inviteData = result?.data || {};
+
+                if (inviteData?.mode === "bulk_csv") {
+                    const sent = Number(inviteData?.sent || 0);
+                    const failed = Number(inviteData?.failed || 0);
+                    notify(
+                        "success",
+                        `CSV processed: ${sent} invite${sent === 1 ? "" : "s"} sent${failed ? `, ${failed} failed` : ""}.`
+                    );
+                    return true;
+                }
+
                 notify("success", `Invitation sent to ${email}!`);
                 return true;
             } else {

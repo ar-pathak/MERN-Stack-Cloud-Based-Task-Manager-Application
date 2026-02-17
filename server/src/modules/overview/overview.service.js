@@ -218,7 +218,10 @@ const overviewService = {
                 const projId = String(t.project);
                 const projPermissions = userPermissions.projects[projId];
                 if (projPermissions) {
-                    taskPermissions = { canCreateSubtask: projPermissions.canCreateTask || false, role: projPermissions.role || null };
+                    taskPermissions = {
+                        canCreateSubtask: projPermissions.canEdit || ['owner', 'admin', 'member'].includes(projPermissions.role),
+                        role: projPermissions.role || null
+                    };
                     if (['owner', 'admin', 'editor'].includes(projPermissions.role)) canEditTask = true;
                 }
             }
@@ -226,7 +229,10 @@ const overviewService = {
                 const wsId = String(t.workspace);
                 const wsPermissions = userPermissions.workspaces[wsId];
                 if (wsPermissions) {
-                    taskPermissions = { canCreateSubtask: wsPermissions.canCreateTask || false, role: wsPermissions.role || null };
+                    taskPermissions = {
+                        canCreateSubtask: wsPermissions.canEdit || ['owner', 'admin', 'member'].includes(wsPermissions.role),
+                        role: wsPermissions.role || null
+                    };
                     if (['owner', 'admin'].includes(wsPermissions.role)) canEditTask = true;
                 }
             }

@@ -2,60 +2,88 @@ const WorkspaceMember = require("../models/workspaceMember");
 const Project = require("../models/project");
 const Team = require("../models/team");
 
+const isWorkspaceAdminOrOwner = (role = "") =>
+    ["owner", "admin"].includes(String(role));
+
 const canCreateTask = async ({
     userId,
     workspaceId = null,
     projectId = null,
-    teamId = null
+    teamId = null,
+    enforceWorkspaceAdminOnly = false
 }) => {
-    // 1️⃣ Workspace-level authority
-    if (workspaceId) {
-        const workspaceMember = await WorkspaceMember.findOne({
+    const workspaceMember = workspaceId
+        ? await WorkspaceMember.findOne({
             workspace: workspaceId,
             user: userId
-        });
+        }).select("role")
+        : null;
 
-        if (workspaceMember && ["owner", "admin"].includes(workspaceMember.role)) {
+    // Project-level checks.
+    if (projectId) {
+        const project = await Project.findById(projectId)
+            .select("workspace owner members")
+            .lean();
+
+        if (!project) {
+            return false;
+        }
+
+        if (workspaceId && String(project.workspace) !== String(workspaceId)) {
+            return false;
+        }
+
+        if (enforceWorkspaceAdminOnly) {
+            if (workspaceMember) {
+                return isWorkspaceAdminOrOwner(workspaceMember.role);
+            }
+
+            const scopedWorkspaceMember = await WorkspaceMember.findOne({
+                workspace: project.workspace,
+                user: userId
+            }).select("role");
+
+            return isWorkspaceAdminOrOwner(scopedWorkspaceMember?.role);
+        }
+
+        if (String(project.owner) === String(userId)) {
             return true;
         }
-    }
 
-    // 2️⃣ Project-level authority
-    if (projectId) {
-        const project = await Project.findOne({
-            _id: projectId,
-            "members.user": userId
-        });
-
-        if (!project) return false;
-
-        const member = project.members.find(
-            m => m.user.toString() === userId.toString()
-        );
-
+        const member = project.members.find((m) => String(m.user) === String(userId));
         if (teamId) {
-            // Project admin can create in child teams
-            return member.role === "admin";
+            return member?.role === "admin";
         }
 
-        // Project admin/editor can create project tasks
-        return ["admin", "editor"].includes(member.role);
+        if (member) {
+            return ["admin", "member"].includes(member.role);
+        }
+
+        return !!(workspaceMember && ["owner", "admin"].includes(workspaceMember.role));
     }
 
-    // 3️⃣ Team-level authority
+    // Workspace-level checks.
+    if (workspaceMember) {
+        if (enforceWorkspaceAdminOnly) {
+            return isWorkspaceAdminOrOwner(workspaceMember.role);
+        }
+
+        return ["owner", "admin", "member"].includes(workspaceMember.role);
+    }
+
+    // Team-level checks.
     if (teamId) {
         const team = await Team.findOne({
             _id: teamId,
             "members.user": userId
-        });
+        }).lean();
 
-        if (!team) return false;
+        if (!team) {
+            return false;
+        }
 
-        const member = team.members.find(
-            m => m.user.toString() === userId.toString()
-        );
-
-        return member.role === "lead";
+        const member = team.members.find((m) => String(m.user) === String(userId));
+        return member?.role === "lead";
     }
 
     return false;

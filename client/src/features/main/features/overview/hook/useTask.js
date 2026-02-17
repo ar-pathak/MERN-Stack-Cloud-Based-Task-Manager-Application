@@ -27,19 +27,19 @@ export const useTask = () => {
 
     const fetchGlobalTasks = useCallback(async () => {
         const { success, data } = await execute(taskService.getAllGlobalTasks);
-        if (success) setTasks(data);
+        if (success) setTasks(Array.isArray(data) ? data : []);
         return { success, data };
     }, [execute]);
 
     const fetchWorkspaceTasks = useCallback(async (workspaceId) => {
         const { success, data } = await execute(taskService.getWorkspaceTasks, workspaceId);
-        if (success) setTasks(data);
+        if (success) setTasks(Array.isArray(data) ? data : []);
         return { success, data };
     }, [execute]);
 
     const fetchProjectTasks = useCallback(async (workspaceId, projectId) => {
         const { success, data } = await execute(taskService.getProjectTasks, workspaceId, projectId);
-        if (success) setTasks(data);
+        if (success) setTasks(Array.isArray(data) ? data : []);
         return { success, data };
     }, [execute]);
 
@@ -53,19 +53,19 @@ export const useTask = () => {
 
     const createGlobalTask = useCallback(async (taskData) => {
         const { success, data } = await execute(taskService.createGlobalTask, taskData);
-        if (success) setTasks(prev => [data, ...prev]);
+        if (success && data?._id) setTasks(prev => [data, ...prev]);
         return { success, data };
     }, [execute]);
 
     const createWorkspaceTask = useCallback(async (workspaceId, taskData) => {
         const { success, data } = await execute(taskService.createWorkspaceTask, workspaceId, taskData);
-        if (success) setTasks(prev => [data, ...prev]);
+        if (success && data?._id) setTasks(prev => [data, ...prev]);
         return { success, data };
     }, [execute]);
 
     const createProjectTask = useCallback(async (workspaceId, projectId, taskData) => {
         const { success, data } = await execute(taskService.createProjectTask, workspaceId, projectId, taskData);
-        if (success) setTasks(prev => [data, ...prev]);
+        if (success && data?._id) setTasks(prev => [data, ...prev]);
         return { success, data };
     }, [execute]);
 
@@ -160,8 +160,7 @@ export const useTask = () => {
 
     const restoreDeletedTask = useCallback(async (taskId) => {
         const { success, data } = await execute(taskService.restoreTask, taskId);
-        if (success) {
-            // Add back to list if appropriate, or just return success
+        if (success && data?._id) {
             setTasks(prev => [data, ...prev]);
         }
         return { success, data };

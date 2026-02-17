@@ -21,6 +21,7 @@ const HelpSupportPage = lazy(() => import("../features/main/features/support/pag
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
 const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"));
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"));
+const WorkspaceInviteAcceptPage = lazy(() => import("../features/workspace/WorkspaceInviteAcceptPage.jsx"));
 
 const withSuspense = (Component) => (
   <Suspense fallback={<LoadingPage />}>
@@ -41,6 +42,10 @@ const router = createBrowserRouter([
       {
         path: "email-verification/:token",
         element: withSuspense(VerifyEmailPage),
+      },
+      {
+        path: "invites/accept/:token",
+        element: withSuspense(WorkspaceInviteAcceptPage),
       },
 
       // Public routes (only for non-auth users)

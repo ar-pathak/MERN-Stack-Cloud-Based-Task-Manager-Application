@@ -47,11 +47,14 @@ const checkCanCreateTask = () => {
         userId,
         workspaceId,
         projectId,
-        teamId
+        teamId,
+        enforceWorkspaceAdminOnly: true
       });
 
       if (!allowed) {
-        return res.status(403).json({ message: "Permission denied" });
+        return res.status(403).json({
+          message: "Only workspace owners and admins can create tasks"
+        });
       }
 
       next();

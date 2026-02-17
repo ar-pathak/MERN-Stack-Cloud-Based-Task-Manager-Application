@@ -7,6 +7,7 @@ const User = require('../../models/user');
 const Subtask = require('../../models/subtasks');
 const Project = require('../../models/project');
 const Workspace = require('../../models/workspace');
+const WorkspaceMember = require('../../models/workspaceMember');
 // Import Chat models
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
@@ -34,46 +35,135 @@ const loadTaskContext = async (task, session = null) => {
     return { project, workspace };
 };
 
+const ensureProjectScope = async (projectId, workspaceId, session = null) => {
+    if (!projectId) {
+        return { project: null, workspaceId: workspaceId || null };
+    }
+
+    const projectQuery = Project.findById(projectId).select('workspace members owner name chatId');
+    const project = await withSession(projectQuery, session);
+    if (!project) {
+        throw new Error("Project not found");
+    }
+
+    if (workspaceId && String(project.workspace) !== String(workspaceId)) {
+        throw new Error("Project does not belong to workspace");
+    }
+
+    return { project, workspaceId: String(project.workspace) };
+};
+
+const getAllowedAssigneeIdsForScope = async ({ workspaceId = null, project = null, session = null }) => {
+    if (!workspaceId && !project) {
+        return new Set();
+    }
+
+    const allowed = new Set();
+
+    if (project) {
+        allowed.add(String(project.owner));
+        for (const member of project.members || []) {
+            allowed.add(String(member.user));
+        }
+    }
+
+    if (workspaceId) {
+        const wsMembersQuery = WorkspaceMember.find({ workspace: workspaceId }).select('user');
+        const wsMembers = await withSession(wsMembersQuery, session).lean();
+        wsMembers.forEach((member) => allowed.add(String(member.user)));
+    }
+
+    return allowed;
+};
+
+const normalizeUniqueIds = (ids = []) => {
+    const unique = [];
+    const seen = new Set();
+    for (const id of ids) {
+        const key = String(id);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(id);
+    }
+    return unique;
+};
+
+const validateAssigneesForScope = (assigneeIds, allowedIds, contextLabel = "scope") => {
+    if (!assigneeIds?.length) return;
+
+    const invalidIds = assigneeIds.filter((id) => !allowedIds.has(String(id)));
+    if (invalidIds.length > 0) {
+        throw new Error(`Some assignees do not belong to the ${contextLabel}`);
+    }
+};
+
 const taskService = {
     createTask: async (userId, taskData, scope = {}) => {
+        const { project, workspaceId: scopedWorkspaceId } = await ensureProjectScope(
+            scope.projectId || null,
+            scope.workspaceId || null
+        );
+
+        const workspaceId = scopedWorkspaceId || null;
+
+        if (workspaceId) {
+            const workspace = await Workspace.findById(workspaceId).select('_id');
+            if (!workspace) {
+                throw new Error("Workspace not found");
+            }
+        }
+
         const existingTask = await Task.findOne({
             createdBy: userId,
             title: taskData.title,
-            workspace: scope.workspaceId || null,
+            workspace: workspaceId,
             project: scope.projectId || null,
+            status: { $ne: "deleted" }
         });
 
         if (existingTask) {
             throw new Error("Task with this name already exists in this scope");
         }
 
-        // 1. Prepare initial Chat members (Creator + assigned users)
-        const initialMembers = new Set([userId]);
-        if (taskData.assignees && taskData.assignees.length) {
-            taskData.assignees.forEach(id => initialMembers.add(id));
+        const normalizedAssignees = normalizeUniqueIds(taskData.assignees || []);
+        const allowedAssignees = await getAllowedAssigneeIdsForScope({
+            workspaceId,
+            project
+        });
+
+        if (!workspaceId && !scope.projectId) {
+            const invalidGlobalAssignees = normalizedAssignees.filter((id) => String(id) !== String(userId));
+            if (invalidGlobalAssignees.length > 0) {
+                throw new Error("Global tasks can only be assigned to yourself");
+            }
+        } else {
+            validateAssigneesForScope(
+                normalizedAssignees,
+                allowedAssignees,
+                scope.projectId ? "project workspace" : "workspace"
+            );
         }
 
-        // 2. Create Task Chat (UPDATED)
+        // Prepare initial Chat members (Creator + assigned users)
+        const initialMembers = new Set([String(userId)]);
+        normalizedAssignees.forEach((id) => initialMembers.add(String(id)));
+
         const chat = await Chat.create({
             type: "group",
-            name: taskData.title, // Chat name matches Task title
+            name: taskData.title,
             members: Array.from(initialMembers),
             admin: userId,
         });
 
-        // 3. Create Task with chatId
         const task = await Task.create({
             ...taskData,
+            assignees: normalizedAssignees,
             createdBy: userId,
-            workspace: scope.workspaceId || null,
+            workspace: workspaceId,
             project: scope.projectId || null,
-            chatId: chat._id // Store the chat ID
+            chatId: chat._id
         });
 
-        const project = scope.projectId
-            ? await Project.findById(scope.projectId).select('name chatId workspace').lean()
-            : null;
-        const workspaceId = scope.workspaceId || project?.workspace || null;
         const workspace = workspaceId
             ? await Workspace.findById(workspaceId).select('name chatId').lean()
             : null;
@@ -102,7 +192,12 @@ const taskService = {
 
         await touchParents(task);
 
-        return task;
+        return await Task.findById(task._id)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
     },
 
     updateTask: async (userId, taskId, data) => {
@@ -119,6 +214,21 @@ const taskService = {
         }
 
         const oldTitle = task.title;
+
+        if (data.title && data.title !== task.title) {
+            const duplicateTask = await Task.findOne({
+                _id: { $ne: task._id },
+                createdBy: task.createdBy,
+                title: data.title,
+                workspace: task.workspace || null,
+                project: task.project || null,
+                status: { $ne: "deleted" }
+            }).lean();
+
+            if (duplicateTask) {
+                throw new Error("Task with this name already exists in this scope");
+            }
+        }
 
         await Task.updateOne(
             { _id: taskId },
@@ -158,7 +268,14 @@ const taskService = {
 
         await touchParents(task);
 
-        return { message: "Task updated successfully" };
+        const updatedTask = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
+
+        return { message: "Task updated successfully", task: updatedTask };
     },
 
     addTaskAssignees: async (userId, taskId, assigneesData) => {
@@ -168,12 +285,13 @@ const taskService = {
             throw new Error("Task not found");
         }
 
-        const isUserValid = canCreateTask(
+        const isCreator = String(task.createdBy) === String(userId);
+        const isUserValid = isCreator || await canCreateTask({
             userId,
-            task.workspace,
-            task.project,
-            task.team
-        );
+            workspaceId: task.workspace || null,
+            projectId: task.project || null,
+            teamId: task.team || null
+        });
 
         if (!isUserValid) {
             throw new Error("Permission denied");
@@ -199,6 +317,24 @@ const taskService = {
 
             const userIdsFromNames = usersFound.map(u => u._id);
             targetAssigneeIds = [...targetAssigneeIds, ...userIdsFromNames];
+        }
+
+        targetAssigneeIds = normalizeUniqueIds(targetAssigneeIds);
+
+        if (targetAssigneeIds.length > 0) {
+            if (!task.workspace && !task.project) {
+                const invalidGlobalAssignees = targetAssigneeIds.filter((id) => String(id) !== String(userId));
+                if (invalidGlobalAssignees.length > 0) {
+                    throw new Error("Global tasks can only be assigned to yourself");
+                }
+            } else {
+                const { project, workspaceId } = await ensureProjectScope(task.project || null, task.workspace || null);
+                const allowedAssignees = await getAllowedAssigneeIdsForScope({
+                    workspaceId,
+                    project
+                });
+                validateAssigneesForScope(targetAssigneeIds, allowedAssignees, task.project ? "project workspace" : "workspace");
+            }
         }
 
         // 3. Prepare Update Query
@@ -254,7 +390,14 @@ const taskService = {
 
         await touchParents(task);
 
-        return { message: "Added assignees to task" };
+        const updatedTask = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
+
+        return { message: "Added assignees to task", task: updatedTask };
     },
 
     removeTaskAssignees: async (userId, taskId, data) => {
@@ -264,12 +407,13 @@ const taskService = {
             throw new Error("Task not found");
         }
 
-        const isUserValid = canCreateTask(
+        const isCreator = String(task.createdBy) === String(userId);
+        const isUserValid = isCreator || await canCreateTask({
             userId,
-            task.workspace,
-            task.project,
-            task.team
-        );
+            workspaceId: task.workspace || null,
+            projectId: task.project || null,
+            teamId: task.team || null
+        });
 
         if (!isUserValid) {
             throw new Error("Permission denied");
@@ -352,7 +496,14 @@ const taskService = {
 
             await touchParents(task);
 
-            return { message: "Removed assignees from task and its subtasks" };
+            const updatedTask = await Task.findById(taskId)
+                .populate('createdBy', 'name email')
+                .populate('assignees', 'name email isOnline')
+                .populate('assigneesTeams')
+                .populate('project', 'name workspace')
+                .populate('workspace', 'name');
+
+            return { message: "Removed assignees from task and its subtasks", task: updatedTask };
 
         } catch (error) {
             await session.abortTransaction();
@@ -407,7 +558,26 @@ const taskService = {
         });
 
         await touchParents(task);
-        return { message: "Task status updated successfully" };
+
+        const updatedTask = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
+
+        return { message: "Task status updated successfully", task: updatedTask };
+    },
+
+    toggleTaskCompletion: async (userId, taskId) => {
+        const task = await Task.findById(taskId);
+
+        if (!task) {
+            throw new Error("Task not found");
+        }
+
+        const nextStatus = task.status === "completed" ? "active" : "completed";
+        return await taskService.changeTaskStatus(userId, taskId, nextStatus);
     },
 
     deleteTask: async (userId, taskId) => {
@@ -506,7 +676,14 @@ const taskService = {
 
         await touchParents(task);
 
-        return { message: "Task restored successfully" };
+        const restoredTask = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
+
+        return { message: "Task restored successfully", task: restoredTask };
     },
 
     permanentDeleteTask: async (userId, taskId) => {
@@ -579,11 +756,8 @@ const taskService = {
             workspace: null,
             team: null,
             project: null,
+            status: { $ne: "deleted" }
         });
-
-        if (!globalLevelTasks.length) {
-            throw new Error("Task not found");
-        }
 
         return globalLevelTasks;
     },
@@ -610,7 +784,7 @@ const taskService = {
     },
 
     getTasksByWorkspace: async (workspaceId) => {
-        const tasks = await Task.find({ workspace: workspaceId, deleted: false })
+        const tasks = await Task.find({ workspace: workspaceId, status: { $ne: "deleted" } })
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
             .populate('project', 'name')
@@ -620,7 +794,7 @@ const taskService = {
     },
 
     getTasksByProject: async (projectId) => {
-        const tasks = await Task.find({ project: projectId, deleted: false })
+        const tasks = await Task.find({ project: projectId, status: { $ne: "deleted" } })
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
             .populate('workspace', 'name')

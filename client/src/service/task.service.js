@@ -1,13 +1,11 @@
 import api from "../config/axios";
 
-/**
- * Create Task at Global Level
- * Route: POST /api/tasks/createTasksAtGlobalLevel
- */
+const unwrap = (response) => response?.data?.data ?? response?.data ?? null;
+
 export const createGlobalTask = async (taskData) => {
     try {
         const response = await api.post(`/api/tasks/createTasksAtGlobalLevel`, taskData);
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to create global task",
@@ -16,17 +14,13 @@ export const createGlobalTask = async (taskData) => {
     }
 };
 
-/**
- * Create Task at Workspace Level
- * Route: POST /api/tasks/workspace/:workspaceId/createTasksAtWorkspaceLevel
- */
 export const createWorkspaceTask = async (workspaceId, taskData) => {
     try {
         const response = await api.post(
             `/api/tasks/workspace/${workspaceId}/createTasksAtWorkspaceLevel`,
             taskData
         );
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to create workspace task",
@@ -35,17 +29,13 @@ export const createWorkspaceTask = async (workspaceId, taskData) => {
     }
 };
 
-/**
- * Create Task at Project Level
- * Route: POST /api/tasks/workspace/:workspaceId/project/:projectId/createTasksAtProjectLevel
- */
 export const createProjectTask = async (workspaceId, projectId, taskData) => {
     try {
         const response = await api.post(
             `/api/tasks/workspace/${workspaceId}/project/${projectId}/createTasksAtProjectLevel`,
             taskData
         );
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to create project task",
@@ -54,14 +44,10 @@ export const createProjectTask = async (workspaceId, projectId, taskData) => {
     }
 };
 
-/**
- * Get Task by ID
- * Route: GET /api/tasks/:taskId
- */
 export const getTaskById = async (taskId) => {
     try {
         const response = await api.get(`/api/tasks/${taskId}`);
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch task",
@@ -70,15 +56,10 @@ export const getTaskById = async (taskId) => {
     }
 };
 
-/**
- * Update Task
- * Route: PATCH /api/tasks/:taskId
- * FIX: Added missing update method
- */
 export const updateTask = async (taskId, taskData) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/update`, taskData);
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update task",
@@ -87,14 +68,10 @@ export const updateTask = async (taskId, taskData) => {
     }
 };
 
-/**
- * Change Task Status
- * Route: PATCH /api/tasks/:taskId/status
- */
 export const updateTaskStatus = async (taskId, status) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/status`, { status });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to update status",
@@ -103,14 +80,10 @@ export const updateTaskStatus = async (taskId, status) => {
     }
 };
 
-/**
- * Soft Delete Task
- * Route: DELETE /api/tasks/:taskId/softDelete
- */
 export const deleteTask = async (taskId) => {
     try {
         const response = await api.delete(`/api/tasks/${taskId}/softDelete`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to delete task",
@@ -119,15 +92,10 @@ export const deleteTask = async (taskId) => {
     }
 };
 
-/**
- * Hard Delete Task (Permanent)
- * Route: DELETE /api/tasks/:taskId
- * FIX: Added hard delete for permanent removal
- */
 export const hardDeleteTask = async (taskId) => {
     try {
         const response = await api.delete(`/api/tasks/${taskId}/permanentDelete`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to permanently delete task",
@@ -136,15 +104,10 @@ export const hardDeleteTask = async (taskId) => {
     }
 };
 
-/**
- * Restore Deleted Task
- * Route: PATCH /api/tasks/:taskId/restore
- * FIX: Added restore method for soft-deleted tasks
- */
 export const restoreTask = async (taskId) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/restore`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to restore task",
@@ -153,15 +116,10 @@ export const restoreTask = async (taskId) => {
     }
 };
 
-/**
- * Toggle Task Completion
- * Route: PATCH /api/tasks/:taskId/toggle
- * FIX: Added toggle completion method
- */
 export const toggleTaskCompletion = async (taskId) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/toggle`);
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to toggle task completion",
@@ -170,15 +128,10 @@ export const toggleTaskCompletion = async (taskId) => {
     }
 };
 
-/**
- * Assign Users to Task
- * Route: PATCH /api/tasks/:taskId/assign
- * FIX: Added method to assign users
- */
 export const assignUsersToTask = async (taskId, assignees) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { assignees });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to assign users",
@@ -186,10 +139,11 @@ export const assignUsersToTask = async (taskId, assignees) => {
         };
     }
 };
+
 export const assignTeamsToTask = async (taskId, assigneesTeams) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { assigneesTeams });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to assign teams",
@@ -197,10 +151,11 @@ export const assignTeamsToTask = async (taskId, assigneesTeams) => {
         };
     }
 };
+
 export const assignUsersToTaskByUsername = async (taskId, usernames) => {
     try {
         const response = await api.patch(`/api/tasks/${taskId}/assignees/add`, { usernames });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to assign users",
@@ -214,7 +169,7 @@ export const removeAssignUsersFromTask = async (taskId, assignees) => {
         const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
             data: { assignees }
         });
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to remove assignees",
@@ -222,6 +177,7 @@ export const removeAssignUsersFromTask = async (taskId, assignees) => {
         };
     }
 };
+
 export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
     try {
         const teamsArray = Array.isArray(assigneesTeams)
@@ -230,14 +186,11 @@ export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
                 ? [assigneesTeams]
                 : undefined;
 
-        const response = await api.delete(
-            `/api/tasks/${taskId}/assignees/remove`,
-            {
-                data: { assigneesTeams: teamsArray }
-            }
-        );
+        const response = await api.delete(`/api/tasks/${taskId}/assignees/remove`, {
+            data: { assigneesTeams: teamsArray }
+        });
 
-        return response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to remove assignees",
@@ -246,10 +199,6 @@ export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
     }
 };
 
-
-/**
- * Get Tasks based on scope (Helper function)
- */
 export const getTasks = async (scope, id, secondaryId = null) => {
     try {
         let url = '';
@@ -258,21 +207,17 @@ export const getTasks = async (scope, id, secondaryId = null) => {
         else if (scope === 'project') url = `/api/tasks/workspaces/${id}/projects/${secondaryId}/tasks`;
 
         const response = await api.get(url);
-        return response.data?.data || response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         console.error("Error fetching tasks:", error);
         return [];
     }
 };
 
-/**
- * Get All Global Level Tasks
- * Route: GET /api/tasks/getAllGlobalLevelTasks
- */
 export const getAllGlobalTasks = async () => {
     try {
         const response = await api.get('/api/tasks/getAllGlobalLevelTasks');
-        return response.data?.data || response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch global tasks",
@@ -281,14 +226,10 @@ export const getAllGlobalTasks = async () => {
     }
 };
 
-/**
- * Get Tasks by Workspace
- * Route: GET /api/tasks/workspaces/:workspaceId/tasks
- */
 export const getWorkspaceTasks = async (workspaceId) => {
     try {
         const response = await api.get(`/api/tasks/workspaces/${workspaceId}/tasks`);
-        return response.data?.data || response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch workspace tasks",
@@ -297,14 +238,10 @@ export const getWorkspaceTasks = async (workspaceId) => {
     }
 };
 
-/**
- * Get Tasks by Project
- * Route: GET /api/tasks/workspaces/:workspaceId/projects/:projectId/tasks
- */
 export const getProjectTasks = async (workspaceId, projectId) => {
     try {
         const response = await api.get(`/api/tasks/workspaces/${workspaceId}/projects/${projectId}/tasks`);
-        return response.data?.data || response.data || [];
+        return unwrap(response) || [];
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to fetch project tasks",
@@ -313,13 +250,10 @@ export const getProjectTasks = async (workspaceId, projectId) => {
     }
 };
 
-/**
- * Leave Task (Self-Removal)
- */
 export const leaveTask = async (taskId) => {
     try {
         const response = await api.post(`/api/tasks/${taskId}/leave`);
-        return response.data?.data || response.data;
+        return unwrap(response);
     } catch (error) {
         throw {
             message: error.response?.data?.message || "Failed to leave task",

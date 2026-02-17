@@ -73,6 +73,9 @@ const SettingsPage = () => {
             allowTagging: true,
             allowMentions: true,
             disablePublicMessages: false
+        },
+        workspace: {
+            autoApproveWorkspaceInvites: true
         }
     });
 
@@ -152,6 +155,11 @@ const SettingsPage = () => {
                     allowTagging: Boolean(nextPreferences?.privacy?.allowTagging ?? true),
                     allowMentions: Boolean(nextPreferences?.privacy?.allowMentions ?? true),
                     disablePublicMessages: Boolean(nextPreferences?.privacy?.disablePublicMessages ?? false)
+                },
+                workspace: {
+                    autoApproveWorkspaceInvites: Boolean(
+                        nextPreferences?.workspace?.autoApproveWorkspaceInvites ?? true
+                    )
                 }
             });
 
@@ -256,6 +264,26 @@ const SettingsPage = () => {
         }
     };
 
+    const updateWorkspacePreference = async (key) => {
+        const currentValue = Boolean(preferences?.workspace?.[key]);
+        const nextValue = !currentValue;
+        const nextWorkspace = {
+            ...(preferences?.workspace || {}),
+            [key]: nextValue
+        };
+
+        setSavingKey(`workspace.${key}`);
+        try {
+            await updatePreferences({ workspace: { [key]: nextValue } });
+            setPreferences((previous) => ({ ...previous, workspace: nextWorkspace }));
+            await refreshUser?.();
+        } catch (error) {
+            toast.error(error?.message || "Failed to update workspace setting");
+        } finally {
+            setSavingKey("");
+        }
+    };
+
     const handleUnblock = async (targetUserId) => {
         if (!targetUserId || unblockingId === targetUserId) return;
         setUnblockingId(targetUserId);
@@ -282,6 +310,7 @@ const SettingsPage = () => {
             allowMentions: savingKey === "privacy.allowMentions",
             allowTagging: savingKey === "privacy.allowTagging",
             showOnlineStatus: savingKey === "privacy.showOnlineStatus",
+            autoApproveWorkspaceInvites: savingKey === "workspace.autoApproveWorkspaceInvites",
             follows: savingKey === "notifications.follows",
             comments: savingKey === "notifications.comments",
             likes: savingKey === "notifications.likes",
@@ -403,6 +432,22 @@ const SettingsPage = () => {
                             checked={Boolean(preferences?.privacy?.showOnlineStatus)}
                             onChange={() => updatePrivacyPreference("showOnlineStatus")}
                             disabled={loadingState.showOnlineStatus}
+                        />
+                    </div>
+                </section>
+
+                <section className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-sky-300" />
+                        <h2 className="text-sm font-semibold text-slate-100">Workspace Collaboration</h2>
+                    </div>
+                    <div className="space-y-2.5">
+                        <ToggleRow
+                            label="Auto-approve workspace adds"
+                            description="When enabled, teammates adding your username can directly add you to workspaces."
+                            checked={Boolean(preferences?.workspace?.autoApproveWorkspaceInvites)}
+                            onChange={() => updateWorkspacePreference("autoApproveWorkspaceInvites")}
+                            disabled={loadingState.autoApproveWorkspaceInvites}
                         />
                     </div>
                 </section>

@@ -24,6 +24,7 @@ const NotificationDropdown = () => {
         markAllRead,
         followBack,
         followRequestAction,
+        workspaceInviteAction,
         ensureRead
     } = useNotificationCenter({ enabled: open, limit: 25 });
 
@@ -210,6 +211,50 @@ const NotificationDropdown = () => {
                                                         ? "..."
                                                         : "Follow back"}
                                                 </button>
+                                            )}
+
+                                        {String(notification?.metadata?.kind || "") ===
+                                            "workspace_invite_request" &&
+                                            !notification?.metadata?.requestState &&
+                                            Boolean(notification?.metadata?.inviteId) && (
+                                                <>
+                                                    <button
+                                                        onClick={() =>
+                                                            workspaceInviteAction(
+                                                                notification,
+                                                                "accept"
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            actionLoadingKey ===
+                                                            `workspace:accept:${notification._id}`
+                                                        }
+                                                        className="rounded-md border border-emerald-500/35 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-60"
+                                                    >
+                                                        {actionLoadingKey ===
+                                                        `workspace:accept:${notification._id}`
+                                                            ? "..."
+                                                            : "Join"}
+                                                    </button>
+                                                    <button
+                                                        onClick={() =>
+                                                            workspaceInviteAction(
+                                                                notification,
+                                                                "reject"
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            actionLoadingKey ===
+                                                            `workspace:reject:${notification._id}`
+                                                        }
+                                                        className="rounded-md border border-rose-500/35 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/15 disabled:opacity-60"
+                                                    >
+                                                        {actionLoadingKey ===
+                                                        `workspace:reject:${notification._id}`
+                                                            ? "..."
+                                                            : "Reject"}
+                                                    </button>
+                                                </>
                                             )}
                                     </div>
                                 </div>

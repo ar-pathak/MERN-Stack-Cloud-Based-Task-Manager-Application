@@ -41,7 +41,7 @@ export const useSubtask = () => {
     const fetchSubtasks = useCallback(async (taskId) => {
         const { success, data } = await execute(subtaskService.getSubtasksByTask, taskId);
         if (success) {
-            setSubtasks(data || []);
+            setSubtasks(Array.isArray(data) ? data : []);
         }
         return { success, data };
     }, [execute]);
@@ -56,7 +56,7 @@ export const useSubtask = () => {
 
     const createNewSubtask = useCallback(async (subtaskData) => {
         const { success, data } = await execute(subtaskService.createSubtask, subtaskData);
-        if (success) {
+        if (success && data?._id) {
             setSubtasks(prev => [...prev, data]);
         }
         return { success, data };
@@ -65,15 +65,13 @@ export const useSubtask = () => {
     const updateSubtaskDetails = useCallback(async (subtaskId, subtaskData) => {
         const { success, data } = await execute(subtaskService.updateSubtask, subtaskId, subtaskData);
         if (success) {
-            const updatedSubtask = data;
-
             // Update current subtask if it matches
             if (currentSubtask?._id === subtaskId) {
-                setCurrentSubtask(updatedSubtask);
+                setCurrentSubtask(data);
             }
 
             // Update the list item
-            setSubtasks(prev => prev.map(st => st._id === subtaskId ? updatedSubtask : st));
+            setSubtasks(prev => prev.map(st => st._id === subtaskId ? data : st));
         }
         return { success, data };
     }, [execute, currentSubtask]);

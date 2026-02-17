@@ -28,8 +28,7 @@ export const useProject = () => {
     const fetchProjects = useCallback(async (workspaceId) => {
         const { success, data } = await execute(projectService.getProjectsByWorkspace, workspaceId);
         if (success) {
-            // Ensure we always set an array, even if API returns null/undefined
-            setProjects(data?.data || data || []);
+            setProjects(Array.isArray(data) ? data : []);
         }
         return { success, data };
     }, [execute]);
@@ -37,7 +36,7 @@ export const useProject = () => {
     const fetchProjectById = useCallback(async (workspaceId, projectId) => {
         const { success, data } = await execute(projectService.getProjectById, workspaceId, projectId);
         if (success) {
-            setCurrentProject(data?.data || data);
+            setCurrentProject(data || null);
         }
         return { success, data };
     }, [execute]);
@@ -45,8 +44,9 @@ export const useProject = () => {
     const createNewProject = useCallback(async (workspaceId, projectData) => {
         const { success, data } = await execute(projectService.createProject, workspaceId, projectData);
         if (success) {
-            const newProject = data?.data || data;
-            setProjects(prev => [...prev, newProject]);
+            if (data?._id) {
+                setProjects(prev => [...prev, data]);
+            }
         }
         return { success, data };
     }, [execute]);
@@ -54,21 +54,18 @@ export const useProject = () => {
     const updateProjectDetails = useCallback(async (workspaceId, projectId, projectData) => {
         const { success, data } = await execute(projectService.updateProject, workspaceId, projectId, projectData);
         if (success) {
-            const updatedProject = data?.data || data;
-
-            // Update current project if it's the one being edited
             if (currentProject?._id === projectId) {
-                setCurrentProject(updatedProject);
+                setCurrentProject(data);
             }
 
-            // Update the list item
-            setProjects(prev => prev.map(p => p._id === projectId ? updatedProject : p));
+            setProjects(prev => prev.map(p => p._id === projectId ? { ...p, ...data } : p));
         }
         return { success, data };
     }, [execute, currentProject]);
 
-    const deleteProjectById = useCallback(async (projectId) => {
-        const { success } = await execute(projectService.deleteProject, projectId);
+    const deleteProjectById = useCallback(async (workspaceIdOrProjectId, maybeProjectId) => {
+        const projectId = maybeProjectId || workspaceIdOrProjectId;
+        const { success } = await execute(projectService.deleteProject, workspaceIdOrProjectId, maybeProjectId);
         if (success) {
             setProjects(prev => prev.filter(p => p._id !== projectId));
             if (currentProject?._id === projectId) setCurrentProject(null);

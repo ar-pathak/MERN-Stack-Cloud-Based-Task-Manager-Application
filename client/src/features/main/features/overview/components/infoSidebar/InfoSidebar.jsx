@@ -103,7 +103,8 @@ const InfoSidebar = ({ item: initialItem, overview, onClose, onUpdate }) => {
                     result = await updateWorkspace(itemId, updates);
                     break;
                 case 'project': {
-                    result = await updateProject(item?.workspace, itemId, updates);
+                    const workspaceId = item?.workspace?._id || item?.workspace;
+                    result = await updateProject(workspaceId, itemId, updates);
                     break;
                 }
                 case 'task':

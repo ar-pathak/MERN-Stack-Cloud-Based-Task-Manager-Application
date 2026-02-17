@@ -47,9 +47,9 @@ const AssignTeamModal = ({
                 } else if (item.type === 'task' && taskData?.project) {
                     const res = await fetchProjectTeams(taskData.workspace._id, taskData.project._id);
                    
-                    if (res?.data?.data) {
+                    if (res?.data) {
                         // Filter out already assigned teams
-                        const notAssigned = res.data.data.filter(
+                        const notAssigned = res.data.filter(
                             t => !currentTeamIds.includes(t._id || t.id)
                         );
                         setAvailableTeams(notAssigned);

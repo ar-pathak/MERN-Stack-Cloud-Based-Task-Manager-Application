@@ -5,7 +5,9 @@ const {
     updateWorkspaceSchema,
     updateMemberRoleSchema,
     sendInviteSchema,
-    addMemberSchema
+    addMemberSchema,
+    transferOwnershipSchema,
+    respondInviteSchema
 } = require('./workspace.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
@@ -116,7 +118,11 @@ const workspaceController = {
                 requesterId: req.user._id
             });
 
-            return sendSuccess(res, member, 'Member added successfully', 201);
+            const message = member?.mode === "invite_request"
+                ? "Invite request sent successfully"
+                : "Member added successfully";
+
+            return sendSuccess(res, member, message, 201);
         } catch (error) {
             return handleError(error, res);
         }
@@ -201,7 +207,7 @@ const workspaceController = {
     sendInvite: async (req, res) => {
         try {
             const { workspaceId } = req.params;
-            const { email, role } = sendInviteSchema.parse(req.body);
+            const { email, role } = sendInviteSchema.parse(req.body || {});
 
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 return res.status(400).json({
@@ -210,13 +216,21 @@ const workspaceController = {
                 });
             }
 
+            if (!email && !req.file) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Provide an email or upload a CSV file"
+                });
+            }
+
             const invite = await workspaceService.sendInvite({
                 workspaceId,
                 email,
                 role,
-                invitedBy: req.user._id
+                invitedBy: req.user._id,
+                csvBuffer: req.file?.buffer || null
             });
-            return sendSuccess(res, invite, 'Invite sent successfully', 201);
+            return sendSuccess(res, invite, 'Invite processed successfully', 201);
         } catch (error) {
             return handleError(error, res);
         }
@@ -233,8 +247,39 @@ const workspaceController = {
                 });
             }
 
-            const workspaceId = await workspaceService.acceptInvite(token, req.user._id);
-            return sendSuccess(res, { workspaceId }, "Invite accepted successfully");
+            const workspace = await workspaceService.acceptInvite(token, req.user._id);
+            return sendSuccess(res, {
+                workspaceId: workspace?._id || null,
+                workspace
+            }, "Invite accepted successfully");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    respondInvite: async (req, res) => {
+        try {
+            const { inviteId } = req.params;
+            const { action } = respondInviteSchema.parse(req.body || {});
+
+            if (!mongoose.Types.ObjectId.isValid(inviteId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid invite ID"
+                });
+            }
+
+            const result = await workspaceService.respondInvite({
+                inviteId,
+                userId: req.user._id,
+                action
+            });
+
+            const message = action === "accept"
+                ? "Workspace invite accepted"
+                : "Workspace invite rejected";
+
+            return sendSuccess(res, result, message);
         } catch (error) {
             return handleError(error, res);
         }
@@ -262,20 +307,13 @@ const workspaceController = {
     transferOwnership: async (req, res) => {
         try {
             const { workspaceId } = req.params;
-            const { newOwnerId } = req.body;
             const currentOwnerId = req.user._id;
+            const { newOwnerId } = transferOwnershipSchema.parse(req.body);
 
             if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
                 return res.status(400).json({
                     success: false,
                     message: "Invalid workspace ID"
-                });
-            }
-
-            if (!mongoose.Types.ObjectId.isValid(newOwnerId)) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid user ID"
                 });
             }
 

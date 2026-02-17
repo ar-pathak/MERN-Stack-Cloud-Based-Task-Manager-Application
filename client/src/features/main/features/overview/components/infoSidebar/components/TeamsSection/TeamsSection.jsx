@@ -125,7 +125,7 @@ const TeamsSection = ({ item, taskData, onRefresh }) => {
             promises.push(teamsPromise);
 
             const results = await Promise.all(promises);
-            const teamsData = isWorkspace ? results[1]?.data : results?.[0]?.data?.data || results?.[0]?.data || [];
+            const teamsData = isWorkspace ? results[1]?.data || [] : results?.[0]?.data || [];
 
             setTeams(Array.isArray(teamsData) ? teamsData : []);
 

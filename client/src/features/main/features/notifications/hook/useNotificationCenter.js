@@ -14,6 +14,7 @@ import {
     followUser,
     rejectFollowRequest
 } from "../../../../../service/follow.service";
+import { respondWorkspaceInvite } from "../../../../../service/workspace.service";
 import * as socketService from "../../../../../service/Chat.socket.service";
 
 const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
@@ -353,6 +354,76 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         [loadUnreadCount]
     );
 
+    const workspaceInviteAction = useCallback(
+        async (notification, action) => {
+            const notificationId = notification?._id;
+            const inviteId = notification?.metadata?.inviteId;
+            if (!notificationId || !inviteId) return null;
+
+            const actionKey = `workspace:${action}:${notificationId}`;
+            setActionLoadingKey(actionKey);
+
+            try {
+                const result = await respondWorkspaceInvite({ inviteId, action });
+                await markNotificationRead(notificationId);
+
+                setNotifications((previous) =>
+                    previous.map((entry) =>
+                        entry._id === notificationId
+                            ? {
+                                  ...entry,
+                                  read: true,
+                                  readAt: new Date().toISOString(),
+                                  metadata: {
+                                      ...(entry.metadata || {}),
+                                      requestState: action === "accept" ? "accepted" : "rejected"
+                                  }
+                              }
+                            : entry
+                    )
+                );
+                loadUnreadCount();
+                return result;
+            } catch (error) {
+                const alreadyHandled =
+                    Number(error?.status) === 404
+                    || String(error?.message || "").toLowerCase().includes("processed")
+                    || String(error?.message || "").toLowerCase().includes("not found");
+
+                if (alreadyHandled) {
+                    try {
+                        await markNotificationRead(notificationId);
+                    } catch {
+                        // noop
+                    }
+                    setNotifications((previous) =>
+                        previous.map((entry) =>
+                            entry._id === notificationId
+                                ? {
+                                      ...entry,
+                                      read: true,
+                                      readAt: new Date().toISOString(),
+                                      metadata: {
+                                          ...(entry.metadata || {}),
+                                          requestState: "expired"
+                                      }
+                                  }
+                                : entry
+                        )
+                    );
+                    loadUnreadCount();
+                    return null;
+                }
+
+                console.error("Failed workspace invite action", error);
+                return null;
+            } finally {
+                setActionLoadingKey("");
+            }
+        },
+        [loadUnreadCount]
+    );
+
     return {
         loading,
         notifications,
@@ -366,7 +437,8 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         removeNotification,
         markAllRead,
         followBack,
-        followRequestAction
+        followRequestAction,
+        workspaceInviteAction
     };
 };
 

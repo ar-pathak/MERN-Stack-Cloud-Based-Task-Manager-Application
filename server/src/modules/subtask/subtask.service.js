@@ -35,6 +35,40 @@ const loadSubtaskContext = async (subtaskOrTaskId, session = null) => {
     return { task, project, workspace };
 };
 
+const normalizeUniqueIds = (values = []) => {
+    const unique = [];
+    const seen = new Set();
+    values.forEach((value) => {
+        const id = String(value);
+        if (seen.has(id)) return;
+        seen.add(id);
+        unique.push(value);
+    });
+    return unique;
+};
+
+const toAssigneeArray = (assignedTo) => {
+    if (!assignedTo) return [];
+    if (Array.isArray(assignedTo)) return normalizeUniqueIds(assignedTo);
+    return [assignedTo];
+};
+
+const getAllowedAssigneeIdsForTask = (task) => {
+    const allowed = new Set([String(task.createdBy)]);
+    (task.assignees || []).forEach((assigneeId) => allowed.add(String(assigneeId)));
+    return allowed;
+};
+
+const validateAssigneesForTask = (task, assigneeIds) => {
+    if (!assigneeIds?.length) return;
+
+    const allowedAssignees = getAllowedAssigneeIdsForTask(task);
+    const hasInvalidAssignee = assigneeIds.some((id) => !allowedAssignees.has(String(id)));
+    if (hasInvalidAssignee) {
+        throw new Error('Subtask assignees must already be assigned to the parent task');
+    }
+};
+
 class SubtaskService {
     /**
      * Create a new subtask
@@ -46,19 +80,14 @@ class SubtaskService {
             throw new Error('Task not found');
         }
 
+        const assignedUsers = toAssigneeArray(assignedTo);
+        validateAssigneesForTask(task, assignedUsers);
+
         // Get the current count of subtasks for ordering
         const subtaskCount = await Subtask.countDocuments({ task: taskId });
 
         // 1. Prepare Initial Chat Members (Creator + Assigned User if any)
-        const chatMembers = [createdBy];
-        if (assignedTo) {
-            // Check if assignedTo is already in array (just in case) or single ID
-            if (Array.isArray(assignedTo)) {
-                chatMembers.push(...assignedTo);
-            } else {
-                chatMembers.push(assignedTo);
-            }
-        }
+        const chatMembers = [createdBy, ...assignedUsers];
         // Remove duplicates just in case
         const uniqueMembers = [...new Set(chatMembers.map(id => id.toString()))];
 
@@ -75,7 +104,7 @@ class SubtaskService {
             task: taskId,
             title,
             description,
-            assignedTo, // Assuming schema handles single ID or array based on your validation
+            assignedTo: assignedUsers,
             dueDate,
             order: subtaskCount,
             createdBy,
@@ -181,9 +210,21 @@ class SubtaskService {
         const allowedUpdates = ['title', 'description', 'assignedTo', 'dueDate', 'isHighPriority'];
         allowedUpdates.forEach(field => {
             if (updates[field] !== undefined) {
-                subtask[field] = updates[field];
+                if (field === 'assignedTo') {
+                    const assignedUsers = toAssigneeArray(updates.assignedTo);
+                    subtask[field] = assignedUsers;
+                } else {
+                    subtask[field] = updates[field];
+                }
             }
         });
+
+        if (updates.assignedTo !== undefined) {
+            const task = await Task.findById(subtask.task).select('createdBy assignees');
+            if (task) {
+                validateAssigneesForTask(task, subtask.assignedTo || []);
+            }
+        }
 
         await subtask.save();
 
@@ -197,8 +238,8 @@ class SubtaskService {
         // If assignedTo was updated directly via updateSubtask (replacing the list), 
         // we might need to sync chat members, but usually addAssignees/removeAssignees is preferred.
         // However, if assignedTo is passed here, let's sync strictly.
-        if (updates.assignedTo && subtask.chatId) {
-            const newAssignees = Array.isArray(updates.assignedTo) ? updates.assignedTo : [updates.assignedTo];
+        if (updates.assignedTo !== undefined && subtask.chatId) {
+            const newAssignees = toAssigneeArray(updates.assignedTo);
             // We generally add new people, not remove old ones indiscriminately in a simple update, 
             // but to be safe let's just addToSet.
             await Chat.findByIdAndUpdate(subtask.chatId, {
@@ -304,7 +345,7 @@ class SubtaskService {
     /**
      * Delete a subtask
      */
-    async deleteSubtask(subtaskId) {
+    async deleteSubtask(subtaskId, actorId = null) {
         const subtask = await Subtask.findById(subtaskId);
         if (!subtask) {
             throw new Error('Subtask not found');
@@ -318,9 +359,10 @@ class SubtaskService {
 
         try {
             const { task, project, workspace } = await loadSubtaskContext(subtask.task, session);
-            const actorLabel = await getUserLabel(subtask.createdBy, session);
+            const actionUserId = actorId || subtask.createdBy;
+            const actorLabel = await getUserLabel(actionUserId, session);
             await logActivity({
-                actorId: subtask.createdBy,
+                actorId: actionUserId,
                 action: "subtask.deleted",
                 level: "subtask",
                 workspaceId: task?.workspace || workspace?._id || null,
@@ -413,23 +455,33 @@ class SubtaskService {
         const subtask = await Subtask.findById(subtaskId);
         if (!subtask) throw new Error('Subtask not found');
 
+        const normalizedUserIds = normalizeUniqueIds(userIds || []);
+        if (!normalizedUserIds.length) {
+            throw new Error('At least one assignee is required');
+        }
+
+        const parentTask = await Task.findById(subtask.task).select('createdBy assignees');
+        if (parentTask) {
+            validateAssigneesForTask(parentTask, normalizedUserIds);
+        }
+
         // Add to set to prevent duplicates
         await Subtask.updateOne(
             { _id: subtaskId },
-            { $addToSet: { assignedTo: { $each: userIds } } }
+            { $addToSet: { assignedTo: { $each: normalizedUserIds } } }
         );
 
         // Add users to Subtask Chat (UPDATED)
         if (subtask.chatId) {
             await Chat.findByIdAndUpdate(subtask.chatId, {
-                $addToSet: { members: { $each: userIds } }
+                $addToSet: { members: { $each: normalizedUserIds } }
             });
         }
 
         const { task, project, workspace } = await loadSubtaskContext(subtask.task);
         const actionUserId = actorId || subtask.createdBy;
         const actorLabel = await getUserLabel(actionUserId);
-        const labels = await getUserLabels(userIds);
+        const labels = await getUserLabels(normalizedUserIds);
         await logActivity({
             actorId: actionUserId,
             action: "subtask.assignees_added",
@@ -442,7 +494,7 @@ class SubtaskService {
             mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
             message: `${actorLabel} assigned ${formatUserList(labels)} to subtask "${subtask.title}".`,
             meta: {
-                assigneeIds: userIds
+                assigneeIds: normalizedUserIds
             }
         });
 
@@ -456,22 +508,27 @@ class SubtaskService {
         const subtask = await Subtask.findById(subtaskId);
         if (!subtask) throw new Error('Subtask not found');
 
+        const normalizedUserIds = normalizeUniqueIds(userIds || []);
+        if (!normalizedUserIds.length) {
+            throw new Error('At least one assignee is required');
+        }
+
         await Subtask.updateOne(
             { _id: subtaskId },
-            { $pull: { assignedTo: { $in: userIds } } }
+            { $pull: { assignedTo: { $in: normalizedUserIds } } }
         );
 
         // Remove users from Subtask Chat (UPDATED)
         if (subtask.chatId) {
             await Chat.findByIdAndUpdate(subtask.chatId, {
-                $pull: { members: { $in: userIds } }
+                $pull: { members: { $in: normalizedUserIds } }
             });
         }
 
         const { task, project, workspace } = await loadSubtaskContext(subtask.task);
         const actionUserId = actorId || subtask.createdBy;
         const actorLabel = await getUserLabel(actionUserId);
-        const labels = await getUserLabels(userIds);
+        const labels = await getUserLabels(normalizedUserIds);
         await logActivity({
             actorId: actionUserId,
             action: "subtask.assignees_removed",
@@ -484,7 +541,7 @@ class SubtaskService {
             mirrorChatIds: [task?.chatId, project?.chatId, workspace?.chatId],
             message: `${actorLabel} removed ${formatUserList(labels)} from subtask "${subtask.title}".`,
             meta: {
-                assigneeIds: userIds
+                assigneeIds: normalizedUserIds
             }
         });
 

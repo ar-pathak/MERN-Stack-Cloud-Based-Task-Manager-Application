@@ -128,10 +128,15 @@ const privacyPreferencesSchema = z.object({
     disablePublicMessages: z.boolean().optional()
 });
 
+const workspacePreferencesSchema = z.object({
+    autoApproveWorkspaceInvites: z.boolean().optional()
+});
+
 const preferenceFieldsSchema = z.object({
     language: z.string().optional(),
     notifications: notificationPreferencesSchema.optional(),
-    privacy: privacyPreferencesSchema.optional()
+    privacy: privacyPreferencesSchema.optional(),
+    workspace: workspacePreferencesSchema.optional()
 });
 
 const preferencesSchema = preferenceFieldsSchema.extend({
@@ -141,7 +146,8 @@ const preferencesSchema = preferenceFieldsSchema.extend({
         const hasRootPayload =
             data.language !== undefined
             || data.notifications !== undefined
-            || data.privacy !== undefined;
+            || data.privacy !== undefined
+            || data.workspace !== undefined;
 
         const nested = data.preferences;
         const hasNestedPayload = Boolean(
@@ -150,6 +156,7 @@ const preferencesSchema = preferenceFieldsSchema.extend({
                 nested.language !== undefined
                 || nested.notifications !== undefined
                 || nested.privacy !== undefined
+                || nested.workspace !== undefined
             )
         );
 

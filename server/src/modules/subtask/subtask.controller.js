@@ -10,7 +10,7 @@ const subtaskController = {
     createSubtask: async (req, res) => {
         try {
             const { taskId, title, description, assignedTo, dueDate } = req.body;
-            const userId = req.user.id;
+            const userId = req.user.id || req.user._id;
 
             const subtask = await subtaskService.createSubtask({
                 taskId,
@@ -87,7 +87,7 @@ const subtaskController = {
         try {
             const { subtaskId } = req.params;
             const updates = req.body;
-            const userId = req.user.id;
+            const userId = req.user.id || req.user._id;
 
             const subtask = await subtaskService.updateSubtask(subtaskId, updates, userId);
 
@@ -112,7 +112,7 @@ const subtaskController = {
     toggleSubtask: async (req, res) => {
         try {
             const { subtaskId } = req.params;
-            const userId = req.user.id;
+            const userId = req.user.id || req.user._id;
 
             const subtask = await subtaskService.toggleSubtask(subtaskId, userId);
 
@@ -137,7 +137,8 @@ const subtaskController = {
     deleteSubtask: async (req, res) => {
         try {
             const { subtaskId } = req.params;
-            const result = await subtaskService.deleteSubtask(subtaskId);
+            const userId = req.user.id || req.user._id;
+            const result = await subtaskService.deleteSubtask(subtaskId, userId);
 
             res.status(200).json({
                 success: true,
@@ -214,7 +215,7 @@ const subtaskController = {
         try {
             const { subtaskId } = req.params;
             const { assignees } = req.body; // Array of IDs validated by middleware
-            const userId = req.user.id;
+            const userId = req.user.id || req.user._id;
 
             const subtask = await subtaskService.addAssignees(subtaskId, assignees, userId);
 
@@ -239,7 +240,7 @@ const subtaskController = {
         try {
             const { subtaskId } = req.params;
             const { assignees } = req.body;
-            const userId = req.user.id;
+            const userId = req.user.id || req.user._id;
 
             const subtask = await subtaskService.removeAssignees(subtaskId, assignees, userId);
 
@@ -264,7 +265,7 @@ const subtaskController = {
     leaveSubtask: async (req, res) => {
         try {
             const { subtaskId } = req.params;
-            const userId = req.user.id; // From Auth Middleware
+            const userId = req.user.id || req.user._id; // From Auth Middleware
 
             await subtaskService.leaveSubtask(subtaskId, userId);
 

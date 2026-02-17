@@ -15,10 +15,21 @@ const workspaceInviteSchema = new mongoose.Schema({
         enum: ["admin", "member", "viewer"],
         default: "member"
     },
+    invitedUser: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null
+    },
+    inviteType: {
+        type: String,
+        enum: ["email", "direct_request"],
+        default: "email"
+    },
     token: {
         type: String,
-        required: true,
-        unique: true
+        unique: true,
+        sparse: true,
+        default: null
     },
     invitedBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -26,12 +37,16 @@ const workspaceInviteSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["pending", "accepted", "expired"],
+        enum: ["pending", "accepted", "expired", "rejected"],
         default: "pending"
     },
     expiresAt: {
         type: Date,
         required: true
+    },
+    respondedAt: {
+        type: Date,
+        default: null
     }
 }, { timestamps: true });
 

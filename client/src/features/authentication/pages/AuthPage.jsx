@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, BarChart3, MessageSquareMore, ShieldCheck, Sparkles, Workflow } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { toast } from "sonner";
 import Badge from "../components/Badge";
 import Avatar from "../components/Avatar";
@@ -65,6 +65,7 @@ export default function AuthPage() {
     const [activeView, setActiveView] = useState(views.LOGIN);
     const { login, register, loading } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     useEffect(() => {
         if (token) {
@@ -80,8 +81,10 @@ export default function AuthPage() {
                 result = await login(payload);
 
                 if (result?.success) {
+                    const redirectPath = String(searchParams.get("redirect") || "").trim();
+                    const safeTarget = redirectPath.startsWith("/") ? redirectPath : "/main";
                     toast.success("Login successful. Redirecting...");
-                    setTimeout(() => navigate("/main"), 450);
+                    setTimeout(() => navigate(safeTarget), 450);
                 } else {
                     toast.error(result?.message || result?.error || "Login failed");
                 }
@@ -89,8 +92,10 @@ export default function AuthPage() {
                 result = await register(payload);
 
                 if (result?.success) {
+                    const redirectPath = String(searchParams.get("redirect") || "").trim();
+                    const safeTarget = redirectPath.startsWith("/") ? redirectPath : "/main";
                     toast.success("Account created successfully. Redirecting...");
-                    setTimeout(() => navigate("/main"), 450);
+                    setTimeout(() => navigate(safeTarget), 450);
                 } else {
                     toast.error(result?.message || result?.error || "Registration failed");
                 }

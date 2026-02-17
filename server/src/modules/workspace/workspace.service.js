@@ -14,6 +14,93 @@ const Message = require('../../models/message');
 const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
 const { logActivity, getUserLabel } = require('../utils/activityLogger');
+const notificationService = require('../notification/notification.service');
+
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
+const FRONTEND_BASE_URL = String(process.env.FRONTEND_URL || "http://localhost:5173")
+    .trim()
+    .replace(/\/+$/, "");
+
+const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+
+const sanitizeInvite = (inviteDoc) => {
+    if (!inviteDoc) return null;
+    const invite = inviteDoc.toObject ? inviteDoc.toObject() : inviteDoc;
+    if (Object.prototype.hasOwnProperty.call(invite, "token")) {
+        delete invite.token;
+    }
+    return invite;
+};
+
+const parseCsvRow = (line = "") => {
+    const values = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i += 1) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                current += '"';
+                i += 1;
+            } else {
+                inQuotes = !inQuotes;
+            }
+            continue;
+        }
+
+        if (char === "," && !inQuotes) {
+            values.push(current.trim());
+            current = "";
+            continue;
+        }
+
+        current += char;
+    }
+
+    values.push(current.trim());
+    return values;
+};
+
+const parseEmailsFromCsvBuffer = (buffer) => {
+    if (!buffer) return [];
+
+    const raw = String(buffer.toString("utf-8") || "").replace(/^\uFEFF/, "");
+    const lines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+
+    if (!lines.length) return [];
+
+    const rows = lines.map((line) => parseCsvRow(line));
+    const firstRow = rows[0] || [];
+    const hasHeader = firstRow.some((value) => /^email$/i.test(String(value || "").trim()));
+
+    const startIndex = hasHeader ? 1 : 0;
+    const emails = new Set();
+
+    for (let rowIndex = startIndex; rowIndex < rows.length; rowIndex += 1) {
+        const row = rows[rowIndex] || [];
+        row.forEach((value) => {
+            const candidate = normalizeEmail(String(value || "").replace(/^['"]|['"]$/g, ""));
+            if (EMAIL_REGEX.test(candidate)) {
+                emails.add(candidate);
+            }
+        });
+    }
+
+    return Array.from(emails);
+};
 
 // Helper function to remove a user from all workspace resources
 // This is used for both leaveWorkspace and removeMember
@@ -66,6 +153,161 @@ const cleanupUserResources = async (workspaceId, userId, session = null) => {
             opts
         );
     }
+};
+
+const createWorkspaceMembership = async ({ workspaceId, userId, role = "member", session = null }) => {
+    const createOptions = session ? { session } : undefined;
+    let member;
+
+    if (createOptions) {
+        const created = await WorkspaceMember.create([{
+            workspace: workspaceId,
+            user: userId,
+            role
+        }], createOptions);
+        member = created[0];
+    } else {
+        member = await WorkspaceMember.create({
+            workspace: workspaceId,
+            user: userId,
+            role
+        });
+    }
+
+    const updateOptions = session ? { session } : undefined;
+    const workspace = await Workspace.findById(workspaceId).select("name chatId");
+    if (workspace?.chatId) {
+        await Chat.findByIdAndUpdate(
+            workspace.chatId,
+            { $addToSet: { members: userId } },
+            updateOptions
+        );
+    }
+
+    return { member, workspace };
+};
+
+const createDirectInviteRequest = async ({
+    workspaceId,
+    role,
+    invitedBy,
+    invitee,
+    workspace
+}) => {
+    const pendingInvite = await WorkspaceInvite.findOne({
+        workspace: workspaceId,
+        invitedUser: invitee._id,
+        status: "pending",
+        expiresAt: { $gt: new Date() }
+    });
+
+    if (pendingInvite) {
+        throw createError("A pending workspace invite request already exists for this user", 409);
+    }
+
+    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
+    const invite = await WorkspaceInvite.create({
+        workspace: workspaceId,
+        email: normalizeEmail(invitee.email),
+        role: role || "member",
+        invitedBy,
+        invitedUser: invitee._id,
+        inviteType: "direct_request",
+        expiresAt
+    });
+
+    const inviterLabel = await getUserLabel(invitedBy);
+    await notificationService.createNotifications({
+        recipientIds: [invitee._id],
+        actorId: invitedBy,
+        title: "Workspace invite request",
+        message: `${inviterLabel} invited you to join "${workspace?.name || "workspace"}" as ${role || "member"}.`,
+        type: "member",
+        category: "workspace",
+        priority: "high",
+        entityType: "workspace",
+        entityId: workspaceId,
+        workspaceId,
+        link: "/main/notifications",
+        metadata: {
+            kind: "workspace_invite_request",
+            inviteId: String(invite._id),
+            workspaceId: String(workspaceId),
+            workspaceName: workspace?.name || "",
+            role: role || "member"
+        },
+        dedupeKey: `workspace:invite_request:${String(workspaceId)}:${String(invitee._id)}`
+    });
+
+    return invite;
+};
+
+const createEmailInvite = async ({
+    workspaceId,
+    email,
+    role,
+    invitedBy,
+    workspace,
+    inviter
+}) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
+        throw createError(`Invalid email address: ${email}`, 400);
+    }
+
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
+        const existingMember = await WorkspaceMember.findOne({
+            workspace: workspaceId,
+            user: existingUser._id
+        });
+        if (existingMember) {
+            throw createError(`${normalizedEmail} is already a workspace member`, 409);
+        }
+    }
+
+    const existingInvite = await WorkspaceInvite.findOne({
+        workspace: workspaceId,
+        email: normalizedEmail,
+        status: "pending",
+        $or: [
+            { inviteType: "email" },
+            { inviteType: { $exists: false } }
+        ],
+        expiresAt: { $gt: new Date() }
+    });
+
+    if (existingInvite) {
+        throw createError(`A pending invite already exists for ${normalizedEmail}`, 409);
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MS);
+
+    const invite = await WorkspaceInvite.create({
+        workspace: workspaceId,
+        email: normalizedEmail,
+        role: role || 'member',
+        invitedBy,
+        inviteType: "email",
+        token: hashedToken,
+        expiresAt
+    });
+
+    await sendMail({
+        to: normalizedEmail,
+        subject: `Invitation to join ${workspace?.name || "a workspace"}`,
+        html: `
+            <p>${inviter?.name || inviter?.username || "A teammate"} has invited you to join ${workspace?.name || "their workspace"}.</p>
+            <p>Click the link below to accept:</p>
+            <a href="${FRONTEND_BASE_URL}/invites/accept/${token}">Accept Invitation</a>
+            <p>This invitation expires in 7 days.</p>
+        `,
+        token
+    });
+
+    return sanitizeInvite(invite);
 };
 
 const workspaceService = {
@@ -263,15 +505,20 @@ const workspaceService = {
         let user = null;
 
         if (userId) {
-            user = await User.findById(userId);
+            user = await User.findById(userId).select("name username email preferences.workspace.autoApproveWorkspaceInvites");
         } else if (email) {
-            user = await User.findOne({ email: email.toLowerCase() });
+            user = await User.findOne({ email: normalizeEmail(email) }).select("name username email preferences.workspace.autoApproveWorkspaceInvites");
         } else if (username) {
-            user = await User.findOne({ username });
+            user = await User.findOne({ username: String(username || "").trim().toLowerCase() }).select("name username email preferences.workspace.autoApproveWorkspaceInvites");
         }
 
         if (!user) {
-            throw new Error("User not found");
+            throw createError("User not found", 404);
+        }
+
+        const workspace = await Workspace.findById(workspaceId).select("name chatId");
+        if (!workspace) {
+            throw createError("Workspace not found", 404);
         }
 
         const exists = await WorkspaceMember.findOne({
@@ -280,22 +527,31 @@ const workspaceService = {
         });
 
         if (exists) {
-            throw new Error("User is already a member of this workspace");
+            throw createError("User is already a member of this workspace", 409);
         }
 
-        const member = await WorkspaceMember.create({
-            workspace: workspaceId,
-            user: user._id,
-            role: role
-        });
-
-        // Add user to Workspace Chat (UPDATED)
-        const workspace = await Workspace.findById(workspaceId);
-        if (workspace && workspace.chatId) {
-            await Chat.findByIdAndUpdate(workspace.chatId, {
-                $addToSet: { members: user._id }
+        const autoApprove = user?.preferences?.workspace?.autoApproveWorkspaceInvites !== false;
+        if (!autoApprove) {
+            const invite = await createDirectInviteRequest({
+                workspaceId,
+                role,
+                invitedBy: requesterId,
+                invitee: user,
+                workspace
             });
+
+            return {
+                mode: "invite_request",
+                requiresApproval: true,
+                invite: sanitizeInvite(invite)
+            };
         }
+
+        const { member } = await createWorkspaceMembership({
+            workspaceId,
+            userId: user._id,
+            role
+        });
 
         const actorLabel = await getUserLabel(requesterId || user._id);
         const targetLabel = await getUserLabel(user._id);
@@ -312,7 +568,10 @@ const workspaceService = {
             }
         });
 
-        return await member.populate('user', 'name email');
+        return {
+            mode: "member_added",
+            member: await member.populate('user', 'name email')
+        };
     },
 
     getMembers: async (workspaceId) => {
@@ -506,61 +765,63 @@ const workspaceService = {
         }
     },
 
-    sendInvite: async ({ workspaceId, email, role, invitedBy }) => {
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            const existingMember = await WorkspaceMember.findOne({
-                workspace: workspaceId,
-                user: existingUser._id
-            });
-            if (existingMember) {
-                throw new Error("User is already a member of this workspace");
+    sendInvite: async ({ workspaceId, email, role, invitedBy, csvBuffer }) => {
+        const workspace = await Workspace.findById(workspaceId).select("name");
+        if (!workspace) {
+            throw createError("Workspace not found", 404);
+        }
+
+        const inviter = await User.findById(invitedBy).select("name username");
+        if (!inviter) {
+            throw createError("Inviter not found", 404);
+        }
+
+        const emailsFromCsv = parseEmailsFromCsvBuffer(csvBuffer);
+        const singleEmail = email ? [normalizeEmail(email)] : [];
+        const emailSet = Array.from(new Set([...singleEmail, ...emailsFromCsv].filter(Boolean)));
+
+        if (!emailSet.length) {
+            throw createError("No valid email addresses found", 400);
+        }
+
+        const invites = [];
+        const errors = [];
+
+        for (const targetEmail of emailSet) {
+            try {
+                const invite = await createEmailInvite({
+                    workspaceId,
+                    email: targetEmail,
+                    role,
+                    invitedBy,
+                    workspace,
+                    inviter
+                });
+                invites.push(invite);
+            } catch (error) {
+                errors.push({
+                    email: targetEmail,
+                    reason: error?.message || "Failed to send invite"
+                });
             }
         }
 
-        const existingInvite = await WorkspaceInvite.findOne({
-            workspace: workspaceId,
-            email: email.toLowerCase(),
-            status: "pending",
-            expiresAt: { $gt: new Date() }
-        });
-
-        if (existingInvite) {
-            throw new Error("A pending invite has already been sent to this email");
+        if (!invites.length) {
+            const firstError = errors[0]?.reason || "No invites were sent";
+            throw createError(firstError, 400);
         }
 
-        const token = crypto.randomBytes(32).toString('hex');
-        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        if (csvBuffer) {
+            return {
+                mode: "bulk_csv",
+                sent: invites.length,
+                failed: errors.length,
+                invites,
+                errors
+            };
+        }
 
-        const invite = await WorkspaceInvite.create({
-            workspace: workspaceId,
-            email: email.toLowerCase(),
-            role: role || 'member',
-            invitedBy,
-            token: hashedToken,
-            expiresAt
-        });
-
-        const workspace = await Workspace.findById(workspaceId);
-        const inviter = await User.findById(invitedBy);
-
-        await sendMail({
-            to: email,
-            subject: `Invitation to join ${workspace.name}`,
-            html: `
-                <p>${inviter.name} has invited you to join ${workspace.name}.</p>
-                <p>Click the link below to accept:</p>
-                <a href="${process.env.FRONTEND_URL}/invites/accept/${token}">Accept Invitation</a>
-                <p>This invitation expires in 7 days.</p>
-            `,
-            token
-        });
-
-        return {
-            ...invite.toObject(),
-            token: undefined
-        };
+        return invites[0];
     },
 
     acceptInvite: async (token, userId) => {
@@ -568,22 +829,30 @@ const workspaceService = {
 
         const invite = await WorkspaceInvite.findOne({
             token: hashedToken,
+            $or: [
+                { inviteType: "email" },
+                { inviteType: { $exists: false } }
+            ],
             status: "pending"
         });
 
         if (!invite) {
-            throw new Error('Invalid or already used invite token');
+            throw createError('Invalid or already used invite token', 404);
         }
 
         if (invite.expiresAt < new Date()) {
             invite.status = "expired";
             await invite.save();
-            throw new Error('Invite has expired');
+            throw createError('Invite has expired', 400);
         }
 
         const user = await User.findById(userId);
+        if (!user) {
+            throw createError("User not found", 404);
+        }
+
         if (user.email.toLowerCase() !== invite.email.toLowerCase()) {
-            throw new Error('This invite was sent to a different email address');
+            throw createError('This invite was sent to a different email address', 403);
         }
 
         const existingMember = await WorkspaceMember.findOne({
@@ -592,24 +861,18 @@ const workspaceService = {
         });
 
         if (existingMember) {
-            throw new Error('You are already a member of this workspace');
+            throw createError('You are already a member of this workspace', 409);
         }
 
-        await WorkspaceMember.create({
-            workspace: invite.workspace,
-            user: userId,
+        const { workspace } = await createWorkspaceMembership({
+            workspaceId: invite.workspace,
+            userId,
             role: invite.role
         });
 
-        // Add user to Workspace Chat (UPDATED)
-        const workspace = await Workspace.findById(invite.workspace);
-        if (workspace && workspace.chatId) {
-            await Chat.findByIdAndUpdate(workspace.chatId, {
-                $addToSet: { members: userId }
-            });
-        }
-
         invite.status = "accepted";
+        invite.respondedAt = new Date();
+        invite.invitedUser = userId;
         await invite.save();
 
         const userLabel = await getUserLabel(userId);
@@ -626,6 +889,119 @@ const workspaceService = {
         });
 
         return workspace;
+    },
+
+    respondInvite: async ({ inviteId, userId, action }) => {
+        const invite = await WorkspaceInvite.findById(inviteId);
+        if (!invite) {
+            throw createError("Invite not found", 404);
+        }
+
+        if (invite.status !== "pending") {
+            throw createError("This invite has already been processed", 400);
+        }
+
+        if (invite.inviteType !== "direct_request") {
+            throw createError("Only in-app invite requests can be responded to here", 400);
+        }
+
+        if (String(invite.invitedUser || "") !== String(userId || "")) {
+            throw createError("You are not allowed to respond to this invite", 403);
+        }
+
+        if (invite.expiresAt < new Date()) {
+            invite.status = "expired";
+            invite.respondedAt = new Date();
+            await invite.save();
+            try {
+                await notificationService.setWorkspaceInviteNotificationState({
+                    recipientUserId: userId,
+                    inviteId: invite._id,
+                    requestState: "expired",
+                    read: true
+                });
+            } catch (error) {
+                console.error("workspace invite notification expiry sync failed", error);
+            }
+            throw createError("Invite has expired", 400);
+        }
+
+        const workspace = await Workspace.findById(invite.workspace).select("name chatId");
+        if (!workspace) {
+            throw createError("Workspace not found", 404);
+        }
+
+        if (action === "reject") {
+            invite.status = "rejected";
+            invite.respondedAt = new Date();
+            await invite.save();
+
+            try {
+                await notificationService.setWorkspaceInviteNotificationState({
+                    recipientUserId: userId,
+                    inviteId: invite._id,
+                    requestState: "rejected",
+                    read: true
+                });
+            } catch (error) {
+                console.error("workspace invite notification reject sync failed", error);
+            }
+
+            return {
+                inviteId: invite._id,
+                status: invite.status,
+                workspaceId: invite.workspace
+            };
+        }
+
+        const existingMember = await WorkspaceMember.findOne({
+            workspace: invite.workspace,
+            user: userId
+        });
+
+        if (!existingMember) {
+            await createWorkspaceMembership({
+                workspaceId: invite.workspace,
+                userId,
+                role: invite.role
+            });
+        }
+
+        invite.status = "accepted";
+        invite.respondedAt = new Date();
+        await invite.save();
+
+        try {
+            await notificationService.setWorkspaceInviteNotificationState({
+                recipientUserId: userId,
+                inviteId: invite._id,
+                requestState: "accepted",
+                read: true
+            });
+        } catch (error) {
+            console.error("workspace invite notification accept sync failed", error);
+        }
+
+        const userLabel = await getUserLabel(userId);
+        await logActivity({
+            actorId: userId,
+            action: "workspace.member_joined",
+            level: "workspace",
+            workspaceId: workspace._id,
+            chatId: workspace.chatId,
+            message: `${userLabel} joined workspace "${workspace.name}" via invite request.`,
+            meta: {
+                viaInvite: true,
+                inviteId: invite._id
+            }
+        });
+
+        return {
+            inviteId: invite._id,
+            status: invite.status,
+            workspaceId: workspace._id,
+            workspace
+        };
     },
 
     leaveWorkspace: async ({ workspaceId, userId }) => {

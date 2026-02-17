@@ -95,6 +95,10 @@ export const useWorkspace = () => {
         return await execute(workspaceService.acceptWorkspaceInvite, token);
     }, [execute]);
 
+    const respondInvite = useCallback(async (params) => {
+        return await execute(workspaceService.respondWorkspaceInvite, params);
+    }, [execute]);
+
     // --- Workspace Settings & Actions ---
 
     const leaveCurrentWorkspace = useCallback(async (workspaceId) => {
@@ -162,6 +166,7 @@ export const useWorkspace = () => {
         // Invites
         sendInvite,
         acceptInvite,
+        respondInvite,
 
         // Settings/Actions
         leaveWorkspace: leaveCurrentWorkspace,
