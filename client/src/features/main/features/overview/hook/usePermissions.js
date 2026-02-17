@@ -18,6 +18,8 @@ export const usePermissions = (item) => {
             canCreateTask: permissions.canCreateTask || false,
             canCreateSubtask: permissions.canCreateSubtask || false,
             role: permissions.role || null,
+            isProjectAdmin: Boolean(permissions.isProjectAdmin),
+            inheritedFromWorkspace: Boolean(permissions.inheritedFromWorkspace),
             isOwner: permissions.role === 'owner',
             isAdmin: permissions.role === 'admin' || permissions.role === 'owner',
             canEdit: ['owner', 'admin', 'editor', 'member', 'creator', 'assignee'].includes(permissions.role),

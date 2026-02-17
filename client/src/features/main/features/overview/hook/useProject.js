@@ -112,6 +112,20 @@ export const useProject = () => {
         }
         return { success, data };
     }, [execute, currentProject]);
+
+    const requestStatusChange = useCallback(async (workspaceId, projectId, data) => {
+        return await execute(projectService.requestProjectStatusChange, workspaceId, projectId, data);
+    }, [execute]);
+
+    const respondStatusChangeRequest = useCallback(async (workspaceId, projectId, requestId, action) => {
+        return await execute(
+            projectService.respondProjectStatusChangeRequest,
+            workspaceId,
+            projectId,
+            requestId,
+            action
+        );
+    }, [execute]);
     return {
         // State
         projects,
@@ -138,6 +152,8 @@ export const useProject = () => {
         removeProjectMembers: removeMembersFromProject,
 
         leaveProject,
+        requestProjectStatusChange: requestStatusChange,
+        respondProjectStatusChangeRequest: respondStatusChangeRequest,
 
         // Utilities
         clearError: () => setError(null),

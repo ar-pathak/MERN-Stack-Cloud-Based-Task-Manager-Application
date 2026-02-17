@@ -7,7 +7,9 @@ const {
     removeProjectTeamsSchema,
     addProjectMembersSchema,
     removeProjectMembersSchema,
-    updateProjectMemberRoleSchema
+    updateProjectMemberRoleSchema,
+    requestProjectStatusChangeSchema,
+    respondProjectStatusChangeRequestSchema
 } = require('./project.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
 
@@ -50,8 +52,8 @@ const projectController = {
             const { projectId } = req.params;
             const userId = req.user._id;
 
-            if (!mongoose.Types.ObjectId.isValid(projectId)) {
-                throw new Error('Invalid project ID');
+            if (!mongoose.Types.ObjectId.isValid(workspaceId) || !mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error('Invalid workspace ID or project ID');
             }
 
             const project = await projectService.getProjectById(projectId, userId);
@@ -63,7 +65,7 @@ const projectController = {
 
     updateProject: async (req, res) => {
         try {
-            const { projectId } = req.params;
+            const { workspaceId, projectId } = req.params;
             const userId = req.user._id;
 
             if (!mongoose.Types.ObjectId.isValid(projectId)) {
@@ -71,7 +73,12 @@ const projectController = {
             }
 
             const updateData = updateProjectSchema.parse(req.body);
-            const project = await projectService.updateProject(projectId, updateData, userId);
+            const project = await projectService.updateProject({
+                projectId,
+                workspaceId,
+                updateData,
+                userId
+            });
             return sendSuccess(res, project, 'Project updated successfully');
         } catch (error) {
             return handleError(error, res);
@@ -206,6 +213,67 @@ const projectController = {
             const { role } = updateProjectMemberRoleSchema.parse(req.body);
             const result = await projectService.updateProjectMemberRole(projectId, memberId, role, userId);
             return sendSuccess(res, null, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    requestProjectStatusChange: async (req, res) => {
+        try {
+            const { workspaceId, projectId } = req.params;
+            const userId = req.user._id;
+
+            if (!mongoose.Types.ObjectId.isValid(workspaceId) || !mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error('Invalid workspace ID or project ID');
+            }
+
+            const data = requestProjectStatusChangeSchema.parse(req.body || {});
+            const request = await projectService.requestProjectStatusChange({
+                workspaceId,
+                projectId,
+                requestedStatus: data.status,
+                note: data.note,
+                userId
+            });
+
+            return sendSuccess(
+                res,
+                request,
+                'Status change request sent to project admins',
+                201
+            );
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    respondProjectStatusChangeRequest: async (req, res) => {
+        try {
+            const { workspaceId, projectId, requestId } = req.params;
+            const userId = req.user._id;
+
+            if (
+                !mongoose.Types.ObjectId.isValid(workspaceId)
+                || !mongoose.Types.ObjectId.isValid(projectId)
+                || !mongoose.Types.ObjectId.isValid(requestId)
+            ) {
+                throw new Error('Invalid workspace ID, project ID, or request ID');
+            }
+
+            const { action } = respondProjectStatusChangeRequestSchema.parse(req.body || {});
+            const result = await projectService.respondProjectStatusChangeRequest({
+                workspaceId,
+                projectId,
+                requestId,
+                action,
+                userId
+            });
+
+            const message = action === "approve"
+                ? "Status change request approved"
+                : "Status change request rejected";
+
+            return sendSuccess(res, result, message);
         } catch (error) {
             return handleError(error, res);
         }

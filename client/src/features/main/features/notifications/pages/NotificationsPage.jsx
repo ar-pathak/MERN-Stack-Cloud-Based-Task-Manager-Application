@@ -33,6 +33,7 @@ const NotificationsPage = () => {
         followBack,
         followRequestAction,
         workspaceInviteAction,
+        projectStatusRequestAction,
         ensureRead
     } = useNotificationCenter({ enabled: true, limit: 50 });
 
@@ -251,6 +252,50 @@ const NotificationsPage = () => {
                                                 >
                                                     {actionLoadingKey ===
                                                     `workspace:reject:${notification._id}`
+                                                        ? "..."
+                                                        : "Reject"}
+                                                </button>
+                                            </>
+                                        )}
+
+                                    {String(notification?.metadata?.kind || "") ===
+                                        "project_status_change_request" &&
+                                        !notification?.metadata?.requestState &&
+                                        Boolean(notification?.metadata?.requestId) && (
+                                            <>
+                                                <button
+                                                    onClick={() =>
+                                                        projectStatusRequestAction(
+                                                            notification,
+                                                            "approve"
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        actionLoadingKey ===
+                                                        `project-status:approve:${notification._id}`
+                                                    }
+                                                    className="rounded-md border border-emerald-500/35 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-60"
+                                                >
+                                                    {actionLoadingKey ===
+                                                    `project-status:approve:${notification._id}`
+                                                        ? "..."
+                                                        : "Approve"}
+                                                </button>
+                                                <button
+                                                    onClick={() =>
+                                                        projectStatusRequestAction(
+                                                            notification,
+                                                            "reject"
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        actionLoadingKey ===
+                                                        `project-status:reject:${notification._id}`
+                                                    }
+                                                    className="rounded-md border border-rose-500/35 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/15 disabled:opacity-60"
+                                                >
+                                                    {actionLoadingKey ===
+                                                    `project-status:reject:${notification._id}`
                                                         ? "..."
                                                         : "Reject"}
                                                 </button>

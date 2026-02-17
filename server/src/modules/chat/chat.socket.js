@@ -1,6 +1,7 @@
 const Chat = require("../../models/chat");
 const Message = require("../../models/message");
 const User = require("../../models/user");
+const chatService = require("./chat.service");
 
 // Helpers
 async function loadAndAuthorise(socket, chatId, senderId) {
@@ -71,6 +72,19 @@ module.exports = (io, socket) => {
         try {
             const chat = await loadAndAuthorise(socket, chatId, userId);
             if (!chat) return;
+
+            try {
+                await chatService.assertCanSendSectionChat(chatId, userId);
+            } catch (permissionError) {
+                if (Number(permissionError?.statusCode) === 403) {
+                    socket.emit("error", {
+                        event: "chat:send",
+                        reason: permissionError.message || "You don't have permission to send messages"
+                    });
+                    return;
+                }
+                throw permissionError;
+            }
 
             // 1️⃣ Emit to open chat window
             emitToMembers(io, chat, userId, "chat:receive", { chatId, message });

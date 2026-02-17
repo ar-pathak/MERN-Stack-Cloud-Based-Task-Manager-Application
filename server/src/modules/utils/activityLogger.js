@@ -3,6 +3,7 @@ const Message = require("../../models/message");
 const Chat = require("../../models/chat");
 const User = require("../../models/user");
 const { createActivityNotifications } = require("../notification/notification.service");
+const { getIO } = require("./socketStore");
 
 const normalizeId = (id) => {
     if (!id) return null;
@@ -29,6 +30,51 @@ const createWithSession = async (Model, doc, session) => {
     if (!session) return Model.create(doc);
     const created = await Model.create([doc], { session });
     return created[0];
+};
+
+const emitActivityMessageRealtime = async ({
+    chat,
+    message,
+    actorId,
+    session = null
+}) => {
+    if (session) return;
+
+    const io = getIO();
+    if (!io || !chat || !message) return;
+
+    const chatId = normalizeIdString(chat._id || message.chatId);
+    if (!chatId) return;
+
+    const actorIdString = normalizeIdString(actorId);
+    const members = Array.isArray(chat.members) ? chat.members : [];
+    if (!members.length) return;
+
+    const messagePayload =
+        typeof message.toObject === "function" ? message.toObject() : message;
+
+    members.forEach((memberId) => {
+        const memberIdString = normalizeIdString(memberId);
+        if (!memberIdString) return;
+
+        io.to(`user:${memberIdString}`).emit("chat:receive", {
+            chatId,
+            message: messagePayload
+        });
+
+        io.to(`user:${memberIdString}`).emit("overview:update", {
+            entity: "chat",
+            chatId,
+            lastMessage: messagePayload
+        });
+
+        if (memberIdString !== actorIdString) {
+            io.to(`user:${memberIdString}`).emit("overview:unread", {
+                chatId,
+                incrementBy: 1
+            });
+        }
+    });
 };
 
 const getUserLabel = async (userId, session = null) => {
@@ -69,7 +115,7 @@ const postMessageToChat = async ({ chatId, senderId, content, isSystem = false, 
 
     if (!normalizedChatId || !normalizedSenderId || !content) return null;
 
-    const chatQuery = Chat.findById(normalizedChatId).select("_id");
+    const chatQuery = Chat.findById(normalizedChatId).select("_id members");
     const chat = await applySession(chatQuery, session).lean();
     if (!chat) return null;
 
@@ -92,6 +138,13 @@ const postMessageToChat = async ({ chatId, senderId, content, isSystem = false, 
     } else {
         await updateQuery;
     }
+
+    await emitActivityMessageRealtime({
+        chat,
+        message,
+        actorId: normalizedSenderId,
+        session
+    });
 
     return message;
 };

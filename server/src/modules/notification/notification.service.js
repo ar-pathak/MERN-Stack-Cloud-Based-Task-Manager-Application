@@ -500,6 +500,75 @@ const setWorkspaceInviteNotificationState = async ({
     return notification;
 };
 
+const setRequestNotificationStateByKind = async ({
+    kind,
+    requestId,
+    requestState,
+    recipientUserIds = [],
+    read = true
+}) => {
+    const requestIdString = normalizeIdString(requestId);
+
+    if (!kind || !requestIdString || !requestState) {
+        return [];
+    }
+
+    const filter = {
+        "metadata.kind": kind,
+        "metadata.requestId": requestIdString
+    };
+
+    const recipientIds = toObjectIds(recipientUserIds || []);
+    if (recipientIds.length > 0) {
+        filter.user = { $in: recipientIds };
+    }
+
+    const now = new Date();
+    const setPayload = {
+        "metadata.requestState": requestState
+    };
+
+    if (read) {
+        setPayload.read = true;
+        setPayload.readAt = now;
+        setPayload.seenAt = now;
+    }
+
+    await Notification.updateMany(filter, { $set: setPayload });
+
+    const updatedNotifications = await Notification.find(filter)
+        .populate("actor", "name username avatar")
+        .lean();
+
+    const updatedRecipientIds = [];
+    updatedNotifications.forEach((notification) => {
+        const recipientId = String(notification.user);
+        updatedRecipientIds.push(recipientId);
+        emitToUser(recipientId, "notification:updated", { notification });
+    });
+
+    if (updatedRecipientIds.length > 0) {
+        await emitUnreadCounts(updatedRecipientIds);
+    }
+
+    return updatedNotifications;
+};
+
+const setProjectStatusRequestNotificationState = async ({
+    requestId,
+    requestState,
+    recipientUserIds = [],
+    read = true
+}) =>
+    setRequestNotificationStateByKind({
+        kind: "project_status_change_request",
+        requestId,
+        requestState,
+        recipientUserIds,
+        read
+    });
+
+
 const markAsRead = async (userId, notificationId) => {
     const notification = await Notification.findOneAndUpdate(
         { _id: notificationId, user: userId },
@@ -637,6 +706,7 @@ module.exports = {
     getUnreadCount,
     setFollowRequestNotificationState,
     setWorkspaceInviteNotificationState,
+    setProjectStatusRequestNotificationState,
     markAsRead,
     markAsUnread,
     markAllAsRead,

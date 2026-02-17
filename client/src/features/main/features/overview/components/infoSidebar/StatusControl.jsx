@@ -17,10 +17,11 @@ const StatusControl = ({ item }) => {
     const [isHighPriority, setIsHighPriority] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [notice, setNotice] = useState("");
 
     // Initialize Hooks
     const { updateStatus, updateTask } = useTask();
-    const { updateProject, fetchProjectById } = useProject();
+    const { updateProject, fetchProjectById, requestProjectStatusChange } = useProject();
     const { updateSubtask } = useSubtask();
 
     //  Normalize data in useEffect
@@ -37,7 +38,11 @@ const StatusControl = ({ item }) => {
 
         setStatus(currentStatus);
         setIsHighPriority(item.isHighPriority || false);
+        setNotice("");
     }, [item]);
+
+    const isProjectViewer = item?.type === "project"
+        && String(item?.permissions?.role || "").toLowerCase() === "viewer";
 
     const statuses = [
         { value: 'active', label: 'Active', icon: Activity, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
@@ -49,6 +54,7 @@ const StatusControl = ({ item }) => {
 
         setLoading(true);
         setError(null);
+        setNotice("");
         const oldStatus = status;
         setStatus(newStatus); // Optimistic update
 
@@ -69,6 +75,35 @@ const StatusControl = ({ item }) => {
                 }
 
                 if (!workspaceId) throw new Error('Project workspace not found');
+                const statusApprovalEnabled = Boolean(
+                    item?.settings?.statusChangeAdminApprovalEnabled
+                );
+                const isProjectAdmin = Boolean(
+                    item?.permissions?.isProjectAdmin
+                    || (
+                        item?.permissions?.role === 'owner'
+                        && !item?.permissions?.inheritedFromWorkspace
+                    )
+                    || (
+                        item?.permissions?.role === 'admin'
+                        && !item?.permissions?.inheritedFromWorkspace
+                    )
+                );
+
+                if (statusApprovalEnabled && !isProjectAdmin) {
+                    result = await requestProjectStatusChange(workspaceId, item.id, {
+                        status: newStatus
+                    });
+
+                    if (!result?.success) {
+                        throw new Error(result?.error || 'Status change request failed');
+                    }
+
+                    setStatus(oldStatus);
+                    setNotice('Status change request sent to project admins');
+                    setTimeout(() => setNotice(""), 3000);
+                    return;
+                }
 
                 result = await updateProject(workspaceId, item.id, { status: newStatus });
             }
@@ -85,7 +120,7 @@ const StatusControl = ({ item }) => {
         } catch (err) {
             console.error("Error updating status:", err);
             setStatus(oldStatus);
-            setError('Failed to update status');
+            setError(err?.message || 'Failed to update status');
             setTimeout(() => setError(null), 3000);
         } finally {
             setLoading(false);
@@ -150,6 +185,11 @@ const StatusControl = ({ item }) => {
                     {error}
                 </div>
             )}
+            {notice && (
+                <div className="absolute -top-8 left-0 right-0 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs px-3 py-1.5 rounded-md mb-2">
+                    {notice}
+                </div>
+            )}
 
             <div className="flex items-center gap-2 mb-3">
                 <Activity className="h-4 w-4 text-slate-500" />
@@ -168,7 +208,7 @@ const StatusControl = ({ item }) => {
                             id={`status-${item.id}`}
                             value={status}
                             onChange={(e) => handleStatusChange(e.target.value)}
-                            disabled={loading}
+                            disabled={loading || isProjectViewer}
                             className={`w-full appearance-none pl-9 pr-8 py-2.5 rounded-lg text-xs font-medium border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${currentStatusConfig.bg} ${currentStatusConfig.color}`}
                         >
                             {statuses.map(s => (
@@ -184,6 +224,11 @@ const StatusControl = ({ item }) => {
                             </svg>
                         </div>
                     </div>
+                    {isProjectViewer && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            Viewer role cannot change or request project status.
+                        </p>
+                    )}
                 </div>
 
                 <div className="space-y-2">

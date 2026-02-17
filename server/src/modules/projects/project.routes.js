@@ -13,6 +13,16 @@ router.get('/workspaces/:workspaceId/projects', checkWorkspaceMemberRole("owner"
 router.get('/:projectId', projectController.getProjectById);
 router.patch('/workspaces/:workspaceId/projects/:projectId', checkWorkspaceMemberRole("owner", "admin", "member"), projectController.updateProject);
 router.delete('/workspaces/:workspaceId/projects/:projectId', checkWorkspaceMemberRole('owner', 'admin'), projectController.deleteProject);
+router.post(
+    '/workspaces/:workspaceId/projects/:projectId/status-requests',
+    checkWorkspaceMemberRole('owner', 'admin', 'member', 'viewer'),
+    projectController.requestProjectStatusChange
+);
+router.post(
+    '/workspaces/:workspaceId/projects/:projectId/status-requests/:requestId/respond',
+    checkWorkspaceMemberRole('owner', 'admin', 'member', 'viewer'),
+    projectController.respondProjectStatusChangeRequest
+);
 
 router.get('/workspaces/:workspaceId/projects/:projectId/teams', checkWorkspaceMemberRole('owner', 'admin', 'member', 'viewer'), projectController.getProjectTeams)
 router.patch('/workspaces/:workspaceId/projects/:projectId/teams', checkWorkspaceMemberRole('owner', 'admin'), projectController.addProjectTeams)

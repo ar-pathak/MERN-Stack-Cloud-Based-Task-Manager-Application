@@ -54,7 +54,13 @@ const projectSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
-  dueDate: Date
+  dueDate: Date,
+  settings: {
+    statusChangeAdminApprovalEnabled: {
+      type: Boolean,
+      default: false
+    }
+  }
 
 }, { timestamps: true });
 

@@ -10,7 +10,8 @@ const canCreateTask = async ({
     workspaceId = null,
     projectId = null,
     teamId = null,
-    enforceWorkspaceAdminOnly = false
+    enforceWorkspaceAdminOnly = false,
+    requireProjectAdminOrWorkspaceOwner = false
 }) => {
     const workspaceMember = workspaceId
         ? await WorkspaceMember.findOne({
@@ -31,6 +32,28 @@ const canCreateTask = async ({
 
         if (workspaceId && String(project.workspace) !== String(workspaceId)) {
             return false;
+        }
+
+        if (requireProjectAdminOrWorkspaceOwner) {
+            let scopedWorkspaceMember = workspaceMember;
+
+            if (!scopedWorkspaceMember || String(project.workspace) !== String(workspaceId || "")) {
+                scopedWorkspaceMember = await WorkspaceMember.findOne({
+                    workspace: project.workspace,
+                    user: userId
+                }).select("role");
+            }
+
+            if (String(scopedWorkspaceMember?.role || "") === "owner") {
+                return true;
+            }
+
+            if (String(project.owner) === String(userId)) {
+                return true;
+            }
+
+            const projectMember = project.members.find((member) => String(member.user) === String(userId));
+            return projectMember?.role === "admin";
         }
 
         if (enforceWorkspaceAdminOnly) {

@@ -187,3 +187,38 @@ export const leaveProject = async (workspaceId, projectId) => {
         };
     }
 };
+
+export const requestProjectStatusChange = async (workspaceId, projectId, data) => {
+    try {
+        const response = await api.post(
+            `/api/projects/workspaces/${workspaceId}/projects/${projectId}/status-requests`,
+            data
+        );
+        return unwrap(response);
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to request project status change",
+            status: error.response?.status,
+        };
+    }
+};
+
+export const respondProjectStatusChangeRequest = async (
+    workspaceId,
+    projectId,
+    requestId,
+    action
+) => {
+    try {
+        const response = await api.post(
+            `/api/projects/workspaces/${workspaceId}/projects/${projectId}/status-requests/${requestId}/respond`,
+            { action }
+        );
+        return unwrap(response);
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to respond to project status request",
+            status: error.response?.status,
+        };
+    }
+};

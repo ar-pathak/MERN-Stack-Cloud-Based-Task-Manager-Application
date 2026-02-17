@@ -10,6 +10,9 @@ const createProjectSchema = z.object({
     name: z.string().min(1, "Project name is required"),
     description: z.string().optional(),
     color: z.string().optional(),
+    settings: z.object({
+        statusChangeAdminApprovalEnabled: z.boolean().optional()
+    }).optional(),
 
     teams: z
         .array(objectId)
@@ -38,6 +41,9 @@ const updateProjectSchema = z.object({
     color: z.string().optional(),
     isHighPriority: z.boolean().optional(),
     dueDate: z.coerce.date().optional(),
+    settings: z.object({
+        statusChangeAdminApprovalEnabled: z.boolean().optional()
+    }).optional(),
     teams: z
         .array(objectId)
         .optional()
@@ -93,4 +99,28 @@ const updateProjectMemberRoleSchema = z.object({
         message: "Role must be one of: admin, member, viewer"
     })
 });
-module.exports = { createProjectSchema, updateProjectSchema, addProjectTeamsSchema, removeProjectTeamsSchema, addProjectMembersSchema, removeProjectMembersSchema, updateProjectMemberRoleSchema };
+
+const requestProjectStatusChangeSchema = z.object({
+    status: z.enum(["active", "archived", "completed"], {
+        message: "Status must be one of: active, archived, completed"
+    }),
+    note: z.string().max(500, "Note cannot exceed 500 characters").optional()
+});
+
+const respondProjectStatusChangeRequestSchema = z.object({
+    action: z.enum(["approve", "reject"], {
+        message: "Action must be approve or reject"
+    })
+});
+
+module.exports = {
+    createProjectSchema,
+    updateProjectSchema,
+    addProjectTeamsSchema,
+    removeProjectTeamsSchema,
+    addProjectMembersSchema,
+    removeProjectMembersSchema,
+    updateProjectMemberRoleSchema,
+    requestProjectStatusChangeSchema,
+    respondProjectStatusChangeRequestSchema
+};

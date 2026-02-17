@@ -77,6 +77,20 @@ const InfoSidebar = ({ item: initialItem, overview, onClose, onUpdate }) => {
     const isAssignee = members.some(m => m?._id === userId);
 
     const canSeeDangerZone = isMember || isAssignee || canEdit;
+    const projectRole = String(item?.permissions?.role || "").toLowerCase();
+    const canManageProjectSettings = item.type === "project" && ["owner", "admin"].includes(projectRole);
+    const statusApprovalEnabled = Boolean(item?.settings?.statusChangeAdminApprovalEnabled);
+
+    const handleToggleProjectStatusApproval = async (enabled) => {
+        if (!canManageProjectSettings || isSaving) return;
+
+        await handleUpdateItem({
+            settings: {
+                ...(item?.settings || {}),
+                statusChangeAdminApprovalEnabled: enabled
+            }
+        });
+    };
 
     const getHeaderColorClass = (type) => {
         switch (type) {
@@ -323,6 +337,45 @@ const InfoSidebar = ({ item: initialItem, overview, onClose, onUpdate }) => {
                             exit={{ opacity: 0, x: -20 }}
                             className="space-y-6 pb-6"
                         >
+                            {item.type === "project" && (
+                                <section className="rounded-xl border border-slate-800/60 bg-slate-900/40 p-4">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-slate-100">
+                                                Status Change Approval
+                                            </h3>
+                                            <p className="mt-1 text-xs text-slate-400 leading-relaxed">
+                                                When enabled, only project admins can change project status.
+                                                Other members can send approval requests.
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleToggleProjectStatusApproval(!statusApprovalEnabled)
+                                            }
+                                            disabled={!canManageProjectSettings || isSaving}
+                                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                statusApprovalEnabled ? "bg-emerald-500" : "bg-slate-700"
+                                            }`}
+                                        >
+                                            <span
+                                                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                                                    statusApprovalEnabled ? "translate-x-5" : "translate-x-1"
+                                                }`}
+                                            />
+                                        </button>
+                                    </div>
+
+                                    {!canManageProjectSettings && (
+                                        <p className="mt-3 text-[11px] text-amber-400">
+                                            Only project admins and workspace owners/admins can update this setting.
+                                        </p>
+                                    )}
+                                </section>
+                            )}
+
                             {canSeeDangerZone ? (
                                 <DangerZoneSection 
                                     item={item} 

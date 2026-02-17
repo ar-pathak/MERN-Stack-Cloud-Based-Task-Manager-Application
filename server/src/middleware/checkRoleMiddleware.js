@@ -48,12 +48,17 @@ const checkCanCreateTask = () => {
         workspaceId,
         projectId,
         teamId,
-        enforceWorkspaceAdminOnly: true
+        enforceWorkspaceAdminOnly: !projectId,
+        requireProjectAdminOrWorkspaceOwner: Boolean(projectId)
       });
 
       if (!allowed) {
+        const message = projectId
+          ? "Only project admins or workspace owners can create tasks in this project"
+          : "Only workspace owners and admins can create tasks";
+
         return res.status(403).json({
-          message: "Only workspace owners and admins can create tasks"
+          message
         });
       }
 

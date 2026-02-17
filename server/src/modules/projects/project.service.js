@@ -7,11 +7,18 @@ const Task = require('../../models/tasks');
 const Subtask = require('../../models/subtasks');
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
+const ProjectStatusChangeRequest = require('../../models/projectStatusChangeRequest');
+const notificationService = require('../notification/notification.service');
 
 const { touchWorkspace } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
 
 const withSession = (query, session) => (session ? query.session(session) : query);
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
 
 const normalizeIds = (values = []) => {
     const unique = [];
@@ -26,6 +33,31 @@ const normalizeIds = (values = []) => {
 };
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const getProjectMemberRole = (project, userId) => {
+    const member = (project.members || []).find(
+        (entry) => String(entry.user?._id || entry.user) === String(userId)
+    );
+    return member?.role || null;
+};
+
+const isProjectAdmin = (project, userId) => {
+    if (String(project.owner) === String(userId)) return true;
+    return getProjectMemberRole(project, userId) === "admin";
+};
+
+const getProjectAdminIds = (project) => {
+    const adminIds = new Set();
+    adminIds.add(String(project.owner));
+
+    (project.members || []).forEach((member) => {
+        if (member.role !== "admin") return;
+        const memberId = String(member.user?._id || member.user || "");
+        if (memberId) adminIds.add(memberId);
+    });
+
+    return Array.from(adminIds);
+};
 
 const ensureWorkspaceExists = async (workspaceId, session = null) => {
     const query = Workspace.findById(workspaceId).select('_id name chatId');
@@ -47,7 +79,7 @@ const ensureWorkspaceMember = async (workspaceId, userId, session = null) => {
 
 const ensureProjectAccess = async (projectId, userId, session = null) => {
     const query = Project.findById(projectId)
-        .select('name workspace owner members teams chatId status color description dueDate isHighPriority createdAt updatedAt')
+        .select('name workspace owner members teams chatId status color description dueDate isHighPriority settings createdAt updatedAt')
         .populate('members.user', 'name email isOnline')
         .populate('teams', 'name members');
 
@@ -78,6 +110,19 @@ const ensureProjectEditor = async (project, userId, session = null) => {
 
     if (!canEdit) {
         throw new Error('You are not allowed to update this project');
+    }
+
+    return workspaceMember;
+};
+
+const ensureProjectSettingsManager = async (project, userId, session = null) => {
+    const workspaceMember = await ensureWorkspaceMember(project.workspace, userId, session);
+    const canManageSettings =
+        ["owner", "admin"].includes(workspaceMember.role)
+        || isProjectAdmin(project, userId);
+
+    if (!canManageSettings) {
+        throw createError("Only workspace owners/admins or project admins can update project settings", 403);
     }
 
     return workspaceMember;
@@ -234,11 +279,38 @@ const projectService = {
         return await ensureProjectAccess(projectId, userId);
     },
 
-    updateProject: async (projectId, updateData, userId) => {
+    updateProject: async ({ projectId, workspaceId = null, updateData, userId }) => {
         const existingProject = await ensureProjectAccess(projectId, userId);
         await ensureProjectEditor(existingProject, userId);
 
+        if (workspaceId && String(existingProject.workspace) !== String(workspaceId)) {
+            throw createError('Project does not belong to this workspace', 400);
+        }
+
         const updatePayload = { ...updateData };
+        const currentStatus = String(existingProject.status || "active");
+        const nextStatus = updatePayload.status ? String(updatePayload.status) : null;
+        const settingsUpdateRequested = Object.prototype.hasOwnProperty.call(updatePayload, "settings");
+        const statusApprovalEnabled = Boolean(existingProject.settings?.statusChangeAdminApprovalEnabled);
+        const userIsProjectAdmin = isProjectAdmin(existingProject, userId);
+
+        if (settingsUpdateRequested) {
+            await ensureProjectSettingsManager(existingProject, userId);
+            const currentSettings = existingProject.settings?.toObject
+                ? existingProject.settings.toObject()
+                : (existingProject.settings || {});
+            updatePayload.settings = {
+                ...currentSettings,
+                ...(updatePayload.settings || {})
+            };
+        }
+
+        if (nextStatus && nextStatus !== currentStatus && statusApprovalEnabled && !userIsProjectAdmin) {
+            throw createError(
+                'Project status changes require project admin approval. Submit a status change request.',
+                403
+            );
+        }
 
         if (updatePayload.name) {
             updatePayload.name = String(updatePayload.name).trim();
@@ -251,7 +323,7 @@ const projectService = {
             }).select('_id');
 
             if (duplicate) {
-                throw new Error('Project with the same name already exists in this workspace');
+                throw createError('Project with the same name already exists in this workspace', 409);
             }
         }
 
@@ -284,7 +356,7 @@ const projectService = {
             .populate('teams', 'name members');
 
         if (!project) {
-            throw new Error('Project not found');
+            throw createError('Project not found', 404);
         }
 
         if (updatePayload.name && project.chatId) {
@@ -302,13 +374,21 @@ const projectService = {
         const actorLabel = await getUserLabel(userId);
         const oldName = existingProject.name || project.name;
         const renamed = updatePayload.name && updatePayload.name !== oldName;
-        const message = renamed
-            ? `${actorLabel} renamed project from "${oldName}" to "${project.name}".`
-            : `${actorLabel} updated project "${project.name}".`;
+        const statusChanged = Boolean(nextStatus && nextStatus !== currentStatus);
+
+        let action = 'project.updated';
+        let message = `${actorLabel} updated project "${project.name}".`;
+        if (renamed) {
+            action = 'project.renamed';
+            message = `${actorLabel} renamed project from "${oldName}" to "${project.name}".`;
+        } else if (statusChanged) {
+            action = 'project.status_changed';
+            message = `${actorLabel} changed project "${project.name}" status from "${currentStatus}" to "${nextStatus}".`;
+        }
 
         await logActivity({
             actorId: userId,
-            action: renamed ? 'project.renamed' : 'project.updated',
+            action,
             level: 'project',
             workspaceId: project.workspace,
             projectId: project._id,
@@ -317,12 +397,233 @@ const projectService = {
             message,
             meta: {
                 oldName,
-                newName: project.name
+                newName: project.name,
+                oldStatus: currentStatus,
+                newStatus: nextStatus || currentStatus
             }
         });
 
         await touchWorkspace(project.workspace);
         return project;
+    },
+
+    requestProjectStatusChange: async ({ workspaceId, projectId, requestedStatus, note = "", userId }) => {
+        const project = await ensureProjectAccess(projectId, userId);
+
+        if (workspaceId && String(project.workspace) !== String(workspaceId)) {
+            throw createError('Project does not belong to this workspace', 400);
+        }
+
+        const workspaceMembership = await ensureWorkspaceMember(project.workspace, userId);
+        const memberRole = getProjectMemberRole(project, userId);
+        const userIsProjectAdmin = isProjectAdmin(project, userId);
+        const approvalEnabled = Boolean(project.settings?.statusChangeAdminApprovalEnabled);
+
+        if (!approvalEnabled) {
+            throw createError('Status approval workflow is disabled for this project', 400);
+        }
+
+        if (!memberRole && !userIsProjectAdmin) {
+            throw createError('Only project members can request project status changes', 403);
+        }
+
+        if (String(workspaceMembership.role || "").toLowerCase() === "viewer") {
+            throw createError('Workspace viewers cannot request project status changes', 403);
+        }
+
+        if (String(memberRole || "").toLowerCase() === "viewer") {
+            throw createError('Project viewers cannot request status changes', 403);
+        }
+
+        if (userIsProjectAdmin) {
+            throw createError('Project admins can change project status directly', 400);
+        }
+
+        if (!['owner', 'admin', 'member', 'viewer'].includes(workspaceMembership.role)) {
+            throw createError('You are not allowed to request project status changes', 403);
+        }
+
+        const currentStatus = String(project.status || 'active');
+        if (requestedStatus === currentStatus) {
+            throw createError('Project already has this status', 400);
+        }
+
+        const existingPending = await ProjectStatusChangeRequest.findOne({
+            project: project._id,
+            requestedBy: userId,
+            requestedStatus,
+            status: 'pending'
+        }).select('_id');
+
+        if (existingPending) {
+            throw createError('You already have a pending request for this status', 409);
+        }
+
+        const request = await ProjectStatusChangeRequest.create({
+            workspace: project.workspace,
+            project: project._id,
+            requestedBy: userId,
+            requestedStatus,
+            previousStatus: currentStatus,
+            note: String(note || '').trim()
+        });
+
+        const adminIds = getProjectAdminIds(project).filter((id) => id !== String(userId));
+        const actorLabel = await getUserLabel(userId);
+
+        await notificationService.createNotifications({
+            recipientIds: adminIds,
+            actorId: userId,
+            title: 'Project status change request',
+            message: `${actorLabel} requested to change "${project.name}" status from "${currentStatus}" to "${requestedStatus}".`,
+            type: 'activity',
+            category: 'project',
+            priority: 'normal',
+            entityType: 'project',
+            entityId: project._id,
+            workspaceId: project.workspace,
+            projectId: project._id,
+            link: '/main/notifications',
+            metadata: {
+                kind: 'project_status_change_request',
+                requestId: String(request._id),
+                projectId: String(project._id),
+                workspaceId: String(project.workspace),
+                requestedStatus,
+                previousStatus: currentStatus,
+                note: request.note || '',
+                requestState: null
+            },
+            dedupeKey: `project:status_request:${String(project._id)}:${String(request._id)}`
+        });
+
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        await logActivity({
+            actorId: userId,
+            action: 'project.status_change_requested',
+            level: 'project',
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: `${actorLabel} requested project "${project.name}" status change to "${requestedStatus}".`,
+            meta: {
+                requestedStatus,
+                previousStatus: currentStatus,
+                requestId: request._id
+            }
+        });
+
+        return request;
+    },
+
+    respondProjectStatusChangeRequest: async ({
+        workspaceId,
+        projectId,
+        requestId,
+        action,
+        userId
+    }) => {
+        const project = await ensureProjectAccess(projectId, userId);
+
+        if (workspaceId && String(project.workspace) !== String(workspaceId)) {
+            throw createError('Project does not belong to this workspace', 400);
+        }
+
+        const userIsProjectAdmin = isProjectAdmin(project, userId);
+        if (!userIsProjectAdmin) {
+            throw createError('Only project admins can review status change requests', 403);
+        }
+
+        const request = await ProjectStatusChangeRequest.findOne({
+            _id: requestId,
+            project: project._id,
+            status: 'pending'
+        });
+
+        if (!request) {
+            throw createError('Project status change request not found or already processed', 404);
+        }
+
+        const now = new Date();
+        request.status = action === 'approve' ? 'approved' : 'rejected';
+        request.reviewedBy = userId;
+        request.reviewedAt = now;
+        await request.save();
+
+        if (action === 'approve' && String(project.status) !== String(request.requestedStatus)) {
+            project.status = request.requestedStatus;
+            await project.save();
+        }
+
+        const actorLabel = await getUserLabel(userId);
+        const requesterLabel = await getUserLabel(request.requestedBy);
+        const workspace = await Workspace.findById(project.workspace).select('chatId');
+        const finalStatus = action === 'approve'
+            ? request.requestedStatus
+            : project.status;
+
+        await logActivity({
+            actorId: userId,
+            action: action === 'approve'
+                ? 'project.status_change_request_approved'
+                : 'project.status_change_request_rejected',
+            level: 'project',
+            workspaceId: project.workspace,
+            projectId: project._id,
+            chatId: project.chatId,
+            mirrorChatIds: [workspace?.chatId],
+            message: action === 'approve'
+                ? `${actorLabel} approved ${requesterLabel}'s status change request for project "${project.name}" to "${request.requestedStatus}".`
+                : `${actorLabel} rejected ${requesterLabel}'s status change request for project "${project.name}".`,
+            meta: {
+                requestId: request._id,
+                requestedStatus: request.requestedStatus,
+                finalStatus
+            }
+        });
+
+        const adminIds = getProjectAdminIds(project);
+        await notificationService.setProjectStatusRequestNotificationState({
+            requestId: request._id,
+            requestState: request.status,
+            recipientUserIds: adminIds,
+            read: true
+        });
+
+        await notificationService.createNotifications({
+            recipientIds: [request.requestedBy],
+            actorId: userId,
+            title: action === 'approve'
+                ? 'Project status request approved'
+                : 'Project status request rejected',
+            message: action === 'approve'
+                ? `${actorLabel} approved your request. "${project.name}" is now "${request.requestedStatus}".`
+                : `${actorLabel} rejected your status change request for "${project.name}".`,
+            type: 'activity',
+            category: 'project',
+            priority: action === 'approve' ? 'normal' : 'low',
+            entityType: 'project',
+            entityId: project._id,
+            workspaceId: project.workspace,
+            projectId: project._id,
+            link: '/main/notifications',
+            metadata: {
+                kind: 'project_status_change_request_result',
+                requestId: String(request._id),
+                requestState: request.status,
+                requestedStatus: request.requestedStatus,
+                finalStatus
+            },
+            dedupeKey: `project:status_request_result:${String(request._id)}:${request.status}`
+        });
+
+        await touchWorkspace(project.workspace);
+
+        return {
+            request,
+            projectStatus: project.status
+        };
     },
 
     deleteProject: async (projectId, userId) => {
@@ -378,6 +679,7 @@ const projectService = {
             }
 
             await Task.deleteMany({ project: projectId }, { session });
+            await ProjectStatusChangeRequest.deleteMany({ project: projectId }, { session });
 
             if (projectToDelete.chatId) {
                 await Message.deleteMany({ chatId: projectToDelete.chatId }, { session });

@@ -14,6 +14,7 @@ import {
     followUser,
     rejectFollowRequest
 } from "../../../../../service/follow.service";
+import { respondProjectStatusChangeRequest } from "../../../../../service/project.service";
 import { respondWorkspaceInvite } from "../../../../../service/workspace.service";
 import * as socketService from "../../../../../service/Chat.socket.service";
 
@@ -424,6 +425,86 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         [loadUnreadCount]
     );
 
+    const projectStatusRequestAction = useCallback(
+        async (notification, action) => {
+            const notificationId = notification?._id;
+            const requestId = notification?.metadata?.requestId;
+            const projectId = notification?.metadata?.projectId || notification?.project?._id || notification?.project;
+            const workspaceId = notification?.metadata?.workspaceId || notification?.workspace?._id || notification?.workspace;
+
+            if (!notificationId || !requestId || !projectId || !workspaceId) return null;
+
+            const actionKey = `project-status:${action}:${notificationId}`;
+            setActionLoadingKey(actionKey);
+
+            try {
+                const result = await respondProjectStatusChangeRequest(
+                    workspaceId,
+                    projectId,
+                    requestId,
+                    action
+                );
+
+                await markNotificationRead(notificationId);
+                setNotifications((previous) =>
+                    previous.map((entry) =>
+                        entry._id === notificationId
+                            ? {
+                                  ...entry,
+                                  read: true,
+                                  readAt: new Date().toISOString(),
+                                  metadata: {
+                                      ...(entry.metadata || {}),
+                                      requestState: action === "approve" ? "approved" : "rejected"
+                                  }
+                              }
+                            : entry
+                    )
+                );
+                loadUnreadCount();
+                return result;
+            } catch (error) {
+                const alreadyHandled =
+                    Number(error?.status) === 404
+                    || String(error?.message || "").toLowerCase().includes("processed")
+                    || String(error?.message || "").toLowerCase().includes("not found")
+                    || String(error?.message || "").toLowerCase().includes("already");
+
+                if (alreadyHandled) {
+                    try {
+                        await markNotificationRead(notificationId);
+                    } catch {
+                        // noop
+                    }
+
+                    setNotifications((previous) =>
+                        previous.map((entry) =>
+                            entry._id === notificationId
+                                ? {
+                                      ...entry,
+                                      read: true,
+                                      readAt: new Date().toISOString(),
+                                      metadata: {
+                                          ...(entry.metadata || {}),
+                                          requestState: "expired"
+                                      }
+                                  }
+                                : entry
+                        )
+                    );
+                    loadUnreadCount();
+                    return null;
+                }
+
+                console.error("Failed project status request action", error);
+                return null;
+            } finally {
+                setActionLoadingKey("");
+            }
+        },
+        [loadUnreadCount]
+    );
+
     return {
         loading,
         notifications,
@@ -438,7 +519,8 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         markAllRead,
         followBack,
         followRequestAction,
-        workspaceInviteAction
+        workspaceInviteAction,
+        projectStatusRequestAction
     };
 };
 

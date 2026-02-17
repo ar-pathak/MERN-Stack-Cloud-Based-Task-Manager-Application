@@ -311,6 +311,7 @@ const overviewService = {
                         chatId: p.chatId?._id || p.chatId,
                         lastMessage: formatLastMessage(p.chatId),
                         status: p.status,
+                        settings: p.settings || {},
                         isHighPriority: p.isHighPriority,
                         createdAt: p.createdAt,
                         updatedAt: p.updatedAt,
@@ -320,7 +321,9 @@ const overviewService = {
                         unreadCount: getUnread(p), // <-- Project Unread
                         permissions: {
                             canCreateTask: projPermissions.canCreateTask || false,
-                            role: projPermissions.role || null
+                            role: projPermissions.role || null,
+                            isProjectAdmin: Boolean(projPermissions.isProjectAdmin),
+                            inheritedFromWorkspace: Boolean(projPermissions.inheritedFromWorkspace)
                         }
                     };
                 });
