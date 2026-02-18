@@ -136,6 +136,30 @@ module.exports = {
     },
 
     // ── Chat list (inbox) ─────────────────────────────────────────────────
+    toggleMute: async (req, res) => {
+        try {
+            const result = await chatService.toggleMute(
+                req.params.chatId,
+                req.user._id
+            );
+            sendSuccess(res, result);
+        } catch (e) {
+            handleError(e, res);
+        }
+    },
+
+    toggleArchive: async (req, res) => {
+        try {
+            const result = await chatService.toggleArchive(
+                req.params.chatId,
+                req.user._id
+            );
+            sendSuccess(res, result);
+        } catch (e) {
+            handleError(e, res);
+        }
+    },
+
     getChats: async (req, res) => {
         try {
             const chats = await chatService.getChats(req.user._id);

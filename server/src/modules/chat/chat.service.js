@@ -416,7 +416,7 @@ class ChatService {
             members: userId,
             archived: false  // Don't show archived chats by default
         })
-            .populate("members", "name username avatar email")
+            .populate("members", "name username avatar email isOnline lastSeen")
             .populate({
                 path: "lastMessage",
                 populate: [
@@ -1075,7 +1075,51 @@ class ChatService {
     }
 
     // -----------------------------------------------------------------------
-    // 15. Search Messages
+    // 15. Toggle Chat Mute
+    // -----------------------------------------------------------------------
+    async toggleMute(chatId, userId) {
+        const chat = await Chat.findById(chatId);
+        if (!chat) {
+            throw createError("Chat not found", 404);
+        }
+
+        if (!chat.members.some((id) => String(id) === String(userId))) {
+            throw createError("You are not a member of this chat", 403);
+        }
+
+        chat.muted = !chat.muted;
+        await chat.save();
+
+        return {
+            chatId: chat._id,
+            muted: chat.muted
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // 16. Toggle Chat Archive
+    // -----------------------------------------------------------------------
+    async toggleArchive(chatId, userId) {
+        const chat = await Chat.findById(chatId);
+        if (!chat) {
+            throw createError("Chat not found", 404);
+        }
+
+        if (!chat.members.some((id) => String(id) === String(userId))) {
+            throw createError("You are not a member of this chat", 403);
+        }
+
+        chat.archived = !chat.archived;
+        await chat.save();
+
+        return {
+            chatId: chat._id,
+            archived: chat.archived
+        };
+    }
+
+    // -----------------------------------------------------------------------
+    // 17. Search Messages
     // -----------------------------------------------------------------------
     async searchMessages(chatId, userId, query, limit = 20) {
         // Verify membership

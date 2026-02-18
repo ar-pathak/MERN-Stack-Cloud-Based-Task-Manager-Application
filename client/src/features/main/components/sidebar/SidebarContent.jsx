@@ -7,6 +7,7 @@ export const SidebarContent = ({
     isMobile,
     isExpanded,
     navItems,
+    onLogoClick,
     onNavigate,
     onClose
 }) => {
@@ -18,7 +19,11 @@ export const SidebarContent = ({
                         : "px-3 py-4 justify-center"
                     }`}
             >
-                <SidebarLogo isExpanded={isExpanded} isMobile={isMobile} />
+                <SidebarLogo
+                    isExpanded={isExpanded}
+                    isMobile={isMobile}
+                    onClick={onLogoClick}
+                />
 
                 {isMobile && (
                     <button

@@ -3,9 +3,20 @@ import { motion } from "framer-motion";
 import { NAV_ITEMS } from "../../constants/sidebarConfig";
 import { SidebarContent } from "./SidebarContent";
 import { ToggleButton } from "./ToggleButton";
+import { useToggle } from "../../../../context/ToggleContext";
 
 const MainSidebar = () => {
     const [isExpanded, setIsExpanded] = useState(true);
+    const { setIsToggle } = useToggle();
+
+    const handleSidebarExpandToggle = () => {
+        setIsExpanded((prev) => !prev);
+    };
+
+    const handleLogoToggle = () => {
+        setIsToggle((v) => !v);
+    };
+
     useEffect(() => {
         const timer = setTimeout(() => {
             setIsExpanded(false)
@@ -23,12 +34,12 @@ const MainSidebar = () => {
                 <SidebarContent
                     isExpanded={isExpanded}
                     navItems={NAV_ITEMS}
-                    onToggleSidebar={() => setIsExpanded((v) => !v)}
+                    onLogoClick={handleLogoToggle}
                 />
 
                 <ToggleButton
                     isExpanded={isExpanded}
-                    onClick={() => setIsExpanded((v) => !v)}
+                    onClick={handleSidebarExpandToggle}
                 />
             </motion.aside>
         </>

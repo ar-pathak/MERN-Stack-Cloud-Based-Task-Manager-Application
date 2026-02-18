@@ -8,28 +8,42 @@ import InviteModal from "./InviteModal";
 import AddMemberModal from "./AddMemberModal";
 import AssignProjectMemberModal from "./AssignProjectMemberModal";
 
-const MembersSection = ({ item }) => {
-    // 1. Initialize Logic
+const toIdString = (value) => String(value?._id || value?.id || value || "");
+
+const MembersSection = ({ item, presenceByUserId = {} }) => {
     const {
         members, taskData, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
         searchQuery, setSearchQuery, filterRole, setFilterRole,
         loadMembers, handleAddMember, handleAssignProjectMembers, handleInvite, handleRemoveMember, handleUpdateRole
     } = useMembersLogic(item);
-    console.log("members", members);
-    // 2. Local Modal UI State
+
     const [showInvite, setShowInvite] = useState(false);
     const [showAdd, setShowAdd] = useState(false);
-    const isWorkspaceLevel =
-        item.type === 'workspace' ||
-        (taskData.workspace === null &&
-            taskData.project === null)
 
-    // 3. Handlers
+    const isWorkspaceLevel =
+        item.type === "workspace" ||
+        (taskData?.workspace === null && taskData?.project === null);
+
+    const isMemberOnline = (member) => {
+        const memberId = toIdString(member?.user || member);
+        const liveStatus = presenceByUserId[memberId]?.isOnline;
+        if (typeof liveStatus === "boolean") return liveStatus;
+        return Boolean(member?.user?.isOnline || member?.isOnline || member?.online);
+    };
+
+    const onlineMembersCount = members.filter(isMemberOnline).length;
+
     const handleExport = () => {
         const csv = [
             ["Name", "Email", "Role", "Status"],
-            ...members.map(m => [m.user?.name, m.user?.email, m.role, m.online ? "Online" : "Offline"])
-        ].map(r => r.join(",")).join("\n");
+            ...members.map((m) => [
+                m.user?.name || m?.name,
+                m.user?.email || m?.email,
+                m.role,
+                isMemberOnline(m) ? "Online" : "Offline"
+            ])
+        ].map((r) => r.join(",")).join("\n");
+
         const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
         const a = document.createElement("a");
         a.href = url;
@@ -38,83 +52,120 @@ const MembersSection = ({ item }) => {
     };
 
     if (!initialLoadComplete) {
-        return <div className="flex h-96 items-center justify-center"><Loader2 className="h-10 w-10 text-sky-500 animate-spin" /></div>;
+        return (
+            <div className="flex h-80 items-center justify-center sm:h-96">
+                <Loader2 className="h-10 w-10 animate-spin text-sky-500" />
+            </div>
+        );
     }
 
     return (
-        <section className="space-y-6 pb-8 relative">
-            {/* Notification Toast */}
+        <section className="relative space-y-5 pb-6 sm:space-y-6 sm:pb-8">
             <AnimatePresence>
                 {notification.message && (
-                    <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="fixed top-4 right-4 z-50">
-                        <div className={`flex items-center gap-3 p-4 rounded-xl border backdrop-blur-xl ${notification.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200' : 'bg-rose-500/10 border-rose-500/30 text-rose-200'}`}>
-                            {notification.type === 'success' ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
-                            <p className="text-sm font-medium">{notification.message}</p>
-                            <button onClick={() => setNotification({ type: "", message: "" })}><X className="h-4 w-4" /></button>
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed left-3 right-3 top-3 z-50 sm:left-auto sm:right-4 sm:top-4 sm:max-w-md"
+                    >
+                        <div className={`flex items-center gap-2.5 rounded-xl border p-3 backdrop-blur-xl sm:gap-3 sm:p-4 ${notification.type === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200" : "border-rose-500/30 bg-rose-500/10 text-rose-200"}`}>
+                            {notification.type === "success" ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+                            <p className="text-xs font-medium sm:text-sm">{notification.message}</p>
+                            <button onClick={() => setNotification({ type: "", message: "" })}>
+                                <X className="h-4 w-4" />
+                            </button>
                         </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Header */}
-            <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center shadow-lg">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 shadow-lg sm:h-10 sm:w-10">
                         <Users className="h-5 w-5 text-white" />
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-100">{item.type === 'workspace' ? 'Workspace Member' : item.type === 'project' ? 'Project Assignee' : item.type === 'task' ? 'Task Assignee' : 'Subtask Assignee'}</h2>
-                        <p className="text-sm text-slate-400">{members.length} members • {members.filter(m => m?.user?.isOnline || m?.isOnline).length} online</p>
+                    <div className="min-w-0">
+                        <h2 className="text-base font-bold leading-tight text-slate-100 sm:text-xl">
+                            {item.type === "workspace" ? "Workspace Members" : item.type === "project" ? "Project Assignees" : item.type === "task" ? "Task Assignees" : "Subtask Assignees"}
+                        </h2>
+                        <p className="text-xs text-slate-400 sm:text-sm">{members.length} members - {onlineMembersCount} online</p>
                     </div>
                 </div>
 
                 {canManageMembers && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => loadMembers(true)} disabled={isRefreshing} className="px-3 py-2 bg-slate-800 text-slate-300 rounded-xl text-sm border border-slate-700 flex items-center gap-2">
-                            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} /> Refresh
+                    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+                        <button
+                            onClick={() => loadMembers(true)}
+                            disabled={isRefreshing}
+                            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-300 sm:px-3 sm:text-sm"
+                        >
+                            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                            <span>Refresh</span>
                         </button>
-                        <button onClick={handleExport} className="px-3 py-2 bg-slate-800 text-slate-300 rounded-xl text-sm border border-slate-700 flex items-center gap-2">
-                            <Download className="h-4 w-4" /> Export
+                        <button
+                            onClick={handleExport}
+                            className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-2.5 py-2 text-xs text-slate-300 sm:px-3 sm:text-sm"
+                        >
+                            <Download className="h-4 w-4" />
+                            <span>Export</span>
                         </button>
-                        <button onClick={() => setShowAdd(true)} className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-sky-500/20">
-                            <UserPlus className="h-4 w-4" /> Add
+                        <button
+                            onClick={() => setShowAdd(true)}
+                            className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-sky-600 px-2.5 py-2 text-xs text-white shadow-lg shadow-sky-500/20 hover:bg-sky-500 sm:col-span-1 sm:px-3 sm:text-sm"
+                        >
+                            <UserPlus className="h-4 w-4" />
+                            <span>Add</span>
                         </button>
-                        {item.type === 'workspace' && <button onClick={() => setShowInvite(true)} className="px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-sm flex items-center gap-2 shadow-lg shadow-purple-500/20">
-                            <Mail className="h-4 w-4" /> Invite
-                        </button>}
+                        {item.type === "workspace" && (
+                            <button
+                                onClick={() => setShowInvite(true)}
+                                className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-2.5 py-2 text-xs text-white shadow-lg shadow-purple-500/20 hover:bg-violet-500 sm:col-span-1 sm:px-3 sm:text-sm"
+                            >
+                                <Mail className="h-4 w-4" />
+                                <span>Invite</span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
 
-            {/* Filters */}
             <MemberFilters
-                searchQuery={searchQuery} setSearchQuery={setSearchQuery}
-                filterRole={filterRole} setFilterRole={setFilterRole}
+                searchQuery={searchQuery}
+                setSearchQuery={setSearchQuery}
+                filterRole={filterRole}
+                setFilterRole={setFilterRole}
                 roleStats={roleStats}
             />
 
-            {/* List */}
-            <div className="space-y-3">
+            <div className="space-y-2.5 sm:space-y-3">
                 <AnimatePresence mode="popLayout">
                     {filteredMembers.length > 0 ? (
-                        filteredMembers.map(member => (
+                        filteredMembers.map((member) => (
                             <MemberCard
                                 key={member._id}
                                 item={item}
                                 member={member}
+                                presenceByUserId={presenceByUserId}
                                 canManageMembers={canManageMembers}
                                 onRemove={handleRemoveMember}
                                 onUpdateRole={handleUpdateRole}
                             />
                         ))
                     ) : (
-                        <div className="text-center py-12 text-slate-500">No members found matching your criteria.</div>
+                        <div className="py-10 text-center text-sm text-slate-500 sm:py-12">
+                            No members found matching your criteria.
+                        </div>
                     )}
                 </AnimatePresence>
             </div>
 
-            {/* Modals */}
-            <InviteModal isOpen={showInvite} onClose={() => setShowInvite(false)} onInvite={handleInvite} isLoading={isGlobalLoading} />
+            <InviteModal
+                isOpen={showInvite}
+                onClose={() => setShowInvite(false)}
+                onInvite={handleInvite}
+                isLoading={isGlobalLoading}
+            />
 
             {isWorkspaceLevel ? (
                 <AddMemberModal

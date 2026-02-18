@@ -15,10 +15,10 @@ export const useScrollDirection = (ref) => {
             if (Math.abs(currentY - lastScrollY.current) < 10) return;
 
             // Determine direction
-            if (currentY > lastScrollY.current) {
-                setDirection("down");
+            if (currentY <= 0 || currentY < lastScrollY.current) {
+                setDirection("up");
             } else {
-                // setDirection("up");
+                setDirection("down");
             }
 
             lastScrollY.current = currentY;

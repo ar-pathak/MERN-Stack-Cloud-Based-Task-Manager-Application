@@ -10,51 +10,58 @@ const TeamCard = ({
     team,
     members = [],
     workspaceMembers = [],
+    presenceByUserId = {},
     canManage,
     onDelete,
     onLeave,
     onAddMember,
     onRemoveMember,
     onRoleChange,
-    contextType = 'workspace',
-    currentUserId //
+    contextType = "workspace",
+    currentUserId
 }) => {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showAddMenu, setShowAddMenu] = useState(false);
     const [showActions, setShowActions] = useState(false);
+
     const teamId = team._id || team.id;
-    const isWorkspace = contextType === 'workspace';
+    const isWorkspace = contextType === "workspace";
 
-    // ========== Memoized Computations ==========
+    const resolveOnline = useCallback((member) => {
+        const memberId = String(member?.user?._id || member?._id || member?.id || "");
+        const liveStatus = presenceByUserId[memberId]?.isOnline;
+        if (typeof liveStatus === "boolean") return liveStatus;
+        return Boolean(member?.user?.isOnline || member?.isOnline || member?.online);
+    }, [presenceByUserId]);
 
-    // Check if current user is a member of this team
     const isMember = useMemo(() => {
         if (!currentUserId || !members) return false;
-        return members.some(m => {
+        return members.some((m) => {
             const mId = m.user?._id || m.memberId || m._id || m.id;
-            return mId === currentUserId;
+            return String(mId) === String(currentUserId);
         });
     }, [members, currentUserId]);
 
-    // Count lead members
-    const leadCount = useMemo(() =>
-        members.filter(m => (m?.role || "member") === "lead").length,
+    const leadCount = useMemo(
+        () => members.filter((m) => (m?.role || "member") === "lead").length,
         [members]
     );
 
-    // Calculate available members
+    const onlineCount = useMemo(
+        () => members.filter((member) => resolveOnline(member)).length,
+        [members, resolveOnline]
+    );
+
     const availableMembers = useMemo(() => {
         if (!isWorkspace) return [];
         const currentMemberIds = new Set(
-            members.map(m => m?.user?._id || m?._id || m?.id)
+            members.map((m) => String(m?.user?._id || m?._id || m?.id || ""))
         );
-        return workspaceMembers.filter(wm => {
-            const wmId = wm?.user?._id || wm?._id || wm?.id;
+        return workspaceMembers.filter((wm) => {
+            const wmId = String(wm?.user?._id || wm?._id || wm?.id || "");
             return wmId && !currentMemberIds.has(wmId);
         });
     }, [isWorkspace, members, workspaceMembers]);
-
-    // ========== Event Handlers ==========
 
     const handleDeleteClick = useCallback((e) => {
         e.stopPropagation();
@@ -67,26 +74,27 @@ const TeamCard = ({
     }, [teamId, onAddMember]);
 
     const toggleExpanded = useCallback(() => {
-        setIsExpanded(prev => !prev);
+        setIsExpanded((prev) => !prev);
     }, []);
 
     const toggleAddMenu = useCallback((e) => {
         e.stopPropagation();
-        setShowAddMenu(prev => !prev);
+        setShowAddMenu((prev) => !prev);
     }, []);
 
     const toggleActions = useCallback((e) => {
         e.stopPropagation();
-        setShowActions(prev => !prev);
+        setShowActions((prev) => !prev);
     }, []);
-
-    // ========== Render Helpers ==========
 
     const renderMemberCount = () => (
         <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-purple-400" />
-            <span className="text-slate-300 font-medium">{members.length}</span>
-            <span className="text-slate-500">member{members.length !== 1 ? 's' : ''}</span>
+            <span className="font-medium text-slate-300">{members.length}</span>
+            <span className="text-slate-500">member{members.length !== 1 ? "s" : ""}</span>
+            {onlineCount > 0 && (
+                <span className="text-emerald-400">- {onlineCount} online</span>
+            )}
         </div>
     );
 
@@ -95,10 +103,10 @@ const TeamCard = ({
         return (
             <div className="flex items-center gap-2">
                 <Calendar className="h-3.5 w-3.5" />
-                {new Date(team.createdAt).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric'
+                {new Date(team.createdAt).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "short",
+                    day: "numeric"
                 })}
             </div>
         );
@@ -112,25 +120,25 @@ const TeamCard = ({
             exit={{ opacity: 0, scale: 0.9 }}
             className="group relative"
         >
-            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+            <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-purple-500/5 to-pink-500/5 opacity-0 blur-xl transition-opacity duration-500 group-hover:opacity-100" />
 
-            <div className="relative bg-slate-800/40 backdrop-blur-xl border border-slate-700/50 rounded-2xl overflow-hidden hover:border-purple-500/30 transition-all duration-300">
-                <div className="p-5">
-                    <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                                <h4 className="text-base font-bold text-white truncate group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 transition-all">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-700/50 bg-slate-800/40 backdrop-blur-xl transition-all duration-300 hover:border-purple-500/30">
+                <div className="p-3.5 sm:p-5">
+                    <div className="mb-4 flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-2 flex items-center gap-2">
+                                <h4 className="truncate text-sm font-bold text-white transition-all group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-pink-400 group-hover:bg-clip-text group-hover:text-transparent sm:text-base">
                                     {team.name}
                                 </h4>
                                 {leadCount > 0 && (
-                                    <div className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded-full flex-shrink-0">
+                                    <div className="flex flex-shrink-0 items-center gap-1 rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5">
                                         <Crown className="h-3 w-3 text-amber-400" />
-                                        <span className="text-xs text-amber-400 font-medium">{leadCount}</span>
+                                        <span className="text-xs font-medium text-amber-400">{leadCount}</span>
                                     </div>
                                 )}
                             </div>
                             {team.description && (
-                                <p className="text-xs text-slate-400 line-clamp-2 mb-3">
+                                <p className="mb-3 line-clamp-2 text-xs text-slate-400">
                                     {team.description}
                                 </p>
                             )}
@@ -141,7 +149,7 @@ const TeamCard = ({
                                 <>
                                     <button
                                         onClick={toggleActions}
-                                        className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                                        className="rounded-lg p-1.5 transition-colors hover:bg-slate-700/50 sm:p-2"
                                         aria-label="Team actions"
                                     >
                                         <MoreVertical className="h-4 w-4 text-slate-400" />
@@ -155,12 +163,12 @@ const TeamCard = ({
                                                     initial={{ opacity: 0, scale: 0.95, y: -10 }}
                                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                                     exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                                    className="absolute right-0 top-full mt-2 bg-slate-900/95 border border-slate-800 rounded-xl shadow-xl z-20 min-w-[180px] p-1 backdrop-blur-xl"
+                                                    className="absolute right-0 top-full z-20 mt-2 min-w-[170px] rounded-xl border border-slate-800 bg-slate-900/95 p-1 shadow-xl backdrop-blur-xl"
                                                 >
                                                     {canManage && (
                                                         <button
                                                             onClick={handleDeleteClick}
-                                                            className="w-full px-3 py-2.5 text-left text-xs text-rose-400 hover:bg-rose-500/10 rounded-lg flex items-center gap-2.5 transition-colors"
+                                                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs text-rose-400 transition-colors hover:bg-rose-500/10"
                                                         >
                                                             {isWorkspace ? (
                                                                 <>
@@ -181,9 +189,9 @@ const TeamCard = ({
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setShowActions(false);
-                                                                onLeave && onLeave(teamId, team.name);
+                                                                onLeave?.(teamId, team.name);
                                                             }}
-                                                            className="w-full px-3 py-2.5 text-left text-xs text-slate-300 hover:bg-slate-700/50 rounded-lg flex items-center gap-2.5 transition-colors"
+                                                            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs text-slate-300 transition-colors hover:bg-slate-700/50"
                                                         >
                                                             <LogOut className="h-3.5 w-3.5" />
                                                             Leave Team
@@ -198,29 +206,28 @@ const TeamCard = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4 mb-4 text-xs text-slate-500">
+                    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500">
                         {renderMemberCount()}
                         {renderCreatedDate()}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         <button
                             onClick={toggleExpanded}
-                            className="flex-1 px-3 py-2 bg-slate-700/50 hover:bg-slate-700 rounded-lg text-xs font-medium text-slate-300 flex items-center justify-center gap-2 transition-colors"
+                            className="flex min-w-[120px] flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-700/50 px-2.5 py-2 text-xs font-medium text-slate-300 transition-colors hover:bg-slate-700 sm:gap-2 sm:px-3"
                         >
                             <Users className="h-3.5 w-3.5" />
-                            {isExpanded ? 'Hide' : 'View'} Members
-                            <ChevronDown
-                                className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                            />
+                            <span className="max-[340px]:hidden">{isExpanded ? "Hide" : "View"}</span>
+                            Members
+                            <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                         </button>
 
                         {canManage && isWorkspace && (
                             <button
                                 onClick={toggleAddMenu}
-                                className={`px-3 py-2 border rounded-lg text-xs font-medium transition-all flex items-center gap-2 ${showAddMenu
-                                    ? 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-                                    : 'bg-slate-700/30 border-transparent hover:bg-slate-700/50 text-slate-300'
+                                className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-all sm:gap-2 sm:px-3 ${showAddMenu
+                                    ? "border-purple-500/30 bg-purple-500/20 text-purple-400"
+                                    : "border-transparent bg-slate-700/30 text-slate-300 hover:bg-slate-700/50"
                                     }`}
                                 aria-label="Add member"
                             >
@@ -237,46 +244,43 @@ const TeamCard = ({
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="border-t border-slate-700/50 bg-slate-800/30 overflow-hidden"
+                            className="overflow-hidden border-t border-slate-700/50 bg-slate-800/30"
                         >
-                            <div className="p-4 max-h-48 overflow-y-auto custom-scrollbar">
-                                <div className="flex justify-between mb-3">
-                                    <h5 className="text-xs font-semibold text-slate-300">
-                                        Add Member
-                                    </h5>
-                                    <button
-                                        onClick={() => setShowAddMenu(false)}
-                                        aria-label="Close"
-                                    >
-                                        <X className="h-4 w-4 text-slate-500 hover:text-white transition-colors" />
+                            <div className="max-h-48 overflow-y-auto p-3 custom-scrollbar sm:p-4">
+                                <div className="mb-3 flex justify-between">
+                                    <h5 className="text-xs font-semibold text-slate-300">Add Member</h5>
+                                    <button onClick={() => setShowAddMenu(false)} aria-label="Close">
+                                        <X className="h-4 w-4 text-slate-500 transition-colors hover:text-white" />
                                     </button>
                                 </div>
                                 <div className="space-y-2">
                                     {availableMembers.length === 0 ? (
-                                        <p className="text-xs text-slate-500 text-center py-3">
+                                        <p className="py-3 text-center text-xs text-slate-500">
                                             No available members to add
                                         </p>
                                     ) : (
-                                        availableMembers.map(wm => {
+                                        availableMembers.map((wm) => {
                                             const memberId = wm?.user?._id || wm?._id;
                                             const memberName = wm?.user?.name || wm?.name || "Unknown";
                                             const memberInitial = memberName.charAt(0).toUpperCase();
+                                            const memberIsOnline = resolveOnline(wm);
 
                                             return (
                                                 <button
                                                     key={memberId}
                                                     onClick={() => handleAddMemberClick(memberId)}
-                                                    className="w-full flex items-center gap-3 p-2 bg-slate-700/30 hover:bg-slate-700/50 rounded-lg group/add transition-colors"
+                                                    className="group/add flex w-full items-center gap-2 rounded-lg bg-slate-700/30 p-2 transition-colors hover:bg-slate-700/50"
                                                 >
-                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                                    <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-xs font-bold text-white">
                                                         {memberInitial}
                                                     </div>
-                                                    <div className="flex-1 text-left min-w-0">
-                                                        <p className="text-xs font-medium text-slate-200 truncate">
-                                                            {memberName}
+                                                    <div className="min-w-0 flex-1 text-left">
+                                                        <p className="truncate text-xs font-medium text-slate-200">{memberName}</p>
+                                                        <p className={`text-[10px] ${memberIsOnline ? "text-emerald-400" : "text-slate-500"}`}>
+                                                            {memberIsOnline ? "Online" : "Offline"}
                                                         </p>
                                                     </div>
-                                                    <Plus className="h-4 w-4 text-slate-500 group-hover/add:text-purple-400 transition-colors flex-shrink-0" />
+                                                    <Plus className="h-4 w-4 flex-shrink-0 text-slate-500 transition-colors group-hover/add:text-purple-400" />
                                                 </button>
                                             );
                                         })
@@ -294,28 +298,27 @@ const TeamCard = ({
                             animate={{ height: "auto", opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
                             transition={{ duration: 0.2 }}
-                            className="border-t border-slate-700/50 bg-slate-800/30 overflow-hidden"
+                            className="overflow-hidden border-t border-slate-700/50 bg-slate-800/30"
                         >
-                            <div className="p-4 space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+                            <div className="max-h-64 space-y-2 overflow-y-auto p-3 custom-scrollbar sm:p-4">
                                 {members.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <Users className="h-10 w-10 text-slate-600 mx-auto mb-3" />
-                                        <p className="text-xs text-slate-500">
-                                            No members in this team
-                                        </p>
+                                    <div className="py-8 text-center">
+                                        <Users className="mx-auto mb-3 h-10 w-10 text-slate-600" />
+                                        <p className="text-xs text-slate-500">No members in this team</p>
                                         {canManage && isWorkspace && (
-                                            <p className="text-xs text-slate-600 mt-1">
+                                            <p className="mt-1 text-xs text-slate-600">
                                                 Click the + button above to add members
                                             </p>
                                         )}
                                     </div>
                                 ) : (
-                                    members.map(member => {
+                                    members.map((member) => {
                                         const memberId = member?.user?._id || member?._id || member?.id;
                                         return (
                                             <TeamMemberItem
                                                 key={memberId}
                                                 member={member}
+                                                presenceByUserId={presenceByUserId}
                                                 canManage={canManage && isWorkspace}
                                                 onRoleChange={(uid, role) => onRoleChange(teamId, uid, role)}
                                                 onRemove={(uid) => onRemoveMember(teamId, uid)}

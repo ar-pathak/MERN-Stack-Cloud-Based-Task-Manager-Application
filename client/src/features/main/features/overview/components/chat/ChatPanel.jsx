@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import InfoSidebar from "../infoSidebar/InfoSidebar";
+import { useState, useMemo, useEffect } from "react";
+import { AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
+import InfoSidebar from "../infoSidebar/InfoSidebar";
 import ChatHeader from "./ChatHeader";
 import PinnedBanner from "./PinnedBanner";
 import MessageList from "./MessageList";
@@ -9,10 +10,24 @@ import ChatInput from "./ChatInput";
 import useWebRTC from "../../hook/useWebRTC";
 import CallInterface from "./CallInterface";
 import { useAuth } from "../../../../../../context/AuthContext";
+import { leaveWorkspace } from "../../../../../../service/workspace.service";
+import { leaveProject } from "../../../../../../service/project.service";
+import { leaveTask } from "../../../../../../service/task.service";
+import { leaveSubtask } from "../../../../../../service/subtask.service";
+import {
+    addMembersToGroup,
+    leaveGroup,
+    toggleChatArchive,
+    toggleChatMute,
+} from "../../../../../../service/chat.service";
+
+const INFO_SIDEBAR_TYPES = new Set(["workspace", "project", "task", "subtask"]);
+const toIdString = (value) => String(value?._id || value?.id || value || "");
 
 const ChatPanel = ({
     item,
     messages = [],
+    isLoadingMessages = false,
     chatMessage,
     setChatMessage,
     handleSendMessage,
@@ -34,6 +49,9 @@ const ChatPanel = ({
     setShowEmojiPicker,
     overview,
     onUpdate,
+    onRefreshChatMeta,
+    onLeaveSuccess,
+    presenceByUserId = {},
     jumpToMessageId,
     onMentionJumpHandled,
     onMobileBack,
@@ -48,9 +66,17 @@ const ChatPanel = ({
     const [messageFilter, setMessageFilter] = useState("all");
     const [replyingTo, setReplyingTo] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
+    const [chatInfoTab, setChatInfoTab] = useState("overview");
 
-    // ── WebRTC ────────────────────────────────────────────────────────────
     const chatId = item?.chatId || item?.id || item?._id;
+    const normalizedChatType = String(item?.chatType || "").toLowerCase();
+    const isGroupChat = normalizedChatType === "group";
+    const canShowInfoSidebar = INFO_SIDEBAR_TYPES.has(item?.type);
+    const mentionEnabled = INFO_SIDEBAR_TYPES.has(item?.type);
+
+    useEffect(() => {
+        setChatInfoTab("overview");
+    }, [item?.id, item?._id, item?.chatId]);
 
     const {
         localStream,
@@ -74,22 +100,23 @@ const ChatPanel = ({
         toggleScreenShare,
     } = useWebRTC(chatId);
 
-    // Check if I am the host
     const isHost = useMemo(() => {
         if (!currentCall || !user) return false;
         return String(currentCall.callerId?._id || currentCall.callerId) === String(user._id || user.id);
     }, [currentCall, user]);
 
-    // ── Call Handlers ─────────────────────────────────────────────────────
-    const handleStartVideoCall = () => startCall('video');
-    const handleStartAudioCall = () => startCall('audio');
+    const handleStartVideoCall = () => startCall("video");
+    const handleStartAudioCall = () => startCall("audio");
 
-    // ── Message filtering (Existing logic) ────────────────────────────────
-    const pinnedMessages = useMemo(() => messages.filter(msg => msg?.pinned), [messages]);
+    const pinnedMessages = useMemo(() => messages.filter((msg) => msg?.pinned), [messages]);
     const typingMembers = useMemo(() => {
         if (!typingUsers?.length) return [];
-        return typingUsers.map(u => ({ name: u.userName || u.name || "Someone", typing: true }));
+        return typingUsers.map((typingUser) => ({
+            name: typingUser.userName || typingUser.name || "Someone",
+            typing: true,
+        }));
     }, [typingUsers]);
+
     const viewerRoleBlocked = String(item?.permissions?.role || "").toLowerCase() === "viewer";
     const sendBlockedReason =
         chatAccessError ||
@@ -98,14 +125,17 @@ const ChatPanel = ({
     const sendDisabled = Boolean(sendBlockedReason) || !canSendMessages;
 
     const filteredMessages = useMemo(() => {
-        let f = messages;
-        if (searchQuery) f = f.filter(m => (m?.text || m?.content || "").toLowerCase().includes(searchQuery.toLowerCase()));
-        if (messageFilter === "files") f = f.filter(m => m?.attachments?.length > 0);
-        if (messageFilter === "pinned") f = f.filter(m => m?.pinned);
-        return f;
+        let filtered = messages;
+        if (searchQuery) {
+            filtered = filtered.filter((msg) =>
+                (msg?.text || msg?.content || "").toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
+        if (messageFilter === "files") filtered = filtered.filter((msg) => msg?.attachments?.length > 0);
+        if (messageFilter === "pinned") filtered = filtered.filter((msg) => msg?.pinned);
+        return filtered;
     }, [messages, searchQuery, messageFilter]);
 
-    // ── Message Send (Existing logic) ─────────────────────────────────────
     const handleSendWithContext = (fileFromInput) => {
         if (sendDisabled) return;
         const fileToSend = fileFromInput || selectedFile;
@@ -121,23 +151,121 @@ const ChatPanel = ({
         if (value?.trim() && handleTyping) handleTyping();
     };
 
-    // ── Render ────────────────────────────────────────────────────────────
+    const handleToggleMute = async () => {
+        if (!chatId) return;
+        try {
+            const result = await toggleChatMute(chatId);
+            toast.success(result?.muted ? "Chat muted" : "Chat unmuted");
+            await onRefreshChatMeta?.();
+        } catch (error) {
+            toast.error(error?.message || "Failed to update mute setting");
+        }
+    };
+
+    const handleToggleArchive = async () => {
+        if (!chatId) return;
+        try {
+            const result = await toggleChatArchive(chatId);
+            toast.success(result?.archived ? "Chat archived" : "Chat unarchived");
+            await onRefreshChatMeta?.();
+            await onUpdate?.();
+        } catch (error) {
+            toast.error(error?.message || "Failed to update archive setting");
+        }
+    };
+
+    const handleAddMembers = async () => {
+        if (!chatId) return;
+
+        if (canShowInfoSidebar) {
+            setChatInfoTab("members");
+            setShowChatInfo(true);
+            return;
+        }
+
+        if (!isGroupChat) {
+            toast.error("Members can only be added in group chats");
+            return;
+        }
+
+        const input = window.prompt("Enter member user IDs (comma separated)");
+        if (!input) return;
+
+        const memberIds = input
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean);
+
+        if (!memberIds.length) {
+            toast.error("Please provide at least one valid member ID");
+            return;
+        }
+
+        try {
+            await addMembersToGroup(chatId, memberIds);
+            toast.success("Members added successfully");
+            await onRefreshChatMeta?.();
+        } catch (error) {
+            toast.error(error?.message || "Failed to add members");
+        }
+    };
+
+    const handleLeave = async () => {
+        if (!item) return;
+        if (!window.confirm("Are you sure you want to leave this conversation?")) return;
+
+        try {
+            if (item?.type === "workspace") {
+                await leaveWorkspace(item?.id || item?._id);
+            } else if (item?.type === "project") {
+                const workspaceId = toIdString(item?.workspace?._id || item?.workspace);
+                await leaveProject(workspaceId, item?.id || item?._id);
+            } else if (item?.type === "task") {
+                await leaveTask(item?.id || item?._id);
+            } else if (item?.type === "subtask") {
+                await leaveSubtask(item?.id || item?._id);
+            } else if (isGroupChat) {
+                await leaveGroup(chatId);
+            } else {
+                toast.error("Cannot leave this conversation");
+                return;
+            }
+
+            toast.success("You left the conversation");
+            await onRefreshChatMeta?.();
+            if (onLeaveSuccess) {
+                await onLeaveSuccess();
+            } else {
+                await onUpdate?.();
+            }
+        } catch (error) {
+            toast.error(error?.message || "Failed to leave conversation");
+        }
+    };
+
+    const handleRequestInfo = () => {
+        if (!canShowInfoSidebar) return;
+        setChatInfoTab("overview");
+        setShowChatInfo(true);
+    };
+
     return (
-        <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden relative">
+        <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             <AnimatePresence mode="wait">
-                {showChatInfo && item?.type !== "dm" ? (
-                    <div className="w-full h-full min-h-0 overflow-y-auto">
+                {showChatInfo && canShowInfoSidebar ? (
+                    <div className="h-full min-h-0 w-full overflow-y-auto">
                         <InfoSidebar
                             item={item}
                             overview={overview}
+                            initialTab={chatInfoTab}
+                            presenceByUserId={presenceByUserId}
                             onClose={() => setShowChatInfo(false)}
                             onUpdate={onUpdate}
                         />
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden relative">
-                        {/* 1. Header */}
-                        <div className="flex-shrink-0 z-20">
+                    <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+                        <div className="z-20 flex-shrink-0">
                             <ChatHeader
                                 item={item}
                                 typingMembers={typingMembers}
@@ -147,16 +275,18 @@ const ChatPanel = ({
                                 setSearchQuery={setSearchQuery}
                                 messageFilter={messageFilter}
                                 setMessageFilter={setMessageFilter}
-                                showChatInfo={showChatInfo}
-                                setShowChatInfo={setShowChatInfo}
                                 onStartVideoCall={handleStartVideoCall}
                                 onStartAudioCall={handleStartAudioCall}
+                                onToggleMute={handleToggleMute}
+                                onToggleArchive={handleToggleArchive}
+                                onAddMembers={handleAddMembers}
+                                onLeave={handleLeave}
+                                onRequestInfo={handleRequestInfo}
                                 onBack={onMobileBack}
                             />
                         </div>
 
-                        {/* 2. CALL INTERFACE (The Telegram Style Bar) - ADDED HERE */}
-                        <div className="flex-shrink-0 z-30">
+                        <div className="z-30 flex-shrink-0">
                             <AnimatePresence>
                                 {currentCall && (
                                     <CallInterface
@@ -185,34 +315,35 @@ const ChatPanel = ({
                             </AnimatePresence>
                         </div>
 
-                        {/* 3. Pinned Banner */}
-                        <div className="flex-shrink-0 z-10">
+                        <div className="z-10 flex-shrink-0">
                             <PinnedBanner
                                 pinnedMessages={pinnedMessages}
                                 onViewPinned={() => setMessageFilter("pinned")}
                             />
                         </div>
 
-                        {/* 4. Messages Area */}
-                        <div className="flex-1 min-h-0 overflow-y-auto relative z-0">
-                            <MessageList
-                                messages={filteredMessages}
-                                itemType={item?.type}
-                                selectedMessage={selectedMessage}
-                                setSelectedMessage={setSelectedMessage}
-                                handleDeleteMessage={handleDeleteMessage}
-                                handlePinMessage={handlePinMessage}
-                                handleEditMessage={handleEditMessage}
-                                onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
-                                onReply={setReplyingTo}
-                                chatEndRef={chatEndRef}
-                                jumpToMessageId={jumpToMessageId}
-                                onJumpHandled={onMentionJumpHandled}
-                            />
+                        <div className="relative z-0 flex-1 min-h-0 overflow-y-auto">
+                            {isLoadingMessages ? (
+                                <ChatMessagesSkeleton />
+                            ) : (
+                                <MessageList
+                                    messages={filteredMessages}
+                                    itemType={item?.type}
+                                    selectedMessage={selectedMessage}
+                                    setSelectedMessage={setSelectedMessage}
+                                    handleDeleteMessage={handleDeleteMessage}
+                                    handlePinMessage={handlePinMessage}
+                                    handleEditMessage={handleEditMessage}
+                                    onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
+                                    onReply={setReplyingTo}
+                                    chatEndRef={chatEndRef}
+                                    jumpToMessageId={jumpToMessageId}
+                                    onJumpHandled={onMentionJumpHandled}
+                                />
+                            )}
                         </div>
 
-                        {/* 5. Input Area */}
-                        <div className="flex-shrink-0 z-20">
+                        <div className="z-20 flex-shrink-0">
                             {sendBlockedReason ? (
                                 <div className="mx-3 mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300 sm:mx-4 md:mx-6">
                                     {sendBlockedReason}
@@ -235,6 +366,7 @@ const ChatPanel = ({
                                 setSelectedFile={setSelectedFile}
                                 sendDisabled={sendDisabled}
                                 sendDisabledReason={sendBlockedReason}
+                                mentionEnabled={mentionEnabled}
                             />
                         </div>
                     </div>
@@ -243,5 +375,31 @@ const ChatPanel = ({
         </div>
     );
 };
+
+const ChatMessagesSkeleton = () => (
+    <div className="h-full bg-slate-950 px-3 py-4 sm:px-4 md:px-8">
+        <div className="space-y-4">
+            {Array.from({ length: 7 }).map((_, idx) => (
+                <div
+                    key={`chat-skeleton-${idx}`}
+                    className={`flex ${idx % 3 === 0 ? "justify-end" : "justify-start"}`}
+                >
+                    <div className={`max-w-[82%] space-y-2 ${idx % 3 === 0 ? "items-end" : "items-start"}`}>
+                        <div
+                            className={`h-3 rounded bg-slate-800/80 ${
+                                idx % 3 === 0 ? "ml-auto w-20" : "w-24"
+                            } animate-pulse`}
+                        />
+                        <div
+                            className={`h-10 rounded-2xl bg-slate-800/60 animate-pulse ${
+                                idx % 3 === 0 ? "w-44 sm:w-56" : "w-52 sm:w-64"
+                            }`}
+                        />
+                    </div>
+                </div>
+            ))}
+        </div>
+    </div>
+);
 
 export default ChatPanel;

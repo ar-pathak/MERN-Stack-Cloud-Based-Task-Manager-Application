@@ -47,6 +47,18 @@ router.post(
     controller.leaveGroup
 );
 
+router.patch(
+    "/:chatId/mute",
+    validate(v.chatIdParamSchema, "params"),
+    controller.toggleMute
+);
+
+router.patch(
+    "/:chatId/archive",
+    validate(v.chatIdParamSchema, "params"),
+    controller.toggleArchive
+);
+
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------

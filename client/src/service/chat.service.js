@@ -124,6 +124,38 @@ export const leaveGroup = async (chatId) => {
     }
 };
 
+/**
+ * PATCH /api/chat/:chatId/mute
+ * Toggle mute state of a chat
+ */
+export const toggleChatMute = async (chatId) => {
+    try {
+        const response = await api.patch(`${BASE}/${chatId}/mute`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to toggle chat mute",
+            status: error.response?.status,
+        };
+    }
+};
+
+/**
+ * PATCH /api/chat/:chatId/archive
+ * Toggle archive state of a chat
+ */
+export const toggleChatArchive = async (chatId) => {
+    try {
+        const response = await api.patch(`${BASE}/${chatId}/archive`);
+        return response.data?.data || response.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to toggle chat archive",
+            status: error.response?.status,
+        };
+    }
+};
+
 // ---------------------------------------------------------------------------
 // MESSAGES
 // ---------------------------------------------------------------------------

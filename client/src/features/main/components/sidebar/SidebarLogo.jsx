@@ -1,17 +1,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles } from "lucide-react";
-import { useToggle } from "../../../../context/ToggleContext";
 
-export const SidebarLogo = ({ isExpanded, isMobile }) => {
-    const { isToggle, setIsToggle } = useToggle();
-
-    const handleClick = () => {
-        setIsToggle(!isToggle);
-    };
-
+export const SidebarLogo = ({ isExpanded, isMobile, onClick }) => {
     return (
         <div
-            onClick={handleClick}
+            onClick={onClick}
             className={`flex items-center gap-2 border-b border-slate-800/60 transition-all duration-300 cursor-pointer hover:bg-slate-800/30 ${isExpanded || isMobile ? "px-5 py-4" : "px-3 py-4 justify-center"
                 }`}>
             <div className="relative flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500/30 to-cyan-500/20 flex-shrink-0 border border-sky-400/20">
@@ -32,10 +25,7 @@ export const SidebarLogo = ({ isExpanded, isMobile }) => {
                         className="flex-1 overflow-hidden"
                     >
                         <p className="text-sm font-bold tracking-tight text-slate-100 whitespace-nowrap bg-gradient-to-r from-sky-200 to-cyan-200 bg-clip-text text-transparent">
-                            Nimbus Tasks
-                        </p>
-                        <p className="text-[11px] text-slate-400 whitespace-nowrap font-medium">
-                            Cloud workspace
+                            Aurora Workspace
                         </p>
                     </motion.div>
                 )}

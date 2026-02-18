@@ -119,8 +119,8 @@ class SubtaskService {
 
         // Populate fields before returning
         await subtask.populate([
-            { path: 'assignedTo', select: 'name email avatar' },
-            { path: 'completedBy', select: 'name email avatar' }
+            { path: 'assignedTo', select: 'name email avatar isOnline' },
+            { path: 'completedBy', select: 'name email avatar isOnline' }
         ]);
 
         const { task: parentTask, project, workspace } = await loadSubtaskContext(taskId);
@@ -150,8 +150,8 @@ class SubtaskService {
     async getSubtasksByTask(taskId) {
         const subtasks = await Subtask.find({ task: taskId })
             .sort({ order: 1, createdAt: 1 })
-            .populate('assignedTo', 'name email avatar')
-            .populate('completedBy', 'name email avatar')
+            .populate('assignedTo', 'name email avatar isOnline')
+            .populate('completedBy', 'name email avatar isOnline')
             .lean();
 
         return subtasks;
@@ -162,8 +162,8 @@ class SubtaskService {
      */
     async getSubtaskById(subtaskId) {
         const subtask = await Subtask.findById(subtaskId)
-            .populate('assignedTo', 'name email avatar')
-            .populate('completedBy', 'name email avatar')
+            .populate('assignedTo', 'name email avatar isOnline')
+            .populate('completedBy', 'name email avatar isOnline')
             .populate({
                 path: 'task',
                 select: 'title workspace project',
@@ -251,8 +251,8 @@ class SubtaskService {
             $set: { updatedAt: new Date() }
         });
         await subtask.populate([
-            { path: 'assignedTo', select: 'name email avatar' },
-            { path: 'completedBy', select: 'name email avatar' }
+            { path: 'assignedTo', select: 'name email avatar isOnline' },
+            { path: 'completedBy', select: 'name email avatar isOnline' }
         ]);
 
         const { task, project, workspace } = await loadSubtaskContext(subtask.task);
@@ -317,8 +317,8 @@ class SubtaskService {
             $set: { updatedAt: new Date() }
         });
         await subtask.populate([
-            { path: 'assignedTo', select: 'name email avatar' },
-            { path: 'completedBy', select: 'name email avatar' }
+            { path: 'assignedTo', select: 'name email avatar isOnline' },
+            { path: 'completedBy', select: 'name email avatar isOnline' }
         ]);
 
         const { task, project, workspace } = await loadSubtaskContext(subtask.task);

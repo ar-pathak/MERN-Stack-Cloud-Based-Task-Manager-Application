@@ -41,7 +41,7 @@ const teamsService = {
 
         const teams = await Team.find({ workspace: workspaceId })
             .populate('createdBy', 'name email')
-            .populate('members.user', 'name email')
+            .populate('members.user', 'name email avatar isOnline')
             .sort({ createdAt: -1 });
 
         return teams;
@@ -50,7 +50,7 @@ const teamsService = {
     getTeamById: async (teamId, workspaceId) => {
         const team = await Team.findOne({ _id: teamId, workspace: workspaceId })
             .populate('createdBy', 'name email')
-            .populate('members.user', 'name email');
+            .populate('members.user', 'name email avatar isOnline');
 
         if (!team) {
             throw new Error('Team not found');
@@ -147,14 +147,14 @@ const teamsService = {
         await team.save();
 
         // Populate the newly added member
-        await team.populate('members.user', 'name email');
+        await team.populate('members.user', 'name email avatar isOnline');
 
         return team;
     },
 
     getTeamMembers: async (teamId, workspaceId) => {
         const team = await Team.findOne({ _id: teamId, workspace: workspaceId })
-            .populate('members.user', 'name email');
+            .populate('members.user', 'name email avatar isOnline');
 
         if (!team) {
             throw new Error('Team not found');
@@ -200,7 +200,7 @@ const teamsService = {
 
         member.role = role;
         await team.save();
-        await team.populate('members.user', 'name email');
+        await team.populate('members.user', 'name email avatar isOnline');
 
         return team;
     },

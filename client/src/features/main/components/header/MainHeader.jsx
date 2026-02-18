@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, Search, Plus, CheckSquare, Zap, Video, Send, User as UserIcon, FileText, Loader2, X } from "lucide-react";
+import { Menu, Search, Plus, CheckSquare, Zap, Send, User as UserIcon, FileText, Loader2, X } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router";
@@ -170,20 +170,12 @@ const MainHeader = () => {
       action: () => setIsTaskOpen(true),
     },
     {
-      icon: Video,
-      label: "QuickCast",
-      description: "Upload a video",
-      color: "text-red-400",
-      bgColor: "bg-red-500/10",
-      action: () => console.log("Upload short"),
-    },
-    {
       icon: Send,
       label: "New Post",
       description: "Share an update or idea",
       color: "text-blue-400",
       bgColor: "bg-blue-500/10",
-      action: () => console.log("Create post"),
+      action: () => navigate("/main/create"),
     },
   ];
 

@@ -44,7 +44,8 @@ const ChatInput = ({
     setSelectedFile,
     chatId,
     sendDisabled = false,
-    sendDisabledReason = ""
+    sendDisabledReason = "",
+    mentionEnabled = true
 }) => {
     const textareaRef = useRef(null);
     const [previewUrl, setPreviewUrl] = useState(null);
@@ -67,7 +68,7 @@ const ChatInput = ({
         let cancelled = false;
         const token = mentionContext?.query;
 
-        if (mentionContext === null) {
+        if (!mentionEnabled || mentionContext === null) {
             setMentionCandidates([]);
             setMentionLoading(false);
             setActiveMentionIndex(0);
@@ -100,7 +101,7 @@ const ChatInput = ({
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [mentionContext, chatId]);
+    }, [mentionContext, chatId, mentionEnabled]);
 
     // Generate Preview when file is selected
     useEffect(() => {
@@ -117,6 +118,12 @@ const ChatInput = ({
     }, [selectedFile]);
 
     const updateMentionFromValue = (value, caretPos) => {
+        if (!mentionEnabled) {
+            setMentionContext(null);
+            setMentionCandidates([]);
+            setMentionLoading(false);
+            return;
+        }
         const next = detectMentionContext(value, caretPos);
         setMentionContext(next);
     };
@@ -167,7 +174,7 @@ const ChatInput = ({
     };
 
     const handleKeyDown = (e) => {
-        const mentionOpen = mentionContext && (mentionLoading || mentionCandidates.length > 0);
+        const mentionOpen = mentionEnabled && mentionContext && (mentionLoading || mentionCandidates.length > 0);
 
         if (mentionOpen) {
             if (e.key === "ArrowDown") {
@@ -221,7 +228,7 @@ const ChatInput = ({
     };
 
     return (
-        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 sm:p-3 md:p-4">
+        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 max-[340px]:p-1.5 sm:p-3 md:p-4">
             <AnimatePresence>
                 {replyingTo && (
                     <motion.div
@@ -269,7 +276,7 @@ const ChatInput = ({
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <p className="text-sm text-slate-200 truncate max-w-[130px] sm:max-w-[200px]">{selectedFile.name}</p>
+                                <p className="text-sm text-slate-200 truncate max-w-[120px] max-[340px]:max-w-[84px] sm:max-w-[200px]">{selectedFile.name}</p>
                                 <p className="text-xs text-slate-500">{Math.round(selectedFile.size / 1024)} KB</p>
                             </div>
                         </div>
@@ -297,7 +304,7 @@ const ChatInput = ({
                 )}
             </AnimatePresence>
 
-            <div className="flex items-end gap-1.5 sm:gap-2">
+            <div className="flex items-end gap-1.5 max-[340px]:gap-1 sm:gap-2">
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -325,16 +332,18 @@ const ChatInput = ({
                                 ? (sendDisabledReason || "You cannot send messages in this chat.")
                                 : selectedFile
                                     ? "Add a caption..."
-                                    : "Type a message... Use @ to mention"
+                                    : mentionEnabled
+                                        ? "Type a message... Use @ to mention"
+                                        : "Type a message..."
                         }
                         rows={1}
                         disabled={uploadingFile || sendDisabled}
-                        className="w-full px-3 py-2.5 sm:px-4 sm:py-3 bg-slate-900/60 border border-slate-800/60 rounded-xl text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 transition-all resize-none"
-                        style={{ minHeight: "44px", maxHeight: "120px" }}
+                        className="w-full rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-500 transition-all resize-none focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 max-[340px]:px-2.5 max-[340px]:py-2"
+                        style={{ minHeight: "42px", maxHeight: "120px" }}
                     />
 
                     <AnimatePresence>
-                        {mentionContext && (mentionLoading || mentionCandidates.length > 0) && (
+                        {mentionEnabled && mentionContext && (mentionLoading || mentionCandidates.length > 0) && (
                             <motion.div
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -416,12 +425,12 @@ const ChatInput = ({
                     whileTap={{ scale: 0.95 }}
                     onClick={onSendClick}
                     disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled}
-                    className={`p-2.5 sm:p-3 rounded-xl transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                    className={`rounded-xl p-2 max-[340px]:p-1.5 sm:p-3 transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
                         ? "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25"
                         : "bg-slate-800/40 text-slate-600 cursor-not-allowed"
                         }`}
                 >
-                    {uploadingFile ? <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 sm:h-5 sm:w-5" />}
+                    {uploadingFile ? <Loader2 className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5" />}
                 </motion.button>
             </div>
         </div>
@@ -434,7 +443,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
         whileTap={!disabled ? { scale: 0.95 } : {}}
         onClick={onClick}
         disabled={disabled}
-        className={`p-2 sm:p-2.5 rounded-xl transition-colors flex-shrink-0 ${active
+        className={`rounded-xl p-2 max-[340px]:p-1.5 sm:p-2.5 transition-colors flex-shrink-0 ${active
             ? "bg-sky-500/20 text-sky-400"
             : disabled
                 ? "text-slate-600 cursor-not-allowed"
@@ -442,7 +451,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
             }`}
         title={title}
     >
-        <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
+        <Icon className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5" />
     </motion.button>
 );
 

@@ -11,6 +11,9 @@ const MainPage = () => {
     const scrollRef = useRef(null);
     const scrollDirection = useScrollDirection(scrollRef);
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+    const hasSidebarToggleInteractedRef = useRef(false);
+    const hasScrollHiddenHeaderRef = useRef(false);
+    const hasAutoHideTimerRunRef = useRef(false);
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < 768 : false
     );
@@ -28,14 +31,33 @@ const MainPage = () => {
     useEffect(() => {
         if (isMobileViewport) return;
 
-        if (scrollDirection === "down" && isHeaderVisible) {
+        if (hasScrollHiddenHeaderRef.current) return;
+        if (scrollDirection === "down") {
+            hasScrollHiddenHeaderRef.current = true;
             setIsHeaderVisible(false);
         }
-        if (isToggle) {
-            setIsHeaderVisible(true)
+    }, [scrollDirection, isMobileViewport]);
+
+    useEffect(() => {
+        if (isMobileViewport || hasAutoHideTimerRunRef.current) return;
+
+        const timer = setTimeout(() => {
+            hasAutoHideTimerRunRef.current = true;
+            setIsHeaderVisible(false);
+        }, 8000);
+
+        return () => clearTimeout(timer);
+    }, [isMobileViewport]);
+
+    useEffect(() => {
+        if (isMobileViewport) return;
+        if (!hasSidebarToggleInteractedRef.current) {
+            hasSidebarToggleInteractedRef.current = true;
+            return;
         }
 
-    }, [scrollDirection, isHeaderVisible, isToggle, isMobileViewport]);
+        setIsHeaderVisible((prev) => !prev);
+    }, [isToggle, isMobileViewport]);
 
     useEffect(() => {
         if (!isMobileViewport) {

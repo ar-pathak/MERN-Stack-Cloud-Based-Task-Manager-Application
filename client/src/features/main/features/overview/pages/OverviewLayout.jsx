@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
+import { getConversations } from "../../../../../service/chat.service";
 import { createWorkspace } from "../../../../../service/workspace.service";
 import { createProject } from "../../../../../service/project.service";
 import { createSubtask } from "../../../../../service/subtask.service";
@@ -31,6 +32,7 @@ import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { useChatLogic } from "../hook/useChatLogic";
 import { useOverviewRealtime } from "../hook/useOverviewRealtime";
 import { useAuth } from "../../../../../context/AuthContext";
+import { onUserStatus } from "../../../../../service/Chat.socket.service";
 import {
   applySidebarActivityUpdate,
   applyUnreadUpdate,
@@ -43,6 +45,23 @@ import {
 } from "../utils/overviewTimeline";
 
 const MOBILE_BREAKPOINT = 768;
+const toIdString = (value) => String(value?._id || value?.id || value || "");
+
+const mergePresenceIntoMembers = (members = [], presenceByUserId = {}) =>
+  (members || []).map((member) => {
+    const memberId = toIdString(member);
+    const livePresence = presenceByUserId[memberId];
+    const fallbackOnline = Boolean(member?.isOnline || member?.online);
+
+    return {
+      ...member,
+      _id: memberId || member?._id,
+      id: memberId || member?.id,
+      isOnline: typeof livePresence?.isOnline === "boolean" ? livePresence.isOnline : fallbackOnline,
+      online: typeof livePresence?.isOnline === "boolean" ? livePresence.isOnline : fallbackOnline,
+      lastSeen: livePresence?.lastSeen || member?.lastSeen || null,
+    };
+  });
 
 const OverviewLayout = () => {
   const [expandedItems, setExpandedItems] = useState(new Set());
@@ -59,6 +78,8 @@ const OverviewLayout = () => {
     typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
   );
   const [mobilePane, setMobilePane] = useState("overview");
+  const [chatMetaById, setChatMetaById] = useState({});
+  const [presenceByUserId, setPresenceByUserId] = useState({});
 
   const { user } = useAuth();
 
@@ -103,9 +124,62 @@ const OverviewLayout = () => {
     }
   }, [isMobileViewport, mobilePane, selectedItem]);
 
+  useEffect(() => {
+    const unsubscribe = onUserStatus((payload) => {
+      const userId = toIdString(payload?._id || payload?.id);
+      if (!userId) return;
+
+      setPresenceByUserId((prev) => ({
+        ...prev,
+        [userId]: {
+          isOnline: Boolean(payload?.isOnline),
+          lastSeen: payload?.lastSeen || prev[userId]?.lastSeen || null,
+        },
+      }));
+    });
+
+    return () => unsubscribe?.();
+  }, []);
+
   const showToast = useCallback((message) => {
     setToast(message);
     setTimeout(() => setToast(null), 2500);
+  }, []);
+
+  const refreshChatMetadata = useCallback(async () => {
+    try {
+      const conversations = await getConversations();
+      const nextMeta = {};
+
+      (conversations || []).forEach((chatItem) => {
+        const chatId = toIdString(chatItem?._id || chatItem?.id);
+        if (!chatId) return;
+
+        const members = (chatItem?.members || []).map((member) => ({
+          ...member,
+          _id: toIdString(member),
+          id: toIdString(member),
+          isOnline: Boolean(member?.isOnline),
+        }));
+
+        nextMeta[chatId] = {
+          chatId,
+          chatType: chatItem?.type || null,
+          muted: Boolean(chatItem?.muted),
+          archived: Boolean(chatItem?.archived),
+          members,
+          memberCount: members.length,
+          onlineMemberCount: members.filter((member) => member?.isOnline).length,
+          adminId: toIdString(chatItem?.admin),
+          name: chatItem?.name || "",
+          avatar: chatItem?.avatar || "",
+        };
+      });
+
+      setChatMetaById((prev) => ({ ...prev, ...nextMeta }));
+    } catch (error) {
+      console.error("Failed to refresh chat metadata", error);
+    }
   }, []);
 
   const refreshTimeline = useCallback(async () => {
@@ -120,11 +194,12 @@ const OverviewLayout = () => {
 
       const normalized = payload.map(normalizeOverviewNode);
       dispatch(setOverviewData({ timeline: normalized }));
+      await refreshChatMetadata();
     } catch (error) {
       console.error("Failed to refresh timeline", error);
       showToast("Something went wrong while refreshing");
     }
-  }, [dispatch, showToast]);
+  }, [dispatch, refreshChatMetadata, showToast]);
 
   const handleSidebarActivity = useCallback(
     (chatId, messageData) => {
@@ -232,6 +307,10 @@ const OverviewLayout = () => {
     setLoadingTimeline(true);
     refreshTimeline().finally(() => setLoadingTimeline(false));
   }, [refreshTimeline]);
+
+  useEffect(() => {
+    refreshChatMetadata();
+  }, [refreshChatMetadata]);
 
   const toggleExpand = (id) => {
     const next = new Set(expandedItems);
@@ -355,10 +434,57 @@ const OverviewLayout = () => {
   const workspaces = useMemo(() => getWorkspaceOptions(timeline), [timeline]);
   const projects = useMemo(() => getProjectOptions(timeline), [timeline]);
   const teams = [];
+  const selectedChatItem = useMemo(() => {
+    if (!selectedItem) return null;
+
+    const chatId = toIdString(selectedItem?.chatId || selectedItem?.id || selectedItem?._id);
+    const chatMeta = chatMetaById[chatId];
+    const mergedMembers = mergePresenceIntoMembers(
+      chatMeta?.members?.length ? chatMeta.members : selectedItem?.members || [],
+      presenceByUserId
+    );
+
+    const merged = {
+      ...selectedItem,
+      chatId: selectedItem?.chatId || chatId,
+      chatType: selectedItem?.chatType || chatMeta?.chatType || selectedItem?.type,
+      muted: typeof chatMeta?.muted === "boolean" ? chatMeta.muted : Boolean(selectedItem?.muted),
+      archived: typeof chatMeta?.archived === "boolean" ? chatMeta.archived : Boolean(selectedItem?.archived),
+      members: mergedMembers,
+      memberCount:
+        selectedItem?.memberCount ??
+        chatMeta?.memberCount ??
+        mergedMembers.length,
+      onlineMemberCount:
+        selectedItem?.onlineMemberCount ??
+        chatMeta?.onlineMemberCount ??
+        mergedMembers.filter((member) => member?.isOnline).length,
+      chatAdminId: selectedItem?.chatAdminId || chatMeta?.adminId || null,
+    };
+
+    const normalizedChatType = String(merged?.chatType || "").toLowerCase();
+    if (normalizedChatType === "private") {
+      const currentUserId = toIdString(user?._id || user?.id);
+      const otherMember =
+        mergedMembers.find((member) => toIdString(member) !== currentUserId) ||
+        mergedMembers[0];
+
+      if (otherMember) {
+        merged.userId = toIdString(otherMember);
+        merged.avatar = merged.avatar || otherMember?.avatar || "";
+        merged.name = merged.name || merged.title || otherMember?.name || "Unknown User";
+        merged.title = merged.title || merged.name;
+        merged.isOnline = Boolean(otherMember?.isOnline);
+        merged.lastSeen = otherMember?.lastSeen || merged.lastSeen || null;
+      }
+    }
+
+    return merged;
+  }, [selectedItem, chatMetaById, presenceByUserId, user]);
 
   const isTimelineEmpty = !loadingTimeline && timeline.length === 0;
   const hasFilteredResults = filteredItems.length > 0;
-  const selectedChatId = getItemChatId(selectedItem);
+  const selectedChatId = getItemChatId(selectedChatItem || selectedItem);
   const jumpToMessageId =
     pendingMentionJump && String(pendingMentionJump.chatId) === selectedChatId
       ? pendingMentionJump.messageId
@@ -367,6 +493,14 @@ const OverviewLayout = () => {
   const showChatPane = !isMobileViewport || mobilePane === "chat";
   const profileId = user?._id || user?.id;
   const shouldShowBottomMenu = isMobileViewport && mobilePane !== "chat";
+  const handleLeaveChatSuccess = useCallback(async () => {
+    setSelectedItem(null);
+    setPendingMentionJump(null);
+    if (isMobileViewport) {
+      setMobilePane("overview");
+    }
+    await refreshTimeline();
+  }, [isMobileViewport, refreshTimeline]);
 
   return (
     <div className={`flex h-full min-h-0 bg-slate-950 overflow-hidden ${shouldShowBottomMenu ? "pb-[5.25rem]" : ""}`}>
@@ -431,9 +565,10 @@ const OverviewLayout = () => {
               className="flex-1 h-full min-h-0 flex flex-col overflow-hidden"
             >
               <ChatPanel
-                item={selectedItem}
+                item={selectedChatItem || selectedItem}
                 overview={overview}
                 messages={chat.messages}
+                isLoadingMessages={chat.isLoading}
                 chatMessage={chat.chatMessage}
                 setChatMessage={chat.setChatMessage}
                 handleSendMessage={handleSendMessageWrapper}
@@ -459,6 +594,9 @@ const OverviewLayout = () => {
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}
                 onUpdate={refreshTimeline}
+                onRefreshChatMeta={refreshChatMetadata}
+                presenceByUserId={presenceByUserId}
+                onLeaveSuccess={handleLeaveChatSuccess}
                 jumpToMessageId={jumpToMessageId}
                 onMentionJumpHandled={handleMentionJumpHandled}
                 onMobileBack={isMobileViewport ? () => setMobilePane("overview") : null}
