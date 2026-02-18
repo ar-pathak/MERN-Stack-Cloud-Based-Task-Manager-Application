@@ -92,6 +92,15 @@ const messageSchema = new mongoose.Schema(
             type: Boolean,
             default: false
         },
+        pinnedAt: {
+            type: Date,
+            default: null
+        },
+        pinnedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null
+        },
         // Soft delete
         status: {
             type: String,
@@ -115,6 +124,7 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ chatId: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, status: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, pinned: 1 });
+messageSchema.index({ chatId: 1, pinned: 1, pinnedAt: -1 });
 messageSchema.index({ chatId: 1, mentions: 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, isSystem: 1, "meta.activityType": 1, createdAt: -1 });
 messageSchema.index({ chatId: 1, sharedPost: 1, createdAt: -1 });

@@ -49,6 +49,8 @@ const toIdString = (value) => {
     return "";
 };
 
+const MAX_PINNED_MESSAGES = 5;
+
 const hasBlockedUser = (userDoc, targetId) => {
     const targetIdString = toIdString(targetId);
     if (!targetIdString) return false;
@@ -534,6 +536,7 @@ class ChatService {
             })
             .populate(sharedPostPopulate)
             .populate("mentions", "username name avatar")
+            .populate("pinnedBy", "name username avatar")
             .lean();
 
         if (mentionUsers.length) {
@@ -603,6 +606,7 @@ class ChatService {
             .populate(sharedPostPopulate)
             .populate("reactions.userId", "name avatar")
             .populate("mentions", "username name avatar")
+            .populate("pinnedBy", "name username avatar")
             .lean();
 
         // Get total count for pagination info
@@ -763,6 +767,7 @@ class ChatService {
         if (!chat.members.some((id) => String(id) === String(userId))) {
             throw new Error("You are not a member of this chat");
         }
+        await this.assertCanViewSectionChat(chatId, userId);
 
         const message = await Message.findById(messageId);
         if (!message) {
@@ -771,11 +776,68 @@ class ChatService {
         if (String(message.chatId) !== String(chatId)) {
             throw new Error("Message does not belong to this chat");
         }
+        if (!["active", "edited"].includes(String(message.status))) {
+            throw new Error("Only active messages can be pinned");
+        }
 
-        message.pinned = !message.pinned;
+        let evictedMessageId = null;
+
+        if (message.pinned) {
+            message.pinned = false;
+            message.pinnedAt = null;
+            message.pinnedBy = null;
+        } else {
+            const currentlyPinned = await Message.find({
+                chatId,
+                status: { $in: ["active", "edited"] },
+                pinned: true,
+                _id: { $ne: message._id }
+            })
+                .sort({ pinnedAt: 1, createdAt: 1 })
+                .select("_id")
+                .lean();
+
+            if (currentlyPinned.length >= MAX_PINNED_MESSAGES) {
+                const oldestPinned = currentlyPinned[0];
+                if (oldestPinned?._id) {
+                    await Message.findByIdAndUpdate(oldestPinned._id, {
+                        pinned: false,
+                        pinnedAt: null,
+                        pinnedBy: null
+                    });
+                    evictedMessageId = String(oldestPinned._id);
+                }
+            }
+
+            message.pinned = true;
+            message.pinnedAt = new Date();
+            message.pinnedBy = userId;
+        }
+
         await message.save();
 
-        return message;
+        const [pinnedCount, populatedMessage] = await Promise.all([
+            Message.countDocuments({
+                chatId,
+                status: { $in: ["active", "edited"] },
+                pinned: true
+            }),
+            Message.findById(message._id)
+                .select("_id pinned pinnedAt pinnedBy")
+                .populate("pinnedBy", "name username avatar")
+                .lean()
+        ]);
+
+        return {
+            chatId: String(chatId),
+            messageId: String(message._id),
+            pinned: Boolean(populatedMessage?.pinned),
+            pinnedAt: populatedMessage?.pinnedAt || null,
+            pinnedBy: populatedMessage?.pinnedBy || null,
+            evictedMessageId,
+            pinnedCount,
+            maxPinnedMessages: MAX_PINNED_MESSAGES
+        };
     }
 
     // -----------------------------------------------------------------------
@@ -861,6 +923,7 @@ class ChatService {
             .populate("senderId", "name username avatar")
             .populate(sharedPostPopulate)
             .populate("mentions", "username name avatar")
+            .populate("pinnedBy", "name username avatar")
             .lean();
 
         if (newlyMentionedUsers.length) {

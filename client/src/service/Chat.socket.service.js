@@ -114,6 +114,9 @@ export const onMessageEdited = (callback) =>
 export const onReactionUpdated = (callback) =>
     attachListener("chat:reaction_updated", callback);
 
+export const onMessagePinUpdated = (callback) =>
+    attachListener("chat:message_pin_updated", callback);
+
 export const emitMessageDeleted = (chatId, messageId) => {
     if (socket) socket.emit("chat:message_deleted", { chatId, messageId });
 };

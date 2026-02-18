@@ -228,7 +228,7 @@ const ChatInput = ({
     };
 
     return (
-        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 max-[340px]:p-1.5 sm:p-3 md:p-4">
+        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 max-[340px]:p-1.5 max-[300px]:p-1 sm:p-3 md:p-4">
             <AnimatePresence>
                 {replyingTo && (
                     <motion.div
@@ -237,18 +237,18 @@ const ChatInput = ({
                         exit={{ height: 0, opacity: 0 }}
                         className="mb-2 overflow-hidden"
                     >
-                        <div className="flex items-center gap-2 p-2 bg-slate-900/40 border border-slate-800/50 rounded-lg border-l-4 border-l-sky-500">
-                            <Reply className="h-4 w-4 text-sky-400" />
+                        <div className="flex items-center gap-2 p-2 bg-slate-900/40 border border-slate-800/50 rounded-lg border-l-4 border-l-sky-500 max-[300px]:gap-1.5 max-[300px]:p-1.5">
+                            <Reply className="h-4 w-4 text-sky-400 max-[300px]:h-3.5 max-[300px]:w-3.5" />
                             <div className="flex-1 min-w-0">
-                                <p className="text-xs text-sky-400 font-bold">
+                                <p className="text-xs text-sky-400 font-bold max-[300px]:text-[11px]">
                                     Replying to {replyingTo.senderId?.name || "User"}
                                 </p>
-                                <p className="text-xs text-slate-300 truncate">
+                                <p className="text-xs text-slate-300 truncate max-[300px]:text-[11px]">
                                     {replyingTo.content || "Attachment"}
                                 </p>
                             </div>
-                            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-slate-800 rounded text-slate-400">
-                                <X className="h-4 w-4" />
+                            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-slate-800 rounded text-slate-400 max-[300px]:p-0.5">
+                                <X className="h-4 w-4 max-[300px]:h-3.5 max-[300px]:w-3.5" />
                             </button>
                         </div>
                     </motion.div>
@@ -261,28 +261,28 @@ const ChatInput = ({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 10 }}
-                        className="mb-3 relative inline-block group"
+                        className="mb-3 relative inline-block max-w-full group"
                     >
-                        <div className="p-2 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 w-fit max-w-full">
+                        <div className="p-2 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 w-fit max-w-full max-[300px]:gap-2 max-[300px]:p-1.5">
                             {previewUrl ? (
-                                <img src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-700" />
+                                <img src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-700 max-[300px]:h-12 max-[300px]:w-12" />
                             ) : (
-                                <div className="h-16 w-16 rounded-lg bg-slate-700/60 flex items-center justify-center border border-slate-700">
+                                <div className="h-16 w-16 rounded-lg bg-slate-700/60 flex items-center justify-center border border-slate-700 max-[300px]:h-12 max-[300px]:w-12">
                                     {selectedFile.type.startsWith("image/") ? (
-                                        <ImageIcon className="h-8 w-8 text-slate-400" />
+                                        <ImageIcon className="h-8 w-8 text-slate-400 max-[300px]:h-6 max-[300px]:w-6" />
                                     ) : (
-                                        <FileText className="h-8 w-8 text-slate-400" />
+                                        <FileText className="h-8 w-8 text-slate-400 max-[300px]:h-6 max-[300px]:w-6" />
                                     )}
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <p className="text-sm text-slate-200 truncate max-w-[120px] max-[340px]:max-w-[84px] sm:max-w-[200px]">{selectedFile.name}</p>
-                                <p className="text-xs text-slate-500">{Math.round(selectedFile.size / 1024)} KB</p>
+                                <p className="text-sm text-slate-200 truncate max-w-[120px] max-[340px]:max-w-[84px] max-[300px]:max-w-[62px] max-[300px]:text-xs sm:max-w-[200px]">{selectedFile.name}</p>
+                                <p className="text-xs text-slate-500 max-[300px]:text-[11px]">{Math.round(selectedFile.size / 1024)} KB</p>
                             </div>
                         </div>
                         <button
                             onClick={removeFile}
-                            className="absolute -top-2 -right-2 p-1.5 rounded-full bg-rose-500 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                            className="absolute -top-2 -right-2 p-1.5 rounded-full bg-rose-500 text-white opacity-0 group-hover:opacity-100 transition-opacity shadow-lg max-[300px]:opacity-100 max-[300px]:p-1"
                         >
                             <X className="h-3 w-3" />
                         </button>
@@ -296,15 +296,15 @@ const ChatInput = ({
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="mb-3 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center gap-2 text-sky-300"
+                        className="mb-3 px-3 py-2 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center gap-2 text-sky-300 max-[300px]:px-2 max-[300px]:py-1.5 max-[300px]:gap-1.5"
                     >
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-xs">Uploading...</span>
+                        <Loader2 className="h-4 w-4 animate-spin max-[300px]:h-3.5 max-[300px]:w-3.5" />
+                        <span className="text-xs max-[300px]:text-[11px]">Uploading...</span>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            <div className="flex items-end gap-1.5 max-[340px]:gap-1 sm:gap-2">
+            <div className="flex items-end gap-1.5 max-[340px]:gap-1 max-[300px]:gap-0.5 sm:gap-2">
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -338,7 +338,7 @@ const ChatInput = ({
                         }
                         rows={1}
                         disabled={uploadingFile || sendDisabled}
-                        className="w-full rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-500 transition-all resize-none focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 max-[340px]:px-2.5 max-[340px]:py-2"
+                        className="w-full rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-500 transition-all resize-none focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 max-[340px]:px-2.5 max-[340px]:py-2 max-[300px]:rounded-lg max-[300px]:px-2 max-[300px]:py-1.5 max-[300px]:text-[13px]"
                         style={{ minHeight: "42px", maxHeight: "120px" }}
                     />
 
@@ -348,22 +348,22 @@ const ChatInput = ({
                                 initial={{ opacity: 0, y: 8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, y: 8 }}
-                                className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-xl shadow-2xl overflow-hidden z-50"
+                                className="absolute left-0 right-0 bottom-full mb-2 rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-xl shadow-2xl overflow-hidden z-50 max-[300px]:rounded-lg"
                             >
-                                <div className="px-3 py-2 border-b border-slate-800/70 flex items-center gap-2">
-                                    <AtSign className="h-3.5 w-3.5 text-sky-400" />
-                                    <p className="text-[11px] uppercase tracking-wide text-slate-400">
+                                <div className="px-3 py-2 border-b border-slate-800/70 flex items-center gap-2 max-[300px]:px-2 max-[300px]:py-1.5 max-[300px]:gap-1.5">
+                                    <AtSign className="h-3.5 w-3.5 text-sky-400 max-[300px]:h-3 max-[300px]:w-3" />
+                                    <p className="text-[11px] uppercase tracking-wide text-slate-400 max-[300px]:text-[10px]">
                                         Mention someone
                                     </p>
                                 </div>
 
-                                <div className="max-h-56 overflow-y-auto custom-scrollbar">
+                                <div className="max-h-56 overflow-y-auto custom-scrollbar max-[300px]:max-h-44">
                                     {mentionLoading && (
-                                        <div className="px-3 py-3 text-xs text-slate-400">Searching users...</div>
+                                        <div className="px-3 py-3 text-xs text-slate-400 max-[300px]:px-2 max-[300px]:py-2 max-[300px]:text-[11px]">Searching users...</div>
                                     )}
 
                                     {!mentionLoading && mentionCandidates.length === 0 && (
-                                        <div className="px-3 py-3 text-xs text-slate-500">No users found</div>
+                                        <div className="px-3 py-3 text-xs text-slate-500 max-[300px]:px-2 max-[300px]:py-2 max-[300px]:text-[11px]">No users found</div>
                                     )}
 
                                     {!mentionLoading && mentionCandidates.map((candidate, index) => (
@@ -373,21 +373,21 @@ const ChatInput = ({
                                                 e.preventDefault();
                                                 applyMention(candidate);
                                             }}
-                                            className={`w-full px-3 py-2.5 text-left flex items-center gap-2 transition-colors ${
+                                            className={`w-full px-3 py-2.5 text-left flex items-center gap-2 transition-colors max-[300px]:px-2 max-[300px]:py-2 max-[300px]:gap-1.5 ${
                                                 index === activeMentionIndex ? "bg-sky-500/15" : "hover:bg-slate-800/70"
                                             }`}
                                         >
                                             <img
                                                 src={candidate.avatar || "https://ui-avatars.com/api/?background=1f2937&color=e5e7eb&name=" + encodeURIComponent(candidate.name || candidate.username || "U")}
                                                 alt={candidate.name || candidate.username}
-                                                className="h-7 w-7 rounded-full object-cover border border-slate-700"
+                                                className="h-7 w-7 rounded-full object-cover border border-slate-700 max-[300px]:h-6 max-[300px]:w-6"
                                             />
                                             <div className="min-w-0">
-                                                <p className="text-xs font-medium text-slate-100 truncate">{candidate.name || candidate.username}</p>
-                                                <p className="text-[11px] text-sky-300 truncate">@{candidate.username}</p>
+                                                <p className="text-xs font-medium text-slate-100 truncate max-[300px]:text-[11px]">{candidate.name || candidate.username}</p>
+                                                <p className="text-[11px] text-sky-300 truncate max-[300px]:text-[10px]">@{candidate.username}</p>
                                             </div>
                                             {candidate.isOnline && (
-                                                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                                                <span className="ml-auto h-2.5 w-2.5 rounded-full bg-emerald-400 max-[300px]:h-2 max-[300px]:w-2" />
                                             )}
                                         </button>
                                     ))}
@@ -425,12 +425,12 @@ const ChatInput = ({
                     whileTap={{ scale: 0.95 }}
                     onClick={onSendClick}
                     disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled}
-                    className={`rounded-xl p-2 max-[340px]:p-1.5 sm:p-3 transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                    className={`rounded-xl p-2 max-[340px]:p-1.5 max-[300px]:rounded-lg max-[300px]:p-1 sm:p-3 transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
                         ? "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25"
                         : "bg-slate-800/40 text-slate-600 cursor-not-allowed"
                         }`}
                 >
-                    {uploadingFile ? <Loader2 className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5" />}
+                    {uploadingFile ? <Loader2 className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5" />}
                 </motion.button>
             </div>
         </div>
@@ -443,7 +443,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
         whileTap={!disabled ? { scale: 0.95 } : {}}
         onClick={onClick}
         disabled={disabled}
-        className={`rounded-xl p-2 max-[340px]:p-1.5 sm:p-2.5 transition-colors flex-shrink-0 ${active
+        className={`rounded-xl p-2 max-[340px]:p-1.5 max-[300px]:rounded-lg max-[300px]:p-1 sm:p-2.5 transition-colors flex-shrink-0 ${active
             ? "bg-sky-500/20 text-sky-400"
             : disabled
                 ? "text-slate-600 cursor-not-allowed"
@@ -451,7 +451,7 @@ const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
             }`}
         title={title}
     >
-        <Icon className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 sm:h-5 sm:w-5" />
+        <Icon className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5" />
     </motion.button>
 );
 

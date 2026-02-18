@@ -33,6 +33,41 @@ export const useChatLogic = (selectedChat) => {
     const { user } = useAuth();
     const viewerRole = String(selectedChat?.permissions?.role || "").toLowerCase() === "viewer";
     const canSendMessages = !viewerRole && !chatAccessError && !sendPermissionError;
+    const applyPinUpdate = useCallback((payload) => {
+        if (!payload) return;
+
+        const targetMessageId = String(payload.messageId || "");
+        const evictedMessageId = String(payload.evictedMessageId || "");
+        if (!targetMessageId && !evictedMessageId) return;
+
+        setMessages((prev) =>
+            prev.map((message) => {
+                const currentMessageId = String(message._id || message.id || "");
+                if (!currentMessageId) return message;
+
+                if (targetMessageId && currentMessageId === targetMessageId) {
+                    const nextPinned = Boolean(payload.pinned);
+                    return {
+                        ...message,
+                        pinned: nextPinned,
+                        pinnedAt: nextPinned ? (payload.pinnedAt || message.pinnedAt || null) : null,
+                        pinnedBy: nextPinned ? (payload.pinnedBy || message.pinnedBy || null) : null
+                    };
+                }
+
+                if (evictedMessageId && currentMessageId === evictedMessageId) {
+                    return {
+                        ...message,
+                        pinned: false,
+                        pinnedAt: null,
+                        pinnedBy: null
+                    };
+                }
+
+                return message;
+            })
+        );
+    }, []);
 
     // -------------------------------------------------------------------------
     // 2. Initialize Socket Connection (COOKIE AUTH FIX)
@@ -211,6 +246,11 @@ export const useChatLogic = (selectedChat) => {
             }
         });
 
+        const unsubPinUpdate = socketService.onMessagePinUpdated?.((payload) => {
+            if (String(payload?.chatId) !== chatId) return;
+            applyPinUpdate(payload);
+        });
+
         // Cleanup
         return () => {
             unsubMsg();
@@ -220,8 +260,9 @@ export const useChatLogic = (selectedChat) => {
             if (unsubDelete) unsubDelete();
             if (unsubEdit) unsubEdit();
             if (unsubReaction) unsubReaction();
+            if (unsubPinUpdate) unsubPinUpdate();
         };
-    }, [selectedChat, user]);
+    }, [selectedChat, user, applyPinUpdate]);
 
     // -------------------------------------------------------------------------
     // 4. Fetch History (ENHANCED)
@@ -479,15 +520,14 @@ export const useChatLogic = (selectedChat) => {
     const handlePinMessage = async (messageId) => {
         try {
             const chatId = String(selectedChat.chatId || selectedChat.id || selectedChat._id);
-            await chatService.togglePinMessage(messageId, chatId);
-
-            // Optimistic update
-            setMessages(prev => prev.map(m =>
-                (m.id || m._id) === messageId ? { ...m, pinned: !m.pinned } : m
-            ));
+            const result = await chatService.togglePinMessage(messageId, chatId);
+            applyPinUpdate({
+                ...result,
+                chatId: result?.chatId || chatId,
+                messageId: result?.messageId || messageId
+            });
         } catch (error) {
             console.error("Pin failed", error);
-            alert("Failed to pin message.");
         }
     };
 

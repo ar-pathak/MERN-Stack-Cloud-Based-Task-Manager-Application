@@ -302,9 +302,9 @@ const ChatMessage = ({
                 layout
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex justify-center my-3 px-4"
+                className="my-3 flex justify-center px-3 max-[300px]:px-2"
             >
-                <div className="max-w-[90%] rounded-full border border-slate-700/70 bg-slate-900/70 px-4 py-1.5 text-center text-[11px] text-slate-300">
+                <div className="max-w-[92%] rounded-full border border-slate-700/70 bg-slate-900/70 px-4 py-1.5 text-center text-[11px] text-slate-300 max-[300px]:px-3 max-[300px]:py-1 max-[300px]:text-[10px]">
                     {renderContentWithMentions(content)}
                 </div>
             </motion.div>
@@ -317,6 +317,11 @@ const ChatMessage = ({
     const bubbleRadius = isOwnMessage
         ? isConsecutive ? 'rounded-3xl rounded-tr-md rounded-br-md' : 'rounded-3xl rounded-tr-sm'
         : isConsecutive ? 'rounded-3xl rounded-tl-md rounded-bl-md' : 'rounded-3xl rounded-tl-sm';
+    const pinnedByLabel = message?.pinnedBy?.name || message?.pinnedBy?.username || "";
+    const pinnedAtLabel = message?.pinnedAt ? formatTime(message.pinnedAt) : "";
+    const pinnedMetaLabel = [pinnedByLabel ? `Pinned by ${pinnedByLabel}` : "Pinned", pinnedAtLabel]
+        .filter(Boolean)
+        .join(" - ");
 
     return (
         <motion.div
@@ -324,22 +329,22 @@ const ChatMessage = ({
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             // Removed onMouseEnter/Leave from here to stop row-hover trigger
-            className={`group relative flex flex-col ${containerMargin} ${message.pinned ? 'bg-amber-500/5 -mx-4 px-4 py-2 border-l-2 border-amber-500/50' : ''}`}
+            className={`group relative flex flex-col ${containerMargin} ${message.pinned ? "rounded-2xl border border-amber-500/30 bg-amber-500/5 px-2 py-1 sm:px-3" : ""}`}
         >
             {/* Reply Context */}
             {message.replyTo && !isConsecutive && (
                 <div
                     onClick={() => onJumpToMessage && onJumpToMessage(message.replyTo._id || message.replyTo.id)}
-                    className={`flex flex-col mb-1 cursor-pointer group/reply ${isOwnMessage ? 'items-end mr-12' : 'items-start ml-12'}`}
+                    className={`mb-1 flex cursor-pointer flex-col group/reply ${isOwnMessage ? 'items-end mr-12 max-[300px]:mr-8' : 'items-start ml-12 max-[300px]:ml-8'}`}
                 >
-                    <div className={`flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/40 border-l-2 transition-colors hover:bg-slate-800/60 ${isOwnMessage ? 'border-indigo-500' : 'border-slate-500'}`}>
-                        <Reply className="h-3 w-3 text-slate-400" />
+                    <div className={`flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/40 border-l-2 transition-colors hover:bg-slate-800/60 max-[300px]:gap-1.5 max-[300px]:px-2 max-[300px]:py-0.5 ${isOwnMessage ? 'border-indigo-500' : 'border-slate-500'}`}>
+                        <Reply className="h-3 w-3 text-slate-400 max-[300px]:h-2.5 max-[300px]:w-2.5" />
                         <div className="flex flex-col">
                             <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1">
                                 {message.replyTo.senderId?.name || message.replyTo.sender?.name || 'User'}
                                 <ArrowUpRight className="h-2.5 w-2.5 opacity-0 group-hover/reply:opacity-100 transition-opacity" />
                             </span>
-                            <span className="text-[10px] text-slate-500 max-w-[200px] truncate">
+                            <span className="text-[10px] text-slate-500 max-w-[200px] truncate max-[300px]:max-w-[145px]">
                                 {(
                                     message.replyTo.content ||
                                     message.replyTo.text ||
@@ -351,7 +356,7 @@ const ChatMessage = ({
                 </div>
             )}
 
-            <div className={`flex gap-3 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
+            <div className={`flex gap-3 max-[300px]:gap-2 ${isOwnMessage ? 'flex-row-reverse' : 'flex-row'}`}>
                 {/* Avatar */}
                 {!isOwnMessage && (
                     <div className="flex-shrink-0 w-8 flex flex-col justify-end">
@@ -379,7 +384,7 @@ const ChatMessage = ({
                 )}
 
                 {/* Message Container */}
-                <div className={`flex flex-col max-w-[75%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
+                <div className={`flex flex-col max-w-[75%] max-[300px]:max-w-[82%] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
 
                     {/* Sender Name */}
                     {!isOwnMessage && !isConsecutive && (
@@ -401,12 +406,12 @@ const ChatMessage = ({
                             <motion.div
                                 initial={{ scale: 0.95 }}
                                 animate={{ scale: 1 }}
-                                className="w-[300px] sm:w-[400px] flex flex-col gap-2 p-3 rounded-2xl bg-slate-800 border border-slate-700 shadow-2xl z-20"
-                            >
+                            className="z-20 flex w-[min(300px,calc(100vw-2rem))] flex-col gap-2 rounded-2xl border border-slate-700 bg-slate-800 p-3 shadow-2xl max-[300px]:w-[min(300px,calc(100vw-1.25rem))] max-[300px]:gap-1.5 max-[300px]:p-2 sm:w-[400px]"
+                        >
                                 <textarea
                                     value={editContent}
                                     onChange={(e) => setEditContent(e.target.value)}
-                                    className="w-full bg-slate-900/50 text-slate-200 text-sm p-2 rounded-lg resize-none focus:outline-none focus:ring-1 focus:ring-sky-500 min-h-[80px]"
+                                    className="min-h-[80px] w-full resize-none rounded-lg bg-slate-900/50 p-2 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-sky-500 max-[300px]:min-h-[70px] max-[300px]:p-1.5 max-[300px]:text-[13px]"
                                     autoFocus
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && !e.shiftKey) {
@@ -415,30 +420,30 @@ const ChatMessage = ({
                                         } else if (e.key === 'Escape') handleCancelEdit();
                                     }}
                                 />
-                                <div className="flex gap-2 justify-end">
-                                    <button onClick={handleCancelEdit} className="px-3 py-1.5 text-xs font-medium rounded-md text-slate-400 hover:bg-slate-700">Cancel</button>
-                                    <button onClick={handleSaveEdit} disabled={!editContent.trim()} className="px-3 py-1.5 text-xs font-medium rounded-md bg-sky-500 text-white hover:bg-sky-600">Save</button>
+                                <div className="flex justify-end gap-2 max-[300px]:gap-1.5">
+                                    <button onClick={handleCancelEdit} className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-700 max-[300px]:px-2 max-[300px]:py-1">Cancel</button>
+                                    <button onClick={handleSaveEdit} disabled={!editContent.trim()} className="rounded-md bg-sky-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 max-[300px]:px-2 max-[300px]:py-1">Save</button>
                                 </div>
                             </motion.div>
                         ) : (
                             <>
                                 <motion.div
                                     layout
-                                    className={`relative px-4 py-2 shadow-md ${bubbleRadius} ${isOwnMessage
+                                    className={`relative px-4 py-2 shadow-md max-[300px]:px-3 max-[300px]:py-1.5 ${bubbleRadius} ${isOwnMessage
                                         ? 'bg-gradient-to-tr from-blue-600 to-violet-600 text-white'
                                         : 'bg-slate-800 text-slate-200 border border-slate-700/50'
-                                        }`}
+                                        } ${message.pinned ? "ring-1 ring-amber-400/50" : ""}`}
                                 >
-                                    {/* Pinned Icon */}
                                     {message.pinned && (
-                                        <div className="absolute -top-2 -right-2 bg-amber-500 p-1 rounded-full shadow-sm z-10 border-2 border-slate-900">
-                                            <Pin className="h-2.5 w-2.5 text-white" fill="currentColor" />
+                                        <div className="mb-1 inline-flex max-w-full items-center gap-1.5 rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-100 max-[300px]:gap-1 max-[300px]:px-1.5">
+                                            <Pin className="h-3 w-3 max-[300px]:h-2.5 max-[300px]:w-2.5" fill="currentColor" />
+                                            <span className="truncate">{pinnedMetaLabel}</span>
                                         </div>
                                     )}
 
                                     {/* Text Content */}
                                     {content ? (
-                                        <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words ${isOwnMessage ? 'text-white/95' : 'text-slate-100'}`}>
+                                        <p className={`text-[15px] leading-relaxed whitespace-pre-wrap break-words max-[300px]:text-[13px] ${isOwnMessage ? 'text-white/95' : 'text-slate-100'}`}>
                                             {renderContentWithMentions(content)}
                                         </p>
                                     ) : null}
@@ -455,18 +460,18 @@ const ChatMessage = ({
                                                         key={idx}
                                                         src={file.url}
                                                         alt={file.name}
-                                                        className="max-w-[250px] rounded-lg cursor-pointer border border-white/10"
+                                                        className="max-w-[250px] rounded-lg cursor-pointer border border-white/10 max-[300px]:max-w-[190px]"
                                                         onClick={() => window.open(file.url, '_blank')}
                                                     />
                                                 ) : (
-                                                    <div key={idx} className="flex items-center gap-3 p-2 rounded-lg bg-black/20 border border-white/10">
-                                                        <FileText className="h-5 w-5" />
+                                                    <div key={idx} className="flex items-center gap-3 p-2 rounded-lg bg-black/20 border border-white/10 max-[300px]:gap-2 max-[300px]:p-1.5">
+                                                        <FileText className="h-5 w-5 max-[300px]:h-4 max-[300px]:w-4" />
                                                         <div className="flex-1 min-w-0 pr-4">
-                                                            <p className="text-sm truncate">{file.name}</p>
-                                                            <p className="text-xs opacity-60">{formatSize(file.size)}</p>
+                                                            <p className="text-sm truncate max-[300px]:text-xs">{file.name}</p>
+                                                            <p className="text-xs opacity-60 max-[300px]:text-[10px]">{formatSize(file.size)}</p>
                                                         </div>
                                                         <a href={file.url} download className="p-1 hover:bg-white/10 rounded">
-                                                            <Download className="h-4 w-4" />
+                                                            <Download className="h-4 w-4 max-[300px]:h-3.5 max-[300px]:w-3.5" />
                                                         </a>
                                                     </div>
                                                 );
@@ -525,7 +530,7 @@ const ChatMessage = ({
                                     animate={{ opacity: 1, scale: 1, y: -45 }}
                                     exit={{ opacity: 0, scale: 0.9, y: 5 }}
                                     transition={{ duration: 0.15 }}
-                                    className={`absolute top-0 ${isOwnMessage ? 'right-0' : 'left-0'} z-50`}
+                                    className={`absolute top-0 ${isOwnMessage ? 'right-0 max-[300px]:origin-top-right' : 'left-0 max-[300px]:origin-top-left'} z-50 max-[300px]:scale-90`}
                                 >
                                     {/* Invisible bridge to prevent mouseleave when moving to menu */}
                                     <div className="absolute w-full h-10 top-full" />
@@ -545,7 +550,7 @@ const ChatMessage = ({
                                                         initial={{ opacity: 0, scale: 0.8, y: 10 }}
                                                         animate={{ opacity: 1, scale: 1, y: -50 }}
                                                         exit={{ opacity: 0, scale: 0.8 }}
-                                                        className="absolute bottom-full left-0 mb-2 p-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl flex gap-1 z-50 min-w-max"
+                                                            className="absolute bottom-full left-0 mb-2 p-2 bg-slate-800 border border-slate-700 rounded-xl shadow-xl flex gap-1 z-50 min-w-max max-[300px]:left-auto max-[300px]:right-0"
                                                     >
                                                         {['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉'].map(emoji => (
                                                             <button
@@ -606,12 +611,12 @@ const ChatMessage = ({
 const ActionButton = ({ icon: Icon, onClick, title, active, danger }) => (
     <button
         onClick={onClick}
-        className={`p-2 rounded-lg transition-colors relative group/btn ${active ? 'text-sky-400 bg-sky-500/10' :
+        className={`p-2 rounded-lg transition-colors relative group/btn max-[300px]:p-1.5 ${active ? 'text-sky-400 bg-sky-500/10' :
             danger ? 'text-red-400 hover:text-red-300 hover:bg-red-400/10' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
             }`}
         title={title}
     >
-        <Icon className="h-4 w-4" />
+        <Icon className="h-4 w-4 max-[300px]:h-3.5 max-[300px]:w-3.5" />
     </button>
 );
 

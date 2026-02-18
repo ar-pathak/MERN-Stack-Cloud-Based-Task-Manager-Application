@@ -67,6 +67,7 @@ const ChatPanel = ({
     const [replyingTo, setReplyingTo] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [chatInfoTab, setChatInfoTab] = useState("overview");
+    const [localJumpMessageId, setLocalJumpMessageId] = useState(null);
 
     const chatId = item?.chatId || item?.id || item?._id;
     const normalizedChatType = String(item?.chatType || "").toLowerCase();
@@ -76,6 +77,7 @@ const ChatPanel = ({
 
     useEffect(() => {
         setChatInfoTab("overview");
+        setLocalJumpMessageId(null);
     }, [item?.id, item?._id, item?.chatId]);
 
     const {
@@ -135,6 +137,25 @@ const ChatPanel = ({
         if (messageFilter === "pinned") filtered = filtered.filter((msg) => msg?.pinned);
         return filtered;
     }, [messages, searchQuery, messageFilter]);
+
+    const handleBannerJumpToMessage = (messageId) => {
+        if (!messageId) return;
+        setMessageFilter("all");
+        setLocalJumpMessageId(String(messageId));
+    };
+
+    const handleJumpHandled = (handledMessageId) => {
+        const normalizedHandledId = String(handledMessageId || "");
+        if (!normalizedHandledId) return;
+
+        if (String(localJumpMessageId || "") === normalizedHandledId) {
+            setLocalJumpMessageId(null);
+        }
+
+        if (String(jumpToMessageId || "") === normalizedHandledId) {
+            onMentionJumpHandled?.(normalizedHandledId);
+        }
+    };
 
     const handleSendWithContext = (fileFromInput) => {
         if (sendDisabled) return;
@@ -319,6 +340,9 @@ const ChatPanel = ({
                             <PinnedBanner
                                 pinnedMessages={pinnedMessages}
                                 onViewPinned={() => setMessageFilter("pinned")}
+                                onJumpToMessage={handleBannerJumpToMessage}
+                                onTogglePin={handlePinMessage}
+                                maxPinnedMessages={5}
                             />
                         </div>
 
@@ -337,8 +361,8 @@ const ChatPanel = ({
                                     onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
                                     onReply={setReplyingTo}
                                     chatEndRef={chatEndRef}
-                                    jumpToMessageId={jumpToMessageId}
-                                    onJumpHandled={onMentionJumpHandled}
+                                    jumpToMessageId={localJumpMessageId || jumpToMessageId}
+                                    onJumpHandled={handleJumpHandled}
                                 />
                             )}
                         </div>

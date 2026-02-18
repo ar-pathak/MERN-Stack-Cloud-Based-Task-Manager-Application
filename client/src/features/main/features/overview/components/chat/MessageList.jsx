@@ -152,20 +152,20 @@ const MessageList = ({
   // ---- Empty state ----
   if (!messages.length) {
     return (
-      <div className="h-full flex items-center justify-center p-6 bg-slate-950/50">
+      <div className="h-full flex items-center justify-center p-6 bg-slate-950/50 max-[300px]:p-3">
         <div className="text-center max-w-sm">
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ type: "spring", bounce: 0.4 }}
-            className="h-24 w-24 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-sky-900/10"
+            className="h-24 w-24 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 border border-slate-700/50 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-sky-900/10 max-[300px]:h-16 max-[300px]:w-16 max-[300px]:mb-4"
           >
-            <MessageSquare className="h-10 w-10 text-sky-500/80" />
+            <MessageSquare className="h-10 w-10 text-sky-500/80 max-[300px]:h-7 max-[300px]:w-7" />
           </motion.div>
-          <h3 className="text-xl font-semibold text-slate-200 mb-2">
+          <h3 className="text-xl font-semibold text-slate-200 mb-2 max-[300px]:text-base">
             No messages yet
           </h3>
-          <p className="text-slate-500">
+          <p className="text-slate-500 max-[300px]:text-xs">
             Start the conversation in this {itemType}.
           </p>
         </div>
@@ -178,14 +178,14 @@ const MessageList = ({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden px-2.5 sm:px-4 md:px-8 py-4 custom-scrollbar"
+        className="h-full overflow-y-auto overflow-x-hidden px-2.5 py-4 max-[300px]:px-1.5 sm:px-4 md:px-8"
       >
         <div className="min-h-full flex flex-col justify-end pb-4">
           {messageGroups.map((group) => (
             <div key={group.date}>
               {/* Date Divider */}
               <div className="sticky top-2 z-10 flex justify-center my-6 pointer-events-none">
-                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full border border-slate-800 shadow-sm">
+                <span className="text-[10px] uppercase tracking-wider font-bold text-slate-500 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-full border border-slate-800 shadow-sm max-[300px]:px-2 max-[300px]:text-[9px]">
                   {getDateLabel(group.date)}
                 </span>
               </div>
@@ -224,10 +224,10 @@ const MessageList = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.9 }}
             onClick={() => scrollToBottom("smooth")}
-            className="absolute bottom-20 right-4 z-30 p-3 rounded-full bg-slate-800 text-sky-400 shadow-xl border border-slate-700 hover:bg-slate-700 transition-all sm:bottom-6 sm:right-6"
+            className="absolute bottom-20 right-4 z-30 p-3 rounded-full bg-slate-800 text-sky-400 shadow-xl border border-slate-700 hover:bg-slate-700 transition-all max-[300px]:bottom-16 max-[300px]:right-2 max-[300px]:p-2 sm:bottom-6 sm:right-6"
             aria-label="Scroll to latest message"
           >
-            <ChevronDown className="h-5 w-5" />
+            <ChevronDown className="h-5 w-5 max-[300px]:h-4 max-[300px]:w-4" />
           </motion.button>
         )}
       </AnimatePresence>

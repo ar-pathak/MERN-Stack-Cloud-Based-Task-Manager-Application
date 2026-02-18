@@ -229,12 +229,20 @@ module.exports = {
     // ── Pin/Unpin message ─────────────────────────────────────────────────
     togglePinMessage: async (req, res) => {
         try {
-            const msg = await chatService.togglePinMessage(
+            const result = await chatService.togglePinMessage(
                 req.params.messageId,
                 req.user._id,
                 req.body.chatId
             );
-            sendSuccess(res, msg);
+
+            await emitToChatMembers({
+                chatId: req.body.chatId,
+                actorId: req.user._id,
+                eventName: "chat:message_pin_updated",
+                payload: result
+            });
+
+            sendSuccess(res, result);
         } catch (e) {
             handleError(e, res);
         }
