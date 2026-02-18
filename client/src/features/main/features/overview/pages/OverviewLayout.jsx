@@ -44,7 +44,7 @@ import {
   normalizeOverviewNode,
 } from "../utils/overviewTimeline";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 const toIdString = (value) => String(value?._id || value?.id || value || "");
 
 const mergePresenceIntoMembers = (members = [], presenceByUserId = {}) =>

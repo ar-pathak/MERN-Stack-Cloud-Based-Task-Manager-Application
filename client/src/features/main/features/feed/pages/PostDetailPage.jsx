@@ -13,7 +13,7 @@ import { useAuth } from "../../../../../context/AuthContext";
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { getPostById, getPostComments } from "../../../../../service/post.service";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 
 const getMediaType = (mediaEntry) => {
     const mediaType = String(mediaEntry?.mediaType || mediaEntry?.type || "").toLowerCase();

@@ -11,7 +11,7 @@ import {
     toIdString
 } from "../utils/notification.helpers";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 
 const NotificationsPage = () => {
     const navigate = useNavigate();

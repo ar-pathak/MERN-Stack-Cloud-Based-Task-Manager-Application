@@ -20,7 +20,7 @@ import {
     getMyActivities
 } from "../../../../../service/activity.service";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 const PAGE_SIZE = 25;
 
 const LEVEL_OPTIONS = [

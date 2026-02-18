@@ -1,4 +1,4 @@
-export const MOBILE_BREAKPOINT = 768;
+export const MOBILE_BREAKPOINT = 1024;
 export const DEFAULT_DAYS = 30;
 export const DRAFT_STORAGE_KEY = "advanced_dashboard_drafts_v1";
 export const MAX_DRAFTS = 20;

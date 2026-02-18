@@ -1,4 +1,4 @@
-export const MOBILE_BREAKPOINT = 768;
+export const MOBILE_BREAKPOINT = 1024;
 export const POSTS_PAGE_SIZE = 15;
 export const FOLLOW_LIST_PAGE_SIZE = 20;
 

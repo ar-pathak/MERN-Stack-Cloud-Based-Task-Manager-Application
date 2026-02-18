@@ -1,4 +1,4 @@
-export const MOBILE_BREAKPOINT = 768;
+export const MOBILE_BREAKPOINT = 1024;
 
 export const CATEGORY_OPTIONS = [
     { value: "all", label: "All" },

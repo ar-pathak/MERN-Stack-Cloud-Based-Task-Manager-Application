@@ -29,7 +29,7 @@ const MainSidebar = () => {
             <motion.aside
                 animate={{ width: isExpanded ? 256 : 80 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
-                className="hidden md:flex flex-col border-r border-slate-800/70 bg-slate-950/40 backdrop-blur-xl relative overflow-hidden"
+                className="hidden lg:flex flex-col border-r border-slate-800/70 bg-slate-950/40 backdrop-blur-xl relative overflow-hidden"
             >
                 <SidebarContent
                     isExpanded={isExpanded}

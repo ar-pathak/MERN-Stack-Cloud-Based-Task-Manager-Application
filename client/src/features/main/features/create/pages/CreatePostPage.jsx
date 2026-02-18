@@ -9,7 +9,7 @@ import { uploadService } from "../../../../../service/upload.service";
 import { searchMentionCandidates } from "../../../../../service/user.service";
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 
 const extractHashtags = (text = "") =>
     Array.from(

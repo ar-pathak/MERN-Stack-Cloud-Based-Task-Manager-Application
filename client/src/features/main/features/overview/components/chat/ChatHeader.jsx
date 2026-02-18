@@ -113,7 +113,7 @@ const ChatHeader = ({
                         <motion.button
                             whileTap={{ scale: 0.95 }}
                             onClick={onBack}
-                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 text-slate-200 max-[300px]:h-8 max-[300px]:w-8 md:hidden"
+                            className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-800/70 bg-slate-900/70 text-slate-200 max-[300px]:h-8 max-[300px]:w-8 lg:hidden"
                             aria-label="Back to overview"
                         >
                             <ArrowLeft className="h-4 w-4 max-[300px]:h-3.5 max-[300px]:w-3.5" />

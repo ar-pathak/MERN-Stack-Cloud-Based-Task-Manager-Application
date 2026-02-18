@@ -22,7 +22,7 @@ import {
     updateProfile
 } from "../../service/user.service";
 
-const MOBILE_BREAKPOINT = 768;
+const MOBILE_BREAKPOINT = 1024;
 
 const ToggleRow = ({ label, description, checked, onChange, disabled }) => (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">

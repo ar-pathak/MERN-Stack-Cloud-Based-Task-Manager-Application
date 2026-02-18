@@ -15,13 +15,13 @@ const MainPage = () => {
     const hasScrollHiddenHeaderRef = useRef(false);
     const hasAutoHideTimerRunRef = useRef(false);
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
-        typeof window !== "undefined" ? window.innerWidth < 768 : false
+        typeof window !== "undefined" ? window.innerWidth < 1024 : false
     );
     const { isToggle } = useToggle();
 
     useEffect(() => {
         const onResize = () => {
-            setIsMobileViewport(window.innerWidth < 768);
+            setIsMobileViewport(window.innerWidth < 1024);
         };
 
         window.addEventListener("resize", onResize);
@@ -85,7 +85,7 @@ const MainPage = () => {
                 )}
                 <div
                     ref={scrollRef}
-                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-0 md:px-5 custom-scrollbar scroll-smooth"
+                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-0 lg:px-5 custom-scrollbar scroll-smooth"
                 >
                     <Outlet />
                 </div>
