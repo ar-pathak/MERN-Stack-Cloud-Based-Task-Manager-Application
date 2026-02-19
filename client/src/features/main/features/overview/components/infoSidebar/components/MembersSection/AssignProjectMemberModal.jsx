@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { UserPlus, X, Loader2, Search, CheckCircle2, Circle } from "lucide-react";
 import { useWorkspace } from "../../../../hook/useWorkspace";
 import { useTask } from "../../../../hook/useTask";
 import { useTeam } from "../../../../hook/useTeam";
 
+const toIdString = (value) => String(value?._id || value?.id || value || "");
 
 const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, workspaceId, currentProjectMembers, isLoading }) => {
     const { fetchMembers } = useWorkspace();
@@ -37,13 +38,15 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
                 const loadTaskParentMembers = async () => {
                     setIsFetchingMembers(true);
                     try {
-
-                        if (taskData.project !== null) {
+                        if (taskData?.project !== null && taskData?.project?.members) {
                             setWorkspaceMembers(taskData.project.members)
-                        } else if (taskData.workspace !== null) {
-                            const res = await fetchMembers(taskData.workspace._id)
-                            if (res?.data) {
-                                setWorkspaceMembers(res.data);
+                        } else if (taskData?.workspace !== null) {
+                            const taskWorkspaceId = toIdString(taskData?.workspace);
+                            if (taskWorkspaceId) {
+                                const res = await fetchMembers(taskWorkspaceId)
+                                if (res?.data) {
+                                    setWorkspaceMembers(res.data);
+                                }
                             }
                         }
                     } catch (error) {
@@ -57,8 +60,14 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
                 const loadSubtaskParentMembers = async () => {
                     setIsFetchingMembers(true);
                     try {
-                        // 1. Fetch the Parent Task
-                        const taskRes = await fetchTaskById(item.task); // item.task is the ID
+                        const parentTaskId = toIdString(item?.task || taskData?.task);
+                        if (!parentTaskId) {
+                            setWorkspaceMembers([]);
+                            return;
+                        }
+
+                        // 1. Fetch the parent task
+                        const taskRes = await fetchTaskById(parentTaskId);
                         const parentTask = taskRes?.data;
 
                         if (!parentTask) return;
@@ -79,29 +88,52 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
 
                         // 3. Add Team Members (assigneesTeams array)
                         if (parentTask.assigneesTeams?.length > 0) {
+                            const parentWorkspaceId = toIdString(
+                                parentTask?.workspace || item?.workspace || workspaceId
+                            );
+
                             // Use Promise.all to fetch all teams in parallel
-                            const teamPromises = parentTask.assigneesTeams.map(team => {
-                                // Handle if team is populated object or just ID string
-                                const teamId = typeof team === 'object' ? team._id : team;
-                                return fetchTeamMembers(teamId);
+                            const teamPromises = parentTask.assigneesTeams.map(async (team) => {
+                                // Handle populated team object and fallback from team.members when available
+                                const teamId = toIdString(team);
+                                if (!teamId) return [];
+
+                                if (Array.isArray(team?.members)) {
+                                    team.members.forEach((member) => {
+                                        const user = member?.user;
+                                        const userId = toIdString(user);
+                                        const hasDisplayInfo =
+                                            Boolean(user?.name) || Boolean(user?.email);
+                                        if (!userId || !hasDisplayInfo || uniqueMembersMap.has(userId)) return;
+                                        uniqueMembersMap.set(userId, { user });
+                                    });
+                                }
+
+                                if (!parentWorkspaceId) return [];
+
+                                try {
+                                    const teamRes = await fetchTeamMembers(parentWorkspaceId, teamId);
+                                    return teamRes?.data || [];
+                                } catch (_error) {
+                                    return [];
+                                }
                             });
 
                             const teamResponses = await Promise.all(teamPromises);
 
                             // Process responses
-                            teamResponses.forEach(res => {
-                                if (res?.data) {
-                                    // res.data is usually array of TeamMembers: [{ user: {...}, role: ... }]
-                                    res.data.forEach(member => {
-                                        if (member.user && member.user._id) {
-                                            const userId = member.user._id.toString();
-                                            // Only add if not already present (avoid duplicates)
-                                            if (!uniqueMembersMap.has(userId)) {
-                                                uniqueMembersMap.set(userId, { user: member.user });
-                                            }
+                            teamResponses.forEach((teamMembers) => {
+                                if (!Array.isArray(teamMembers)) return;
+
+                                teamMembers.forEach((member) => {
+                                    if (member.user && member.user._id) {
+                                        const userId = member.user._id.toString();
+                                        // Only add if not already present (avoid duplicates)
+                                        if (!uniqueMembersMap.has(userId)) {
+                                            uniqueMembersMap.set(userId, { user: member.user });
                                         }
-                                    });
-                                }
+                                    }
+                                });
                             });
                         }
 
@@ -119,18 +151,21 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
             setSelectedUsers([]);
             setSearchQuery("");
         }
-    }, [isOpen, workspaceId, fetchMembers, item, taskData]);
+    }, [isOpen, workspaceId, fetchMembers, fetchTaskById, fetchTeamMembers, item, taskData]);
 
     // 2. Filter: Only show members NOT already in the project
     const availableMembers = useMemo(() => {
         // Handle both "Member Wrapper" (project/workspace) and "Direct User" (task assignees) structures
-        const existingUserIds = new Set(currentProjectMembers.map(m => m.user?._id || m._id));
+        const existingUserIds = new Set(
+            currentProjectMembers.map((m) => toIdString(m?.user || m))
+        );
 
         return workspaceMembers.filter(m => {
             // Ensure m.user exists before accessing properties to prevent crashes in the filter as well
             if (!m.user) return false;
 
-            const isNotMember = !existingUserIds.has(m.user._id);
+            const memberId = toIdString(m.user);
+            const isNotMember = memberId && !existingUserIds.has(memberId);
             const matchesSearch =
                 (m.user.name?.toLowerCase() || "").includes(searchQuery.toLowerCase()) ||
                 (m.user.email?.toLowerCase() || "").includes(searchQuery.toLowerCase());
@@ -198,15 +233,18 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
                             {searchQuery ? "No matching members found" : "All workspace members are already in this project."}
                         </div>
                     ) : (
-                        availableMembers.map(member => (
+                        availableMembers.map((member) => {
+                            const memberId = toIdString(member.user);
+                            const isSelected = selectedUsers.includes(memberId);
+                            return (
                             <div
-                                key={member.user._id}
-                                onClick={() => toggleUser(member.user._id)}
-                                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedUsers.includes(member.user._id) ? "bg-sky-500/10 border-sky-500/50" : "bg-slate-800/30 border-slate-800 hover:bg-slate-800"}`}
+                                key={memberId}
+                                onClick={() => toggleUser(memberId)}
+                                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${isSelected ? "bg-sky-500/10 border-sky-500/50" : "bg-slate-800/30 border-slate-800 hover:bg-slate-800"}`}
                             >
                                 {/* Checkbox UI */}
                                 <div className={`flex-shrink-0 `}>
-                                    {selectedUsers.includes(member.user._id)
+                                    {isSelected
                                         ? <CheckCircle2 className="h-5 w-5 text-sky-500" />
                                         : <Circle className="h-5 w-5 text-slate-600" />
                                     }
@@ -219,11 +257,12 @@ const AssignProjectMemberModal = ({ item, taskData, isOpen, onClose, onAssign, w
 
                                 {/* Info */}
                                 <div className="flex-1 overflow-hidden">
-                                    <h4 className={`text-sm font-medium ${selectedUsers.includes(member.user._id) ? "text-sky-400" : "text-slate-200"}`}>{member.user.name}</h4>
+                                    <h4 className={`text-sm font-medium ${isSelected ? "text-sky-400" : "text-slate-200"}`}>{member.user.name}</h4>
                                     <p className="text-xs text-slate-500 truncate">{member.user.email}</p>
                                 </div>
                             </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
 

@@ -92,7 +92,7 @@ export const AssigneeSelector = ({ assignees, selectedId, onSelect, isLoading, d
                 <AlertCircle className="h-5 w-5 text-amber-400 flex-shrink-0" />
                 <div>
                     <p className="text-sm font-medium text-amber-400">No assignees available</p>
-                    <p className="text-xs text-amber-400/70">Parent task has no assigned members</p>
+                    <p className="text-xs text-amber-400/70">Parent task has no assignees or team members</p>
                 </div>
             </div>
         );
@@ -123,6 +123,9 @@ export const AssigneeSelector = ({ assignees, selectedId, onSelect, isLoading, d
                         <div className="flex-1 text-left min-w-0">
                             <span className="text-sm text-slate-300 block truncate">{assignee.name}</span>
                             {assignee.email && <span className="text-xs text-slate-500 block truncate">{assignee.email}</span>}
+                            {assignee.sourceLabel && (
+                                <span className="text-[10px] text-slate-500 block truncate">{assignee.sourceLabel}</span>
+                            )}
                         </div>
                         {selectedId === assignee.id && <CheckCircle2 className="h-4 w-4 text-teal-400 flex-shrink-0" />}
                     </button>

@@ -12,7 +12,7 @@ const toIdString = (value) => String(value?._id || value?.id || value || "");
 
 const MembersSection = ({ item, presenceByUserId = {} }) => {
     const {
-        members, taskData, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
+        members, taskData, subtaskData, filteredMembers, roleStats, initialLoadComplete, isRefreshing, isGlobalLoading, canManageMembers, notification, setNotification,
         searchQuery, setSearchQuery, filterRole, setFilterRole,
         loadMembers, handleAddMember, handleAssignProjectMembers, handleInvite, handleRemoveMember, handleUpdateRole
     } = useMembersLogic(item);
@@ -179,7 +179,7 @@ const MembersSection = ({ item, presenceByUserId = {} }) => {
                 <AssignProjectMemberModal
                     item={item}
                     isOpen={showAdd}
-                    taskData={taskData}
+                    taskData={item.type === "subtask" ? subtaskData : taskData}
                     onClose={() => setShowAdd(false)}
                     onAssign={handleAssignProjectMembers}
                     workspaceId={item.workspace}
