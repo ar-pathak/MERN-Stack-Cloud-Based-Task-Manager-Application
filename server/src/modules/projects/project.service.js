@@ -12,6 +12,10 @@ const notificationService = require('../notification/notification.service');
 
 const { touchWorkspace } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+const {
+    syncProjectChatMembers,
+    syncTaskAndSubtaskChatMembers
+} = require('../utils/chatMembershipSync');
 
 const withSession = (query, session) => (session ? query.session(session) : query);
 const createError = (message, statusCode = 400) => {
@@ -174,16 +178,13 @@ const cleanupProjectResources = async (projectId, userIds, session) => {
             { $pull: { assignedTo: { $in: userIds } } },
             { session }
         );
+
+        for (const taskId of taskIds) {
+            await syncTaskAndSubtaskChatMembers(taskId, { session });
+        }
     }
 
-    const project = await Project.findById(projectId).session(session).select('chatId');
-    if (project?.chatId) {
-        await Chat.findByIdAndUpdate(
-            project.chatId,
-            { $pull: { members: { $in: userIds } } },
-            { session }
-        );
-    }
+    await syncProjectChatMembers(projectId, { session });
 };
 
 const projectService = {
@@ -239,6 +240,8 @@ const projectService = {
             teams: teamIds,
             chatId: chat._id
         });
+
+        await syncProjectChatMembers(project._id);
 
         const actorLabel = await getUserLabel(userId);
         await logActivity({
@@ -363,12 +366,7 @@ const projectService = {
             await Chat.findByIdAndUpdate(project.chatId, { name: updatePayload.name });
         }
 
-        if (updatePayload.members && project.chatId) {
-            const memberIds = updatePayload.members.map((member) => member.user);
-            await Chat.findByIdAndUpdate(project.chatId, {
-                $addToSet: { members: { $each: memberIds } }
-            });
-        }
+        await syncProjectChatMembers(project._id);
 
         const workspace = await Workspace.findById(project.workspace).select('name chatId');
         const actorLabel = await getUserLabel(userId);
@@ -717,6 +715,7 @@ const projectService = {
             { $addToSet: { teams: { $each: teamIds } } },
             { new: true }
         );
+        await syncProjectChatMembers(projectId);
 
         const actorLabel = await getUserLabel(userId || project.owner);
         const workspace = await Workspace.findById(project.workspace).select('chatId');
@@ -747,6 +746,7 @@ const projectService = {
             { $pull: { teams: { $in: teamIds } } },
             { new: true }
         );
+        await syncProjectChatMembers(projectId);
 
         const actorLabel = await getUserLabel(userId || project.owner);
         const workspace = await Workspace.findById(project.workspace).select('chatId');
@@ -797,12 +797,7 @@ const projectService = {
             { $push: { members: { $each: newMembers } } },
             { new: true }
         );
-
-        if (project.chatId) {
-            await Chat.findByIdAndUpdate(project.chatId, {
-                $addToSet: { members: { $each: newMemberUserIds } }
-            });
-        }
+        await syncProjectChatMembers(projectId);
 
         const workspace = await Workspace.findById(project.workspace).select('chatId');
         const actorLabel = await getUserLabel(userId);
@@ -848,6 +843,8 @@ const projectService = {
             if (!project) {
                 throw new Error('Project not found');
             }
+
+            await syncProjectChatMembers(projectId, { session });
 
             await session.commitTransaction();
 
@@ -899,6 +896,8 @@ const projectService = {
         if (!project) {
             throw new Error('Project not found or user is not a member of this project');
         }
+
+        await syncProjectChatMembers(projectId);
 
         const workspace = await Workspace.findById(project.workspace).select('chatId');
         const actorLabel = await getUserLabel(userId);
@@ -963,6 +962,8 @@ const projectService = {
                 { $pull: { members: { user: userId } } },
                 { new: true, session }
             );
+
+            await syncProjectChatMembers(projectId, { session });
 
             await session.commitTransaction();
             return { message: 'You have left the project successfully' };

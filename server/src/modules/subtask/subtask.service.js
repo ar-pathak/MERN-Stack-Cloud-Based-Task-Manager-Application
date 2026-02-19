@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+const { getTeamMemberIds } = require('../utils/chatMembershipSync');
 
 const withSession = (query, session) => (session ? query.session(session) : query);
 
@@ -53,16 +54,22 @@ const toAssigneeArray = (assignedTo) => {
     return [assignedTo];
 };
 
-const getAllowedAssigneeIdsForTask = (task) => {
+const getAllowedAssigneeIdsForTask = async (task) => {
     const allowed = new Set([String(task.createdBy)]);
     (task.assignees || []).forEach((assigneeId) => allowed.add(String(assigneeId)));
+
+    if (task.assigneesTeams?.length) {
+        const teamMembers = await getTeamMemberIds(task.assigneesTeams);
+        teamMembers.forEach((memberId) => allowed.add(String(memberId)));
+    }
+
     return allowed;
 };
 
-const validateAssigneesForTask = (task, assigneeIds) => {
+const validateAssigneesForTask = async (task, assigneeIds) => {
     if (!assigneeIds?.length) return;
 
-    const allowedAssignees = getAllowedAssigneeIdsForTask(task);
+    const allowedAssignees = await getAllowedAssigneeIdsForTask(task);
     const hasInvalidAssignee = assigneeIds.some((id) => !allowedAssignees.has(String(id)));
     if (hasInvalidAssignee) {
         throw new Error('Subtask assignees must already be assigned to the parent task');
@@ -81,13 +88,16 @@ class SubtaskService {
         }
 
         const assignedUsers = toAssigneeArray(assignedTo);
-        validateAssigneesForTask(task, assignedUsers);
+        await validateAssigneesForTask(task, assignedUsers);
 
         // Get the current count of subtasks for ordering
         const subtaskCount = await Subtask.countDocuments({ task: taskId });
 
-        // 1. Prepare Initial Chat Members (Creator + Assigned User if any)
-        const chatMembers = [createdBy, ...assignedUsers];
+        // 1. Prepare Initial Chat Members (Creator + Assigned Users + Task Team Members)
+        const taskTeamMembers = task.assigneesTeams?.length
+            ? await getTeamMemberIds(task.assigneesTeams)
+            : [];
+        const chatMembers = [createdBy, ...assignedUsers, ...taskTeamMembers];
         // Remove duplicates just in case
         const uniqueMembers = [...new Set(chatMembers.map(id => id.toString()))];
 
@@ -192,6 +202,7 @@ class SubtaskService {
 
         const oldTitle = subtask.title;
         const oldCompleted = subtask.completed;
+        let parentTaskForAssignmentSync = null;
 
         // Handle completion status change
         if (updates.completed !== undefined && updates.completed !== subtask.completed) {
@@ -220,9 +231,9 @@ class SubtaskService {
         });
 
         if (updates.assignedTo !== undefined) {
-            const task = await Task.findById(subtask.task).select('createdBy assignees');
-            if (task) {
-                validateAssigneesForTask(task, subtask.assignedTo || []);
+            parentTaskForAssignmentSync = await Task.findById(subtask.task).select('createdBy assignees assigneesTeams');
+            if (parentTaskForAssignmentSync) {
+                await validateAssigneesForTask(parentTaskForAssignmentSync, subtask.assignedTo || []);
             }
         }
 
@@ -236,14 +247,19 @@ class SubtaskService {
         }
 
         // If assignedTo was updated directly via updateSubtask (replacing the list), 
-        // we might need to sync chat members, but usually addAssignees/removeAssignees is preferred.
-        // However, if assignedTo is passed here, let's sync strictly.
+        // sync chat members strictly to subtask members + parent task team members.
         if (updates.assignedTo !== undefined && subtask.chatId) {
-            const newAssignees = toAssigneeArray(updates.assignedTo);
-            // We generally add new people, not remove old ones indiscriminately in a simple update, 
-            // but to be safe let's just addToSet.
+            const teamMemberIds = parentTaskForAssignmentSync?.assigneesTeams?.length
+                ? await getTeamMemberIds(parentTaskForAssignmentSync.assigneesTeams)
+                : [];
+            const chatMembers = [
+                String(subtask.createdBy),
+                ...(subtask.assignedTo || []).map((id) => String(id)),
+                ...teamMemberIds.map((id) => String(id))
+            ];
+
             await Chat.findByIdAndUpdate(subtask.chatId, {
-                $addToSet: { members: { $each: newAssignees } }
+                members: [...new Set(chatMembers)]
             });
         }
 
@@ -460,9 +476,9 @@ class SubtaskService {
             throw new Error('At least one assignee is required');
         }
 
-        const parentTask = await Task.findById(subtask.task).select('createdBy assignees');
+        const parentTask = await Task.findById(subtask.task).select('createdBy assignees assigneesTeams');
         if (parentTask) {
-            validateAssigneesForTask(parentTask, normalizedUserIds);
+            await validateAssigneesForTask(parentTask, normalizedUserIds);
         }
 
         // Add to set to prevent duplicates

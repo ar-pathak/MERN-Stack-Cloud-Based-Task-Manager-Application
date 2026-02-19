@@ -1,4 +1,10 @@
 const { z } = require('zod')
+const mongoose = require("mongoose");
+
+const objectId = z.string().refine(
+    (value) => mongoose.Types.ObjectId.isValid(value),
+    { message: "Invalid ObjectId" }
+);
 
 // Validation schema for creating a team
 const createTeamSchema = z.object({
@@ -12,7 +18,7 @@ const updateTeamSchema = z.object({
 })
 
 const addTeamMemberSchema = z.object({
-    memberId: z.string(),
+    memberId: objectId,
     role: z.enum(["lead", "member"], "Invalid role"),
 })
 

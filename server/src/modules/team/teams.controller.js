@@ -148,7 +148,7 @@ const teamController = {
             }
 
             const data = addTeamMemberSchema.parse(req.body);
-            const team = await teamsService.addTeamMember(teamId, workspaceId, data);
+            const team = await teamsService.addTeamMember(teamId, workspaceId, data, req.user._id);
 
             return sendSuccess(res, team, 'Member added to team successfully', 201);
         } catch (error) {
@@ -206,7 +206,7 @@ const teamController = {
                 });
             }
 
-            const result = await teamsService.removeTeamMember(teamId, workspaceId, memberId);
+            const result = await teamsService.removeTeamMember(teamId, workspaceId, memberId, req.user._id);
             return sendSuccess(res, result, 'Member removed from team successfully');
         } catch (error) {
             return handleError(error, res);
@@ -243,7 +243,8 @@ const teamController = {
                 teamId,
                 workspaceId,
                 memberId,
-                role
+                role,
+                req.user._id
             );
 
             return sendSuccess(res, team, 'Team member role updated successfully');

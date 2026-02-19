@@ -43,18 +43,23 @@ const checkCanCreateTask = () => {
         return res.status(400).json({ message: "Invalid teamId" });
       }
 
+      const payloadTeamIds = Array.isArray(req.body?.assigneesTeams)
+        ? req.body.assigneesTeams.filter((id) => mongoose.Types.ObjectId.isValid(id))
+        : [];
+
       const allowed = await canCreateTask({
         userId,
         workspaceId,
         projectId,
         teamId,
+        teamIds: payloadTeamIds,
         enforceWorkspaceAdminOnly: !projectId,
         requireProjectAdminOrWorkspaceOwner: Boolean(projectId)
       });
 
       if (!allowed) {
         const message = projectId
-          ? "Only project admins or workspace owners can create tasks in this project"
+          ? "Only workspace owners/admins, project admins, or assigned team leads can create tasks in this project"
           : "Only workspace owners and admins can create tasks";
 
         return res.status(403).json({

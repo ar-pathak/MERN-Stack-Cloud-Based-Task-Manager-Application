@@ -191,6 +191,8 @@ const overviewService = {
                 completed: st.completed,
                 isHighPriority: st.isHighPriority,
                 description: st.description,
+                createdBy: st.createdBy,
+                assignedTo: st.assignedTo || [],
                 createdAt: st.createdAt,
                 updatedAt: st.updatedAt,
                 latestActivity: getOwnActivityTime(st),
@@ -208,10 +210,25 @@ const overviewService = {
 
         for (const t of tasks) {
             const taskId = String(t._id);
-            let taskPermissions = userPermissions.tasks[taskId] || {};
+            let taskPermissions = {
+                canCreateSubtask: false,
+                canChangeStatus: false,
+                canUpdateTask: false,
+                canUpdatePriority: false,
+                inheritedFromTeam: false,
+                ...(userPermissions.tasks[taskId] || {})
+            };
             let canEditTask = false;
 
-            if (taskPermissions.role === 'creator' || taskPermissions.role === 'assignee') canEditTask = true;
+            const taskRole = String(taskPermissions.role || "").toLowerCase();
+            if (
+                taskRole === 'creator'
+                || taskRole === 'assignee'
+                || (taskPermissions.inheritedFromTeam && ['lead', 'member'].includes(taskRole))
+                || ['owner', 'admin'].includes(taskRole)
+            ) {
+                canEditTask = true;
+            }
 
             // Inheritance Logic
             if (t.project && !taskPermissions.role) {
@@ -219,6 +236,7 @@ const overviewService = {
                 const projPermissions = userPermissions.projects[projId];
                 if (projPermissions) {
                     taskPermissions = {
+                        ...taskPermissions,
                         canCreateSubtask: projPermissions.canEdit || ['owner', 'admin', 'member'].includes(projPermissions.role),
                         role: projPermissions.role || null
                     };
@@ -230,6 +248,7 @@ const overviewService = {
                 const wsPermissions = userPermissions.workspaces[wsId];
                 if (wsPermissions) {
                     taskPermissions = {
+                        ...taskPermissions,
                         canCreateSubtask: wsPermissions.canEdit || ['owner', 'admin', 'member'].includes(wsPermissions.role),
                         role: wsPermissions.role || null
                     };
@@ -244,8 +263,18 @@ const overviewService = {
 
             const processedSubtasks = rawSubtasks.map(st => {
                 const isSubtaskCreator = String(st.createdBy) === String(userId);
-                const hasEditAccess = isSubtaskCreator || canEditTask;
-                return { ...st, permissions: { canEdit: hasEditAccess, canDelete: hasEditAccess } };
+                const isSubtaskAssignee = Array.isArray(st.assignedTo)
+                    && st.assignedTo.some((assigneeId) => String(assigneeId) === String(userId));
+                const hasEditAccess = isSubtaskCreator || isSubtaskAssignee || canEditTask;
+                return {
+                    ...st,
+                    permissions: {
+                        canEdit: hasEditAccess,
+                        canDelete: hasEditAccess,
+                        canChangeStatus: hasEditAccess,
+                        canUpdatePriority: hasEditAccess
+                    }
+                };
             });
 
             const taskFinalActivity = Math.max(getOwnActivityTime(t), maxSubtaskActivity);
@@ -267,7 +296,11 @@ const overviewService = {
                 unreadCount: getUnread(t), // <-- Task Unread
                 permissions: {
                     canCreateSubtask: taskPermissions.canCreateSubtask || false,
-                    role: taskPermissions.role || null
+                    canChangeStatus: Boolean(taskPermissions.canChangeStatus),
+                    canUpdateTask: Boolean(taskPermissions.canUpdateTask),
+                    canUpdatePriority: Boolean(taskPermissions.canUpdatePriority),
+                    role: taskPermissions.role || null,
+                    inheritedFromTeam: Boolean(taskPermissions.inheritedFromTeam)
                 }
             };
 
@@ -320,6 +353,7 @@ const overviewService = {
                         tasks: projectTasks.sort((a, b) => b.latestActivity - a.latestActivity),
                         unreadCount: getUnread(p), // <-- Project Unread
                         permissions: {
+                            canEdit: Boolean(projPermissions.canEdit),
                             canCreateTask: projPermissions.canCreateTask || false,
                             role: projPermissions.role || null,
                             isProjectAdmin: Boolean(projPermissions.isProjectAdmin),

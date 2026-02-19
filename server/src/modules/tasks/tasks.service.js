@@ -14,6 +14,10 @@ const Message = require('../../models/message');
 
 const { touchParents } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+const {
+    getTeamMemberIds,
+    syncTaskAndSubtaskChatMembers
+} = require('../utils/chatMembershipSync');
 
 const withSession = (query, session) => (session ? query.session(session) : query);
 
@@ -40,7 +44,7 @@ const ensureProjectScope = async (projectId, workspaceId, session = null) => {
         return { project: null, workspaceId: workspaceId || null };
     }
 
-    const projectQuery = Project.findById(projectId).select('workspace members owner name chatId');
+    const projectQuery = Project.findById(projectId).select('workspace members owner teams name chatId');
     const project = await withSession(projectQuery, session);
     if (!project) {
         throw new Error("Project not found");
@@ -97,6 +101,56 @@ const validateAssigneesForScope = (assigneeIds, allowedIds, contextLabel = "scop
     }
 };
 
+const ensureTeamsBelongToScope = async ({
+    teamIds = [],
+    workspaceId = null,
+    project = null,
+    session = null
+}) => {
+    const normalizedTeamIds = normalizeUniqueIds(teamIds || []);
+    if (!normalizedTeamIds.length) return [];
+
+    const teams = await withSession(
+        Team.find({ _id: { $in: normalizedTeamIds } }).select("_id workspace"),
+        session
+    ).lean();
+
+    if (teams.length !== normalizedTeamIds.length) {
+        throw new Error("Some selected teams do not exist");
+    }
+
+    if (workspaceId) {
+        const hasForeignWorkspaceTeam = teams.some(
+            (team) => String(team.workspace) !== String(workspaceId)
+        );
+
+        if (hasForeignWorkspaceTeam) {
+            throw new Error("Some selected teams do not belong to this workspace");
+        }
+    }
+
+    if (project) {
+        const projectTeamIds = new Set((project.teams || []).map((id) => String(id)));
+        const invalidProjectTeams = normalizedTeamIds.filter(
+            (teamId) => !projectTeamIds.has(String(teamId))
+        );
+
+        if (invalidProjectTeams.length > 0) {
+            throw new Error("Some selected teams are not linked to this project");
+        }
+    }
+
+    return normalizedTeamIds;
+};
+
+const syncTaskChatsSafely = async (taskId) => {
+    try {
+        await syncTaskAndSubtaskChatMembers(taskId);
+    } catch (syncError) {
+        console.error("task chat membership sync failed", syncError);
+    }
+};
+
 const taskService = {
     createTask: async (userId, taskData, scope = {}) => {
         const { project, workspaceId: scopedWorkspaceId } = await ensureProjectScope(
@@ -113,6 +167,28 @@ const taskService = {
             }
         }
 
+        const normalizedAssignees = normalizeUniqueIds(taskData.assignees || []);
+        const normalizedTeamIds = normalizeUniqueIds(taskData.assigneesTeams || []);
+
+        if (workspaceId || scope.projectId) {
+            const allowed = await canCreateTask({
+                userId,
+                workspaceId,
+                projectId: scope.projectId || null,
+                teamIds: normalizedTeamIds,
+                enforceWorkspaceAdminOnly: !scope.projectId,
+                requireProjectAdminOrWorkspaceOwner: Boolean(scope.projectId)
+            });
+
+            if (!allowed) {
+                throw new Error(
+                    scope.projectId
+                        ? "Only workspace owners/admins, project admins, or assigned team leads can create tasks in this project"
+                        : "Only workspace owners and admins can create tasks"
+                );
+            }
+        }
+
         const existingTask = await Task.findOne({
             createdBy: userId,
             title: taskData.title,
@@ -125,7 +201,19 @@ const taskService = {
             throw new Error("Task with this name already exists in this scope");
         }
 
-        const normalizedAssignees = normalizeUniqueIds(taskData.assignees || []);
+        let scopedTeamIds = [];
+        if (!workspaceId && !scope.projectId && normalizedTeamIds.length > 0) {
+            throw new Error("Global tasks cannot include team assignees");
+        }
+
+        if (normalizedTeamIds.length > 0) {
+            scopedTeamIds = await ensureTeamsBelongToScope({
+                teamIds: normalizedTeamIds,
+                workspaceId,
+                project
+            });
+        }
+
         const allowedAssignees = await getAllowedAssigneeIdsForScope({
             workspaceId,
             project
@@ -144,9 +232,13 @@ const taskService = {
             );
         }
 
-        // Prepare initial Chat members (Creator + assigned users)
+        // Prepare initial Chat members (Creator + assigned users + assigned team members)
         const initialMembers = new Set([String(userId)]);
         normalizedAssignees.forEach((id) => initialMembers.add(String(id)));
+        if (scopedTeamIds.length > 0) {
+            const teamMembers = await getTeamMemberIds(scopedTeamIds);
+            teamMembers.forEach((id) => initialMembers.add(String(id)));
+        }
 
         const chat = await Chat.create({
             type: "group",
@@ -158,11 +250,14 @@ const taskService = {
         const task = await Task.create({
             ...taskData,
             assignees: normalizedAssignees,
+            assigneesTeams: scopedTeamIds,
             createdBy: userId,
             workspace: workspaceId,
             project: scope.projectId || null,
             chatId: chat._id
         });
+
+        await syncTaskAndSubtaskChatMembers(task._id);
 
         const workspace = workspaceId
             ? await Workspace.findById(workspaceId).select('name chatId').lean()
@@ -290,7 +385,7 @@ const taskService = {
             userId,
             workspaceId: task.workspace || null,
             projectId: task.project || null,
-            teamId: task.team || null
+            teamIds: task.assigneesTeams || []
         });
 
         if (!isUserValid) {
@@ -299,6 +394,9 @@ const taskService = {
 
         const updateQuery = {};
         let targetAssigneeIds = [];
+        let validatedTeamIds = [];
+        let scopedProject = null;
+        let scopedWorkspaceId = task.workspace || null;
 
         // 1. Collect Direct IDs
         if (assigneesData.assignees?.length) {
@@ -321,6 +419,12 @@ const taskService = {
 
         targetAssigneeIds = normalizeUniqueIds(targetAssigneeIds);
 
+        if (task.workspace || task.project) {
+            const scoped = await ensureProjectScope(task.project || null, task.workspace || null);
+            scopedProject = scoped.project;
+            scopedWorkspaceId = scoped.workspaceId || task.workspace || null;
+        }
+
         if (targetAssigneeIds.length > 0) {
             if (!task.workspace && !task.project) {
                 const invalidGlobalAssignees = targetAssigneeIds.filter((id) => String(id) !== String(userId));
@@ -328,13 +432,24 @@ const taskService = {
                     throw new Error("Global tasks can only be assigned to yourself");
                 }
             } else {
-                const { project, workspaceId } = await ensureProjectScope(task.project || null, task.workspace || null);
                 const allowedAssignees = await getAllowedAssigneeIdsForScope({
-                    workspaceId,
-                    project
+                    workspaceId: scopedWorkspaceId,
+                    project: scopedProject
                 });
                 validateAssigneesForScope(targetAssigneeIds, allowedAssignees, task.project ? "project workspace" : "workspace");
             }
+        }
+
+        if (!task.workspace && !task.project && assigneesData.assigneesTeams?.length) {
+            throw new Error("Global tasks cannot include team assignees");
+        }
+
+        if (assigneesData.assigneesTeams?.length) {
+            validatedTeamIds = await ensureTeamsBelongToScope({
+                teamIds: assigneesData.assigneesTeams,
+                workspaceId: scopedWorkspaceId,
+                project: scopedProject
+            });
         }
 
         // 3. Prepare Update Query
@@ -344,9 +459,9 @@ const taskService = {
             };
         }
 
-        if (assigneesData.assigneesTeams?.length) {
+        if (validatedTeamIds.length > 0) {
             updateQuery.assigneesTeams = {
-                $each: assigneesData.assigneesTeams
+                $each: validatedTeamIds
             };
         }
 
@@ -361,17 +476,23 @@ const taskService = {
             }
         );
 
-        // Add new assignees to Task Chat (UPDATED)
-        if (task.chatId && targetAssigneeIds.length > 0) {
-            await Chat.findByIdAndUpdate(task.chatId, {
-                $addToSet: { members: { $each: targetAssigneeIds } }
-            });
-        }
+        await syncTaskChatsSafely(taskId);
 
-        if (targetAssigneeIds.length > 0) {
+        if (targetAssigneeIds.length > 0 || validatedTeamIds.length > 0) {
             const { project, workspace } = await loadTaskContext(task);
             const actorLabel = await getUserLabel(userId);
-            const assigneeLabels = await getUserLabels(targetAssigneeIds);
+            const assigneeLabels = targetAssigneeIds.length
+                ? await getUserLabels(targetAssigneeIds)
+                : [];
+            const parts = [];
+
+            if (assigneeLabels.length) {
+                parts.push(formatUserList(assigneeLabels));
+            }
+            if (validatedTeamIds.length) {
+                parts.push(`${validatedTeamIds.length} team assignment(s)`);
+            }
+
             await logActivity({
                 actorId: userId,
                 action: "task.assignees_added",
@@ -381,9 +502,10 @@ const taskService = {
                 taskId: task._id,
                 chatId: task.chatId,
                 mirrorChatIds: [project?.chatId, workspace?.chatId],
-                message: `${actorLabel} assigned ${formatUserList(assigneeLabels)} to task "${task.title}".`,
+                message: `${actorLabel} assigned ${parts.join(" and ")} to task "${task.title}".`,
                 meta: {
-                    assigneeIds: targetAssigneeIds
+                    assigneeIds: targetAssigneeIds,
+                    teamIds: validatedTeamIds
                 }
             });
         }
@@ -412,7 +534,7 @@ const taskService = {
             userId,
             workspaceId: task.workspace || null,
             projectId: task.project || null,
-            teamId: task.team || null
+            teamIds: task.assigneesTeams || []
         });
 
         if (!isUserValid) {
@@ -462,6 +584,7 @@ const taskService = {
             );
 
             await session.commitTransaction();
+            await syncTaskChatsSafely(taskId);
 
             const { project, workspace } = await loadTaskContext(task);
             const actorLabel = await getUserLabel(userId);
@@ -851,16 +974,8 @@ const taskService = {
                 { session }
             );
 
-            // 4. Remove user from Task Chat (UPDATED)
-            if (task.chatId) {
-                await Chat.findByIdAndUpdate(
-                    task.chatId,
-                    { $pull: { members: userId } },
-                    { session }
-                );
-            }
-
             await session.commitTransaction();
+            await syncTaskChatsSafely(taskId);
             return { message: "You have left the task and its subtasks successfully" };
 
         } catch (error) {

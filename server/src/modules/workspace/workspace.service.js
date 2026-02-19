@@ -15,6 +15,7 @@ const sendMail = require('../../helpers/sendEmail');
 const crypto = require('crypto');
 const { logActivity, getUserLabel } = require('../utils/activityLogger');
 const notificationService = require('../notification/notification.service');
+const { syncWorkspaceChats } = require('../utils/chatMembershipSync');
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -29,6 +30,14 @@ const FRONTEND_BASE_URL = String(process.env.FRONTEND_URL || "http://localhost:5
     .replace(/\/+$/, "");
 
 const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
+
+const syncWorkspaceChatsSafely = async (workspaceId) => {
+    try {
+        await syncWorkspaceChats(workspaceId);
+    } catch (syncError) {
+        console.error("workspace chat membership sync failed", syncError);
+    }
+};
 
 const sanitizeInvite = (inviteDoc) => {
     if (!inviteDoc) return null;
@@ -568,6 +577,8 @@ const workspaceService = {
             }
         });
 
+        await syncWorkspaceChatsSafely(workspaceId);
+
         return {
             mode: "member_added",
             member: await member.populate('user', 'name email')
@@ -642,6 +653,8 @@ const workspaceService = {
         } finally {
             session.endSession();
         }
+
+        await syncWorkspaceChatsSafely(workspaceId);
     },
 
     updateMemberRole: async ({ workspaceId, memberId, role, requesterId }) => {
@@ -690,6 +703,8 @@ const workspaceService = {
                 role
             }
         });
+
+        await syncWorkspaceChatsSafely(workspaceId);
 
         return result;
     },
@@ -757,6 +772,7 @@ const workspaceService = {
             });
 
             await session.commitTransaction();
+            await syncWorkspaceChatsSafely(workspaceId);
         } catch (error) {
             await session.abortTransaction();
             throw error;
@@ -1057,6 +1073,8 @@ const workspaceService = {
         } finally {
             session.endSession();
         }
+
+        await syncWorkspaceChatsSafely(workspaceId);
     },
 
     // ... (baaki ke functions: getQuickStatus, toggleStar, toggleMute, toggleArchive - Inme changes ki zaroorat nahi hai)

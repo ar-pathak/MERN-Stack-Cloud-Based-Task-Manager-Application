@@ -4,6 +4,19 @@ const objectId = z
     .string()
     .regex(/^[0-9a-fA-F]{24}$/, "Invalid ID format");
 
+const assigneeInputSchema = z
+    .union([
+        objectId,
+        z.array(objectId)
+            .min(1, "At least one assignee is required")
+            .refine(
+                (arr) => new Set(arr).size === arr.length,
+                { message: "Duplicate assignee IDs are not allowed" }
+            )
+    ])
+    .optional()
+    .nullable();
+
 const createSubtaskSchema = z.object({
     taskId: objectId,
     title: z
@@ -20,7 +33,7 @@ const createSubtaskSchema = z.object({
         .nullable()
         .or(z.literal("")),
 
-    assignedTo: objectId.optional().nullable(),
+    assignedTo: assigneeInputSchema,
 
     dueDate: z
         .string()
@@ -48,7 +61,7 @@ const updateSubtaskSchema = z
 
         completed: z.boolean().optional(),
         isHighPriority: z.boolean().optional(),
-        assignedTo: objectId.optional().nullable(),
+        assignedTo: assigneeInputSchema,
 
         dueDate: z.coerce.date().optional(),
     })

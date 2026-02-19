@@ -9,6 +9,7 @@ const WorkspaceMember = require("../../models/workspaceMember");
 const Project = require("../../models/project");
 const Task = require("../../models/tasks");
 const Subtask = require("../../models/subtasks");
+const Team = require("../../models/team");
 const mongoose = require("mongoose");
 const postService = require("../posts/post.service");
 const {
@@ -136,10 +137,10 @@ class ChatService {
                 .select("_id createdBy")
                 .lean(),
             Project.findOne({ chatId })
-                .select("_id owner members workspace")
+                .select("_id owner members workspace teams")
                 .lean(),
             Task.findOne({ chatId })
-                .select("_id createdBy assignees workspace project")
+                .select("_id createdBy assignees assigneesTeams workspace project")
                 .lean(),
             Subtask.findOne({ chatId })
                 .select("_id task createdBy assignedTo")
@@ -156,11 +157,11 @@ class ChatService {
     async resolveWorkspaceAccess(workspaceId, userId, workspaceDoc = null) {
         const workspace = workspaceDoc || (await Workspace.findById(workspaceId).select("_id createdBy").lean());
         if (!workspace) {
-            return { isMember: false, role: null, source: "workspace" };
+            return { isMember: false, role: null, source: "workspace", canView: false, canSend: false };
         }
 
         if (String(workspace.createdBy) === String(userId)) {
-            return { isMember: true, role: "owner", source: "workspace" };
+            return { isMember: true, role: "owner", source: "workspace", canView: true, canSend: true };
         }
 
         const membership = await WorkspaceMember.findOne({
@@ -172,118 +173,205 @@ class ChatService {
             .lean();
 
         if (!membership) {
-            return { isMember: false, role: null, source: "workspace" };
+            return { isMember: false, role: null, source: "workspace", canView: false, canSend: false };
         }
 
+        const role = String(membership.role || "member");
         return {
             isMember: true,
-            role: String(membership.role || "member"),
-            source: "workspace"
+            role,
+            source: "workspace",
+            canView: true,
+            canSend: role !== "viewer"
+        };
+    }
+
+    async resolveTeamAccess(teamIds = [], userId) {
+        const scopedTeamIds = Array.from(
+            new Set((teamIds || []).map((id) => String(id)).filter(Boolean))
+        );
+
+        if (!scopedTeamIds.length) {
+            return { isMember: false, role: null, source: "team", canView: false, canSend: false };
+        }
+
+        const team = await Team.findOne({
+            _id: { $in: scopedTeamIds },
+            "members.user": userId
+        })
+            .select("members")
+            .lean();
+
+        if (!team) {
+            return { isMember: false, role: null, source: "team", canView: false, canSend: false };
+        }
+
+        const teamMember = (team.members || []).find(
+            (member) => String(member.user) === String(userId)
+        );
+        const role = String(teamMember?.role || "member");
+        return {
+            isMember: true,
+            role,
+            source: "team",
+            canView: true,
+            canSend: ["lead", "member"].includes(role)
         };
     }
 
     async resolveProjectAccess(projectDoc, userId) {
         const project = projectDoc || null;
         if (!project) {
-            return { isMember: false, role: null, source: "project" };
+            return { isMember: false, role: null, source: "project", canView: false, canSend: false };
         }
 
         if (String(project.owner) === String(userId)) {
-            return { isMember: true, role: "owner", source: "project" };
+            return { isMember: true, role: "owner", source: "project", canView: true, canSend: true };
         }
 
         const member = (project.members || []).find(
-            (entry) => String(entry?.user) === String(userId)
+            (entry) => String(entry?.user?._id || entry?.user) === String(userId)
         );
         if (member) {
+            const role = String(member.role || "member");
             return {
                 isMember: true,
-                role: String(member.role || "member"),
-                source: "project"
+                role,
+                source: "project",
+                canView: true,
+                canSend: ["owner", "admin", "member"].includes(role)
             };
         }
 
-        if (!project.workspace) {
-            return { isMember: false, role: null, source: "project" };
+        const workspaceAccess = project.workspace
+            ? await this.resolveWorkspaceAccess(project.workspace, userId)
+            : { isMember: false, role: null, source: "workspace", canView: false, canSend: false };
+        if (workspaceAccess.isMember && ["owner", "admin"].includes(String(workspaceAccess.role || ""))) {
+            return {
+                ...workspaceAccess,
+                source: "workspace",
+                canView: true,
+                canSend: true
+            };
         }
 
-        const workspaceAccess = await this.resolveWorkspaceAccess(project.workspace, userId);
-        if (!workspaceAccess.isMember) {
-            return { isMember: false, role: null, source: "project" };
+        const teamAccess = await this.resolveTeamAccess(project.teams || [], userId);
+        if (teamAccess.isMember) {
+            return teamAccess;
         }
 
-        return workspaceAccess;
+        return { isMember: false, role: null, source: "project", canView: false, canSend: false };
     }
 
     async resolveTaskAccess(taskDoc, userId) {
         const task = taskDoc || null;
         if (!task) {
-            return { isMember: false, role: null, source: "task" };
+            return { isMember: false, role: null, source: "task", canView: false, canSend: false };
         }
 
         if (String(task.createdBy) === String(userId)) {
-            return { isMember: true, role: "creator", source: "task" };
+            return { isMember: true, role: "creator", source: "task", canView: true, canSend: true };
         }
 
         const isAssignee = (task.assignees || []).some(
             (assigneeId) => String(assigneeId) === String(userId)
         );
         if (isAssignee) {
-            return { isMember: true, role: "assignee", source: "task" };
+            return { isMember: true, role: "assignee", source: "task", canView: true, canSend: true };
+        }
+
+        const teamAccess = await this.resolveTeamAccess(task.assigneesTeams || [], userId);
+        if (teamAccess.isMember) {
+            return teamAccess;
         }
 
         if (task.project) {
             const project = await Project.findById(task.project)
                 .select("_id owner members workspace")
                 .lean();
-            const projectAccess = await this.resolveProjectAccess(project, userId);
-            if (projectAccess.isMember) {
-                return projectAccess;
+            if (project) {
+                if (String(project.owner) === String(userId)) {
+                    return { isMember: true, role: "owner", source: "project", canView: true, canSend: true };
+                }
+
+                const projectMember = (project.members || []).find(
+                    (entry) => String(entry.user) === String(userId)
+                );
+                if (String(projectMember?.role || "") === "admin") {
+                    return { isMember: true, role: "admin", source: "project", canView: true, canSend: true };
+                }
+
+                const workspaceAccess = await this.resolveWorkspaceAccess(project.workspace, userId);
+                if (workspaceAccess.isMember && ["owner", "admin"].includes(String(workspaceAccess.role || ""))) {
+                    return {
+                        ...workspaceAccess,
+                        source: "workspace",
+                        canView: true,
+                        canSend: true
+                    };
+                }
             }
         }
 
         if (task.workspace) {
-            return this.resolveWorkspaceAccess(task.workspace, userId);
+            const workspaceAccess = await this.resolveWorkspaceAccess(task.workspace, userId);
+            if (workspaceAccess.isMember && ["owner", "admin"].includes(String(workspaceAccess.role || ""))) {
+                return {
+                    ...workspaceAccess,
+                    source: "workspace",
+                    canView: true,
+                    canSend: true
+                };
+            }
         }
 
-        return { isMember: false, role: null, source: "task" };
+        return { isMember: false, role: null, source: "task", canView: false, canSend: false };
     }
 
     async resolveSubtaskAccess(subtaskDoc, userId) {
         const subtask = subtaskDoc || null;
         if (!subtask) {
-            return { isMember: false, role: null, source: "subtask" };
+            return { isMember: false, role: null, source: "subtask", canView: false, canSend: false };
         }
 
         if (String(subtask.createdBy) === String(userId)) {
-            return { isMember: true, role: "creator", source: "subtask" };
+            return { isMember: true, role: "creator", source: "subtask", canView: true, canSend: true };
         }
 
         const isAssigned = (subtask.assignedTo || []).some(
             (assigneeId) => String(assigneeId) === String(userId)
         );
         if (isAssigned) {
-            return { isMember: true, role: "assignee", source: "subtask" };
+            return { isMember: true, role: "assignee", source: "subtask", canView: true, canSend: true };
         }
 
         if (!subtask.task) {
-            return { isMember: false, role: null, source: "subtask" };
+            return { isMember: false, role: null, source: "subtask", canView: false, canSend: false };
         }
 
         const task = await Task.findById(subtask.task)
-            .select("_id createdBy assignees workspace project")
+            .select("_id assigneesTeams")
             .lean();
 
-        return this.resolveTaskAccess(task, userId);
+        if (!task) {
+            return { isMember: false, role: null, source: "subtask", canView: false, canSend: false };
+        }
+
+        const teamAccess = await this.resolveTeamAccess(task.assigneesTeams || [], userId);
+        if (teamAccess.isMember) {
+            return teamAccess;
+        }
+
+        return { isMember: false, role: null, source: "subtask", canView: false, canSend: false };
     }
 
     async resolveSectionAccessByChat(chatId, userId) {
         const sectionScope = await this.findSectionScopeByChatId(chatId);
         if (!sectionScope) {
-            return { isSectionChat: false, isMember: true, role: null, scopeType: null };
+            return { isSectionChat: false, isMember: true, role: null, scopeType: null, canView: true, canSend: true };
         }
 
-        let access = { isMember: false, role: null, source: sectionScope.type };
+        let access = { isMember: false, role: null, source: sectionScope.type, canView: false, canSend: false };
         if (sectionScope.type === "workspace") {
             access = await this.resolveWorkspaceAccess(sectionScope.entity._id, userId, sectionScope.entity);
         } else if (sectionScope.type === "project") {
@@ -305,7 +393,7 @@ class ChatService {
         const access = await this.resolveSectionAccessByChat(chatId, userId);
         if (!access.isSectionChat) return access;
 
-        if (!access.isMember) {
+        if (!access.isMember || !access.canView) {
             const error = createError("You are not a member of this section chat", 403);
             error.code = "SECTION_CHAT_MEMBER_REQUIRED";
             throw error;
@@ -318,7 +406,7 @@ class ChatService {
         const access = await this.assertCanViewSectionChat(chatId, userId);
         if (!access.isSectionChat) return access;
 
-        if (String(access.role || "").toLowerCase() === "viewer") {
+        if (!access.canSend) {
             const error = createError(
                 "You don't have permission to send messages in this section chat",
                 403
@@ -449,11 +537,27 @@ class ChatService {
         if (!chat) {
             throw createError("Chat not found", 404);
         }
-        if (!chat.members.some((id) => String(id) === String(senderId))) {
-            throw createError("You are not a member of this chat", 403);
+        const sectionAccess = await this.resolveSectionAccessByChat(chatId, senderId);
+        const isChatMember = chat.members.some((id) => String(id) === String(senderId));
+        if (!isChatMember) {
+            if (sectionAccess.isSectionChat && sectionAccess.isMember) {
+                await Chat.findByIdAndUpdate(chatId, {
+                    $addToSet: { members: senderId }
+                });
+                chat.members.push(senderId);
+            } else {
+                throw createError("You are not a member of this chat", 403);
+            }
         }
 
-        await this.assertCanSendSectionChat(chatId, senderId);
+        if (sectionAccess.isSectionChat) {
+            if (!sectionAccess.isMember) {
+                throw createError("You are not a member of this section chat", 403);
+            }
+            if (!sectionAccess.canSend) {
+                throw createError("You don't have permission to send messages in this section chat", 403);
+            }
+        }
 
         if (chat.type === "private") {
             const recipientId = chat.members.find((memberId) => String(memberId) !== String(senderId));
@@ -584,11 +688,24 @@ class ChatService {
         if (!chat) {
             throw createError("Chat not found", 404);
         }
-        if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw createError("You are not a member of this chat", 403);
+        const sectionAccess = await this.resolveSectionAccessByChat(chatId, userId);
+        const isChatMember = chat.members.some((id) => String(id) === String(userId));
+        if (!isChatMember) {
+            if (sectionAccess.isSectionChat && sectionAccess.isMember) {
+                await Chat.findByIdAndUpdate(chatId, {
+                    $addToSet: { members: userId }
+                });
+                chat.members.push(userId);
+            } else {
+                throw createError("You are not a member of this chat", 403);
+            }
         }
 
-        await this.assertCanViewSectionChat(chatId, userId);
+        if (sectionAccess.isSectionChat) {
+            if (!sectionAccess.isMember || !sectionAccess.canView) {
+                throw createError("You are not a member of this section chat", 403);
+            }
+        }
 
         const messages = await Message.find({ chatId, status: { $in: ["active", "edited"] } })
             .sort({ createdAt: -1 })

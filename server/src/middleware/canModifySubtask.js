@@ -2,6 +2,7 @@ const Subtask = require("../models/subtasks");
 const Task = require("../models/tasks");
 const WorkspaceMember = require("../models/workspaceMember");
 const Project = require("../models/project");
+const Team = require("../models/team");
 
 const canModifySubtask = async (req, res, next) => {
     try {
@@ -16,48 +17,59 @@ const canModifySubtask = async (req, res, next) => {
             if (!subtask) {
                 return res.status(404).json({ message: "Subtask not found" });
             }
-            task = await Task.findById(subtask.task).select("createdBy assignees workspace project");
+            task = await Task.findById(subtask.task).select("createdBy assignees assigneesTeams workspace project");
         } else if (taskId) {
-            task = await Task.findById(taskId).select("createdBy assignees workspace project");
+            task = await Task.findById(taskId).select("createdBy assignees assigneesTeams workspace project");
         }
 
         if (!task) {
             return res.status(404).json({ message: "Task not found" });
         }
 
-        const isTaskOwner =
+        const isDirectTaskMember =
             String(task.createdBy) === String(userId) ||
             task.assignees?.some((id) => String(id) === String(userId));
 
-        const isSubtaskOwner = subtask
+        const isSubtaskMember = subtask
             ? String(subtask.createdBy) === String(userId) ||
             subtask.assignedTo?.some((id) => String(id) === String(userId))
             : false;
 
-        let hasWorkspacePermission = false;
+        let isTaskTeamMember = false;
+        if (task.assigneesTeams?.length) {
+            const teamMembership = await Team.findOne({
+                _id: { $in: task.assigneesTeams },
+                "members.user": userId
+            })
+                .select("_id")
+                .lean();
+            isTaskTeamMember = Boolean(teamMembership);
+        }
+
+        let isWorkspaceOwnerOrAdmin = false;
         if (task.workspace) {
             const workspaceMember = await WorkspaceMember.findOne({
                 workspace: task.workspace,
                 user: userId
             }).select("role");
-            hasWorkspacePermission = !!workspaceMember && ["owner", "admin", "member"].includes(workspaceMember.role);
+            isWorkspaceOwnerOrAdmin = !!workspaceMember && ["owner", "admin"].includes(workspaceMember.role);
         }
 
-        let hasProjectPermission = false;
+        let isProjectAdmin = false;
         if (task.project) {
             const project = await Project.findById(task.project).select("owner members");
             if (project) {
-                hasProjectPermission =
+                isProjectAdmin =
                     String(project.owner) === String(userId) ||
                     project.members.some(
                         (member) =>
                             String(member.user) === String(userId) &&
-                            ["admin", "member"].includes(member.role)
+                            member.role === "admin"
                     );
             }
         }
 
-        if (isTaskOwner || isSubtaskOwner || hasWorkspacePermission || hasProjectPermission) {
+        if (isDirectTaskMember || isSubtaskMember || isTaskTeamMember || isWorkspaceOwnerOrAdmin || isProjectAdmin) {
             return next();
         }
 

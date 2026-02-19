@@ -5,11 +5,22 @@ const Team = require("../models/team");
 const isWorkspaceAdminOrOwner = (role = "") =>
     ["owner", "admin"].includes(String(role));
 
+const uniqueIdStrings = (values = []) => {
+    const set = new Set();
+    values.forEach((value) => {
+        if (!value) return;
+        const id = String(value);
+        if (id) set.add(id);
+    });
+    return Array.from(set);
+};
+
 const canCreateTask = async ({
     userId,
     workspaceId = null,
     projectId = null,
     teamId = null,
+    teamIds = [],
     enforceWorkspaceAdminOnly = false,
     requireProjectAdminOrWorkspaceOwner = false
 }) => {
@@ -20,10 +31,15 @@ const canCreateTask = async ({
         }).select("role")
         : null;
 
+    const requestedTeamIds = uniqueIdStrings([
+        ...(Array.isArray(teamIds) ? teamIds : []),
+        teamId
+    ]);
+
     // Project-level checks.
     if (projectId) {
         const project = await Project.findById(projectId)
-            .select("workspace owner members")
+            .select("workspace owner members teams")
             .lean();
 
         if (!project) {
@@ -44,7 +60,9 @@ const canCreateTask = async ({
                 }).select("role");
             }
 
-            if (String(scopedWorkspaceMember?.role || "") === "owner") {
+            const workspaceRole = String(scopedWorkspaceMember?.role || "");
+            const isWorkspaceManager = isWorkspaceAdminOrOwner(workspaceRole);
+            if (isWorkspaceManager) {
                 return true;
             }
 
@@ -53,7 +71,32 @@ const canCreateTask = async ({
             }
 
             const projectMember = project.members.find((member) => String(member.user) === String(userId));
-            return projectMember?.role === "admin";
+            if (projectMember?.role === "admin") {
+                return true;
+            }
+
+            const projectTeamIds = uniqueIdStrings(project.teams || []);
+            const scopedTeamIds = requestedTeamIds.length
+                ? requestedTeamIds.filter((id) => projectTeamIds.includes(id))
+                : projectTeamIds;
+
+            if (!scopedTeamIds.length) {
+                return false;
+            }
+
+            const leadTeam = await Team.findOne({
+                _id: { $in: scopedTeamIds },
+                members: {
+                    $elemMatch: {
+                        user: userId,
+                        role: "lead"
+                    }
+                }
+            })
+                .select("_id")
+                .lean();
+
+            return Boolean(leadTeam);
         }
 
         if (enforceWorkspaceAdminOnly) {
@@ -69,12 +112,36 @@ const canCreateTask = async ({
             return isWorkspaceAdminOrOwner(scopedWorkspaceMember?.role);
         }
 
+        const projectTeamIds = uniqueIdStrings(project.teams || []);
+        const scopedTeamIds = requestedTeamIds.length
+            ? requestedTeamIds.filter((id) => projectTeamIds.includes(id))
+            : projectTeamIds;
+
+        let isAssignedTeamLead = false;
+        if (scopedTeamIds.length) {
+            const leadTeam = await Team.findOne({
+                _id: { $in: scopedTeamIds },
+                members: {
+                    $elemMatch: {
+                        user: userId,
+                        role: "lead"
+                    }
+                }
+            })
+                .select("_id")
+                .lean();
+            isAssignedTeamLead = Boolean(leadTeam);
+        }
+
         if (String(project.owner) === String(userId)) {
             return true;
         }
 
         const member = project.members.find((m) => String(m.user) === String(userId));
-        if (teamId) {
+        if (scopedTeamIds.length) {
+            if (isAssignedTeamLead) {
+                return true;
+            }
             return member?.role === "admin";
         }
 
@@ -95,9 +162,9 @@ const canCreateTask = async ({
     }
 
     // Team-level checks.
-    if (teamId) {
+    if (requestedTeamIds.length) {
         const team = await Team.findOne({
-            _id: teamId,
+            _id: { $in: requestedTeamIds },
             "members.user": userId
         }).lean();
 

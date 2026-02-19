@@ -52,8 +52,8 @@ const projectController = {
             const { projectId } = req.params;
             const userId = req.user._id;
 
-            if (!mongoose.Types.ObjectId.isValid(workspaceId) || !mongoose.Types.ObjectId.isValid(projectId)) {
-                throw new Error('Invalid workspace ID or project ID');
+            if (!mongoose.Types.ObjectId.isValid(projectId)) {
+                throw new Error('Invalid project ID');
             }
 
             const project = await projectService.getProjectById(projectId, userId);

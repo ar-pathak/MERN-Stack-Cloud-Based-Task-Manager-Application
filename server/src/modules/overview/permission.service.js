@@ -1,5 +1,6 @@
 const Project = require('../../models/project');
 const Task = require('../../models/tasks');
+const Team = require('../../models/team');
 const Workspace = require('../../models/workspace');
 const WorkspaceMember = require('../../models/workspaceMember');
 
@@ -43,7 +44,7 @@ class PermissionService {
             const wsPerms = workspaceId
                 ? await this.getWorkspacePermissions(workspaceId, userId)
                 : { canCreateTask: false, canManage: false, role: null };
-            const isWorkspaceOwner = wsPerms.role === 'owner';
+            const isWorkspaceManager = ['owner', 'admin'].includes(String(wsPerms.role || ''));
 
             if (String(project.owner) === String(userId)) {
                 return {
@@ -63,25 +64,60 @@ class PermissionService {
                     role: projectMember.role,
                     canView: true,
                     canEdit: ['admin', 'member'].includes(projectMember.role),
-                    canManage: isProjectLevelAdmin,
-                    canCreateTask: isProjectLevelAdmin || isWorkspaceOwner,
+                    canManage: isProjectLevelAdmin || isWorkspaceManager,
+                    canCreateTask: isProjectLevelAdmin || isWorkspaceManager,
                     isProjectAdmin: isProjectLevelAdmin
                 };
             }
 
-            if (project.workspace) {
-                if (wsPerms.canManage) {
-                    return {
-                        role: wsPerms.role,
-                        canView: true,
-                        canEdit: true,
-                        canManage: true,
-                        canCreateTask: isWorkspaceOwner,
-                        isProjectAdmin: false,
-                        inheritedFromWorkspace: true
-                    };
-                }
+            if (isWorkspaceManager) {
+                return {
+                    role: wsPerms.role,
+                    canView: true,
+                    canEdit: true,
+                    canManage: true,
+                    canCreateTask: true,
+                    isProjectAdmin: false,
+                    inheritedFromWorkspace: true
+                };
             }
+
+            const teamMembership = await Team.findOne({
+                _id: { $in: project.teams || [] },
+                "members.user": userId
+            })
+                .select("members")
+                .lean();
+
+            if (teamMembership) {
+                const teamMember = teamMembership.members.find(
+                    (entry) => String(entry.user) === String(userId)
+                );
+                const teamRole = String(teamMember?.role || "member");
+
+                return {
+                    role: teamRole,
+                    canView: true,
+                    canEdit: false,
+                    canManage: false,
+                    canCreateTask: teamRole === "lead",
+                    isProjectAdmin: false,
+                    inheritedFromTeam: true
+                };
+            }
+
+            if (wsPerms.canView) {
+                return {
+                    role: "viewer",
+                    canView: true,
+                    canEdit: false,
+                    canManage: false,
+                    canCreateTask: false,
+                    isProjectAdmin: false,
+                    inheritedFromWorkspace: true
+                };
+            }
+
             return { canView: false, canEdit: false, canManage: false, role: null };
         } catch (error) {
             console.error('Error checking project permissions:', error);
@@ -103,14 +139,41 @@ class PermissionService {
                 return { role: 'assignee', canView: true, canEdit: true, canManage: false, canCreateSubtask: true };
             }
 
+            const teamMembership = await Team.findOne({
+                _id: { $in: task.assigneesTeams || [] },
+                "members.user": userId
+            })
+                .select("members")
+                .lean();
+
+            if (teamMembership) {
+                const teamMember = teamMembership.members.find(
+                    (entry) => String(entry.user) === String(userId)
+                );
+                return {
+                    role: teamMember?.role || 'member',
+                    canView: true,
+                    canEdit: true,
+                    canManage: false,
+                    canCreateSubtask: true,
+                    inheritedFromTeam: true
+                };
+            }
+
             if (task.project) {
                 const projPerms = await this.getProjectPermissions(task.project._id, userId);
-                if (projPerms.canEdit) return { ...projPerms, canCreateSubtask: true, inheritedFromProject: true };
+                const projectAdminAccess = projPerms.isProjectAdmin
+                    || ['owner', 'admin'].includes(String(projPerms.role || ''));
+                if (projectAdminAccess) {
+                    return { ...projPerms, canCreateSubtask: true, inheritedFromProject: true };
+                }
             }
 
             if (task.workspace) {
                 const wsPerms = await this.getWorkspacePermissions(task.workspace._id, userId);
-                if (wsPerms.canEdit) return { ...wsPerms, canCreateSubtask: true, inheritedFromWorkspace: true };
+                if (['owner', 'admin'].includes(String(wsPerms.role || ''))) {
+                    return { ...wsPerms, canCreateSubtask: true, inheritedFromWorkspace: true };
+                }
             }
 
             return { canView: false, canEdit: false, canManage: false, role: null };
@@ -122,30 +185,56 @@ class PermissionService {
 
     async getUserPermissionsForTimeline(userId) {
         try {
-            const memberships = await WorkspaceMember.find({ user: userId }).populate('workspace').lean();
-            const createdWorkspaces = await Workspace.find({ createdBy: userId }).lean();
+            const [memberships, createdWorkspaces, userTeams] = await Promise.all([
+                WorkspaceMember.find({ user: userId }).populate('workspace').lean(),
+                Workspace.find({ createdBy: userId }).lean(),
+                Team.find({ "members.user": userId }).select("_id members").lean()
+            ]);
+
             const membershipWorkspaceIds = memberships
                 .map((membership) => membership.workspace?._id || membership.workspace)
                 .filter(Boolean)
                 .map((id) => String(id));
             const createdWorkspaceIds = createdWorkspaces.map((workspace) => String(workspace._id));
+            const userTeamIds = userTeams.map((team) => String(team._id));
+            const userTeamRoleById = new Map(
+                userTeams.map((team) => {
+                    const teamMember = (team.members || []).find(
+                        (member) => String(member.user) === String(userId)
+                    );
+                    return [String(team._id), String(teamMember?.role || "member")];
+                })
+            );
+
             const accessibleWorkspaceIds = Array.from(new Set([
                 ...membershipWorkspaceIds,
                 ...createdWorkspaceIds
             ]));
 
-            const projects = await Project.find({
-                $or: [
-                    { workspace: { $in: accessibleWorkspaceIds } },
-                    { owner: userId },
-                    { 'members.user': userId }
-                ]
-            }).populate('workspace').lean();
-            const tasks = await Task.find({ $or: [{ createdBy: userId }, { assignees: userId }] }).lean();
+            const projectFilters = [
+                { workspace: { $in: accessibleWorkspaceIds } },
+                { owner: userId },
+                { 'members.user': userId }
+            ];
+            if (userTeamIds.length) {
+                projectFilters.push({ teams: { $in: userTeamIds } });
+            }
+
+            const taskFilters = [
+                { createdBy: userId },
+                { assignees: userId }
+            ];
+            if (userTeamIds.length) {
+                taskFilters.push({ assigneesTeams: { $in: userTeamIds } });
+            }
+
+            const [projects, tasks] = await Promise.all([
+                Project.find({ $or: projectFilters }).populate('workspace').lean(),
+                Task.find({ $or: taskFilters }).lean()
+            ]);
 
             const permissions = { workspaces: {}, projects: {}, tasks: {} };
 
-            // FIX: Added null check for m.workspace
             memberships.forEach(m => {
                 if (!m.workspace) return;
                 const wsId = String(m.workspace._id);
@@ -169,11 +258,12 @@ class PermissionService {
                 const workspaceId = String(p.workspace?._id || p.workspace || "");
                 const wsPerms = workspaceId ? workspacePermissionLookup[workspaceId] : null;
                 const workspaceRole = wsPerms?.role || null;
-                const isWorkspaceOwner = workspaceRole === 'owner';
+                const isWorkspaceManager = ['owner', 'admin'].includes(String(workspaceRole || ''));
 
                 if (isOwner) {
                     permissions.projects[projId] = {
                         role: 'owner',
+                        canEdit: true,
                         canCreateTask: true,
                         isProjectAdmin: true
                     };
@@ -183,16 +273,41 @@ class PermissionService {
                         const isProjectLevelAdmin = member.role === 'admin';
                         permissions.projects[projId] = {
                             role: member.role,
-                            canCreateTask: isProjectLevelAdmin || isWorkspaceOwner,
+                            canEdit: ['admin', 'member'].includes(member.role),
+                            canCreateTask: isProjectLevelAdmin || isWorkspaceManager,
                             isProjectAdmin: isProjectLevelAdmin
                         };
-                    } else if (wsPerms) {
+                    } else if (isWorkspaceManager) {
                         permissions.projects[projId] = {
                             role: workspaceRole,
-                            canCreateTask: isWorkspaceOwner,
+                            canEdit: true,
+                            canCreateTask: true,
                             isProjectAdmin: false,
                             inheritedFromWorkspace: true
                         };
+                    } else {
+                        const teamRoles = (p.teams || [])
+                            .map((teamId) => userTeamRoleById.get(String(teamId)))
+                            .filter(Boolean);
+
+                        if (teamRoles.length) {
+                            const teamRole = teamRoles.includes("lead") ? "lead" : "member";
+                            permissions.projects[projId] = {
+                                role: teamRole,
+                                canEdit: false,
+                                canCreateTask: teamRole === "lead",
+                                isProjectAdmin: false,
+                                inheritedFromTeam: true
+                            };
+                        } else if (wsPerms) {
+                            permissions.projects[projId] = {
+                                role: 'viewer',
+                                canEdit: false,
+                                canCreateTask: false,
+                                isProjectAdmin: false,
+                                inheritedFromWorkspace: true
+                            };
+                        }
                     }
                 }
             });
@@ -201,17 +316,35 @@ class PermissionService {
                 const taskId = String(t._id);
                 const isCreator = String(t.createdBy) === String(userId);
                 const isAssignee = t.assignees?.some(a => String(a) === String(userId));
+                const teamRoles = (t.assigneesTeams || [])
+                    .map((teamId) => userTeamRoleById.get(String(teamId)))
+                    .filter(Boolean);
+                const teamRole = teamRoles.length
+                    ? (teamRoles.includes("lead") ? "lead" : "member")
+                    : null;
+
+                let role = null;
+                if (isCreator) {
+                    role = 'creator';
+                } else if (isAssignee) {
+                    role = 'assignee';
+                } else if (teamRole) {
+                    role = teamRole;
+                }
 
                 permissions.tasks[taskId] = {
-                    role: isCreator ? 'creator' : 'assignee',
-                    canCreateSubtask: isCreator || isAssignee
+                    role,
+                    canCreateSubtask: Boolean(role),
+                    canChangeStatus: isCreator || isAssignee || Boolean(teamRole),
+                    canUpdateTask: isCreator,
+                    canUpdatePriority: isCreator,
+                    inheritedFromTeam: Boolean(teamRole && !isCreator && !isAssignee)
                 };
             });
 
             return permissions;
         } catch (error) {
             console.error('Error getting user permissions:', error);
-            // FIX: Return empty object but log error so server doesn't crash
             return { workspaces: {}, projects: {}, tasks: {} };
         }
     }

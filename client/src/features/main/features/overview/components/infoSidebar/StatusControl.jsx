@@ -41,8 +41,54 @@ const StatusControl = ({ item }) => {
         setNotice("");
     }, [item]);
 
+    const entityId = item?.id || item?._id;
     const isProjectViewer = item?.type === "project"
         && String(item?.permissions?.role || "").toLowerCase() === "viewer";
+    const projectRole = String(item?.permissions?.role || "").toLowerCase();
+    const projectInheritedFromTeam = Boolean(item?.permissions?.inheritedFromTeam);
+    const projectCanUpdate = item?.type !== "project"
+        ? true
+        : (typeof item?.permissions?.canEdit === "boolean"
+            ? item.permissions.canEdit
+            : (
+                ["owner", "admin"].includes(projectRole)
+                || (projectRole === "member" && !projectInheritedFromTeam)
+            ));
+    const taskRole = String(item?.permissions?.role || "").toLowerCase();
+    const taskInheritedFromTeam = Boolean(item?.permissions?.inheritedFromTeam);
+    const taskCanChangeStatus = item?.type !== "task"
+        ? true
+        : (typeof item?.permissions?.canChangeStatus === "boolean"
+            ? item.permissions.canChangeStatus
+            : (
+                taskRole === "creator"
+                || taskRole === "assignee"
+                || (taskInheritedFromTeam && ["lead", "member"].includes(taskRole))
+            ));
+    const taskCanUpdatePriority = item?.type !== "task"
+        ? true
+        : (typeof item?.permissions?.canUpdatePriority === "boolean"
+            ? item.permissions.canUpdatePriority
+            : taskRole === "creator");
+    const subtaskCanUpdate = item?.type !== "subtask"
+        ? true
+        : Boolean(item?.permissions?.canEdit);
+    const canChangeStatus =
+        item?.type === "project"
+            ? projectCanUpdate
+            : item?.type === "task"
+                ? taskCanChangeStatus
+                : item?.type === "subtask"
+                    ? subtaskCanUpdate
+                    : true;
+    const canChangePriority =
+        item?.type === "project"
+            ? projectCanUpdate
+            : item?.type === "task"
+                ? taskCanUpdatePriority
+                : item?.type === "subtask"
+                    ? subtaskCanUpdate
+                    : true;
 
     const statuses = [
         { value: 'active', label: 'Active', icon: Activity, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
@@ -51,6 +97,21 @@ const StatusControl = ({ item }) => {
 
     const handleStatusChange = async (newStatus) => {
         if (loading || newStatus === status) return;
+        if (!canChangeStatus) {
+            const messageByType = {
+                task: "Only task assignees can change task status",
+                project: "You are not allowed to update project status",
+                subtask: "You are not allowed to update subtask status"
+            };
+            setError(messageByType[item?.type] || "You are not allowed to update status");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+        if (!entityId) {
+            setError("Invalid item ID");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
 
         setLoading(true);
         setError(null);
@@ -62,7 +123,7 @@ const StatusControl = ({ item }) => {
             let result;
 
             if (item.type === 'task') {
-                result = await updateStatus(item.id, newStatus);
+                result = await updateStatus(entityId, newStatus);
             }
             else if (item.type === 'project') {
                 //  Check if we already have the workspace ID
@@ -70,7 +131,7 @@ const StatusControl = ({ item }) => {
 
                 // Only fetch if absolutely necessary
                 if (!workspaceId) {
-                    const project = await fetchProjectById(item.id);
+                    const project = await fetchProjectById(entityId);
                     workspaceId = project?.data?.workspace?._id || project?.data?.workspace;
                 }
 
@@ -91,7 +152,7 @@ const StatusControl = ({ item }) => {
                 );
 
                 if (statusApprovalEnabled && !isProjectAdmin) {
-                    result = await requestProjectStatusChange(workspaceId, item.id, {
+                    result = await requestProjectStatusChange(workspaceId, entityId, {
                         status: newStatus
                     });
 
@@ -105,11 +166,11 @@ const StatusControl = ({ item }) => {
                     return;
                 }
 
-                result = await updateProject(workspaceId, item.id, { status: newStatus });
+                result = await updateProject(workspaceId, entityId, { status: newStatus });
             }
             else if (item.type === 'subtask') {
                 // Convert string status back to boolean for subtask
-                result = await updateSubtask(item.id, { completed: newStatus === 'completed' });
+                result = await updateSubtask(entityId, { completed: newStatus === 'completed' });
             }
             else {
                 throw new Error(`Unknown item type: ${item.type}`);
@@ -129,6 +190,22 @@ const StatusControl = ({ item }) => {
 
     const handlePriorityChange = async (newPriorityValue) => {
         if (loading) return;
+        if (!canChangePriority) {
+            const messageByType = {
+                task: "Only task creator can change task priority",
+                project: "You are not allowed to update project priority",
+                subtask: "You are not allowed to update subtask priority"
+            };
+            setError(messageByType[item?.type] || "You are not allowed to update priority");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+        if (!entityId) {
+            setError("Invalid item ID");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+
         const isHigh = newPriorityValue === 'high';
         if (isHigh === isHighPriority) return;
 
@@ -141,25 +218,24 @@ const StatusControl = ({ item }) => {
             let result;
 
             if (item.type === 'task') {
-                result = await updateTask(item.id, { isHighPriority: isHigh });
+                result = await updateTask(entityId, { isHighPriority: isHigh });
             }
             else if (item.type === 'project') {
                 // Same optimization for priority
                 let workspaceId = item.workspace?._id || item.workspace;
                 if (!workspaceId) {
-                    const project = await fetchProjectById(item.id);
+                    const project = await fetchProjectById(entityId);
                     workspaceId = project?.data?.workspace?._id || project?.data?.workspace;
                 }
                 if (!workspaceId) throw new Error('Project workspace not found');
 
-                result = await updateProject(workspaceId, item.id, { isHighPriority: isHigh });
+                result = await updateProject(workspaceId, entityId, { isHighPriority: isHigh });
             }
             else if (item.type === 'subtask') {
-                result = await updateSubtask(item.id, { isHighPriority: isHigh });
+                result = await updateSubtask(entityId, { isHighPriority: isHigh });
             }
 
             if (!result?.success) throw new Error('Priority update failed');
-
         } catch (err) {
             console.error("Error updating priority:", err);
             setIsHighPriority(oldPriority);
@@ -200,15 +276,15 @@ const StatusControl = ({ item }) => {
 
             <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                    <label htmlFor={`status-${item.id}`} className="text-xs text-slate-500 font-medium ml-1">
+                    <label htmlFor={`status-${entityId}`} className="text-xs text-slate-500 font-medium ml-1">
                         Status
                     </label>
                     <div className="relative">
                         <select
-                            id={`status-${item.id}`}
+                            id={`status-${entityId}`}
                             value={status}
                             onChange={(e) => handleStatusChange(e.target.value)}
-                            disabled={loading || isProjectViewer}
+                            disabled={loading || !canChangeStatus}
                             className={`w-full appearance-none pl-9 pr-8 py-2.5 rounded-lg text-xs font-medium border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed ${currentStatusConfig.bg} ${currentStatusConfig.color}`}
                         >
                             {statuses.map(s => (
@@ -229,6 +305,21 @@ const StatusControl = ({ item }) => {
                             Viewer role cannot change or request project status.
                         </p>
                     )}
+                    {item.type === "task" && !taskCanChangeStatus && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            Only task assignees (or assigned team members) can change status.
+                        </p>
+                    )}
+                    {item.type === "project" && !isProjectViewer && !projectCanUpdate && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            Only workspace owners/admins or project members (admin/member) can change project status.
+                        </p>
+                    )}
+                    {item.type === "subtask" && !subtaskCanUpdate && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            Only allowed subtask members can change subtask status.
+                        </p>
+                    )}
                 </div>
 
                 <div className="space-y-2">
@@ -236,20 +327,35 @@ const StatusControl = ({ item }) => {
                     <div className="flex bg-slate-900/40 p-1 rounded-lg border border-slate-800">
                         <button
                             onClick={() => handlePriorityChange('normal')}
-                            disabled={loading}
+                            disabled={loading || !canChangePriority}
                             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-medium transition-all disabled:opacity-50 ${!isHighPriority ? 'bg-slate-700 text-slate-200 shadow-sm' : 'text-slate-500 hover:text-slate-400'}`}
                         >
                             Normal
                         </button>
                         <button
                             onClick={() => handlePriorityChange('high')}
-                            disabled={loading}
+                            disabled={loading || !canChangePriority}
                             className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-[10px] font-medium transition-all disabled:opacity-50 ${isHighPriority ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20 shadow-sm' : 'text-slate-500 hover:text-rose-400/70'}`}
                         >
                             <Flag className={`h-3 w-3 ${isHighPriority ? 'fill-current' : ''}`} />
                             High
                         </button>
                     </div>
+                    {item.type === "task" && !taskCanUpdatePriority && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            Only task creator can change priority.
+                        </p>
+                    )}
+                    {item.type === "project" && !isProjectViewer && !projectCanUpdate && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            You are not allowed to change project priority.
+                        </p>
+                    )}
+                    {item.type === "subtask" && !subtaskCanUpdate && (
+                        <p className="mt-1 text-[11px] text-amber-400">
+                            You are not allowed to change subtask priority.
+                        </p>
+                    )}
                 </div>
             </div>
         </section>
