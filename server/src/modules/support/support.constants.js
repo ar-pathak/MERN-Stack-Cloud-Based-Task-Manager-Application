@@ -180,6 +180,58 @@ Use this checklist as part of monthly workspace maintenance.
 - Open a high priority support ticket.
 - Include affected workspace, project, and user IDs when available.
 `
+    },
+    {
+        title: "Understand workspace, project, task, and subtask permissions",
+        slug: "understand-workspace-project-task-subtask-permissions",
+        summary: "Clear rules for who can create, update, and send messages at each level.",
+        category: "security",
+        tags: ["permissions", "workspace", "project", "task", "subtask", "chat"],
+        featured: true,
+        contentMarkdown: `# Understand workspace, project, task, and subtask permissions
+
+Use this guide to quickly check who can create items, update status or priority, and send chat messages.
+
+## Role basics
+- Workspace roles: owner, admin, member, viewer.
+- Project roles: owner, admin, member, viewer.
+- Team roles: lead, member.
+- Task roles: creator, assignee.
+- Subtask roles: creator, assignee.
+
+## Workspace permissions
+- Create project: owner, admin.
+- Create task in workspace scope: owner, admin.
+- Workspace chat view: all workspace members, including viewers.
+- Workspace chat send: owner, admin, member. Viewer is read only.
+
+## Project permissions
+- Create task in project scope: workspace owner/admin, project owner/admin, or assigned team lead.
+- Project chat send: workspace owner/admin, project owner/admin/member, assigned team lead/member.
+- Project viewer can view but cannot send messages.
+
+## Task permissions
+- Create subtask: task creator/assignee, task assigned team member, workspace owner/admin, or project owner/admin.
+- Change task status: task creator, direct assignee, or task assigned team member.
+- Change task priority: task creator only.
+- Task chat send: workspace owner/admin, project owner/admin, task creator/assignee, task assigned team lead/member.
+
+## Subtask permissions
+- Subtask chat send/view: subtask creator/assignee, and parent task assigned team lead/member.
+- Workspace/project admins do not get subtask chat access unless they are also in subtask members or parent task assigned teams.
+
+## Quick examples
+1. Workspace viewer can open workspace or project chat but cannot send.
+2. Project member can send project messages, but cannot create project tasks unless they are project admin.
+3. Task assignee can change task status, but priority stays creator only.
+4. Team lead in an assigned team can create project tasks and send in related project/task chats.
+
+## Permission denied?
+- Ask workspace owner/admin to update your workspace role.
+- Ask project admin to add you as project member/admin.
+- Ask task creator or team lead to assign you to task/subtask.
+- Refresh the view after role changes to load latest permissions.
+`
     }
 ];
 
@@ -219,6 +271,12 @@ const DEFAULT_FAQS = [
         category: "security",
         question: "What should I do after suspicious login activity?",
         answerMarkdown: "Change password immediately, revoke sessions, and open a high priority support ticket."
+    },
+    {
+        id: "faq-security-2",
+        category: "security",
+        question: "Who can send messages in workspace, project, task, and subtask chats?",
+        answerMarkdown: "Workspace/project viewers are read only. Message send access depends on role and assignments. Open the permissions article for the full matrix."
     },
     {
         id: "faq-posts-2",

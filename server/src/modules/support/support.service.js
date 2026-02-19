@@ -84,26 +84,23 @@ const buildStatusSummary = (rows = []) => {
 const ensureHelpArticlesSeeded = async () => {
     if (hasSeededHelpArticles) return;
 
-    const existingCount = await SupportArticle.countDocuments();
-    if (existingCount > 0) {
-        hasSeededHelpArticles = true;
-        return;
-    }
-
     if (!DEFAULT_HELP_ARTICLES.length) {
         hasSeededHelpArticles = true;
         return;
     }
 
     try {
-        await SupportArticle.insertMany(DEFAULT_HELP_ARTICLES, { ordered: false });
+        const operations = DEFAULT_HELP_ARTICLES.map((article) => ({
+            updateOne: {
+                filter: { slug: String(article.slug || "").trim().toLowerCase() },
+                update: { $setOnInsert: article },
+                upsert: true
+            }
+        }));
+
+        await SupportArticle.bulkWrite(operations, { ordered: false });
     } catch (error) {
-        const hasDuplicateKey =
-            error?.code === 11000 ||
-            Array.isArray(error?.writeErrors);
-        if (!hasDuplicateKey) {
-            throw error;
-        }
+        throw error;
     }
 
     hasSeededHelpArticles = true;
