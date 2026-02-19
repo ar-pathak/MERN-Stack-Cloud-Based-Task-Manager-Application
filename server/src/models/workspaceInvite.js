@@ -50,4 +50,10 @@ const workspaceInviteSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
+workspaceInviteSchema.index({ workspace: 1, invitedUser: 1, status: 1, expiresAt: -1 });
+workspaceInviteSchema.index({ workspace: 1, email: 1, inviteType: 1, status: 1, expiresAt: -1 });
+workspaceInviteSchema.index({ invitedBy: 1, status: 1, createdAt: -1 });
+workspaceInviteSchema.index({ invitedUser: 1, status: 1, createdAt: -1 });
+workspaceInviteSchema.index({ expiresAt: 1 });
+
 module.exports = mongoose.model("WorkspaceInvite", workspaceInviteSchema);

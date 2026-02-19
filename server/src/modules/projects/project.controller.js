@@ -12,6 +12,7 @@ const {
     respondProjectStatusChangeRequestSchema
 } = require('./project.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
+const { parsePaginationQuery } = require('../../helpers/paginationHelper');
 
 const projectController = {
     createProject: async (req, res) => {
@@ -40,7 +41,11 @@ const projectController = {
                 throw new Error('Invalid workspace ID');
             }
 
-            const projects = await projectService.getProjectsByWorkspace(workspaceId, userId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 20,
+                maxLimit: 100
+            });
+            const projects = await projectService.getProjectsByWorkspace(workspaceId, userId, pagination);
             return sendSuccess(res, projects, 'Projects retrieved successfully');
         } catch (error) {
             return handleError(error, res);

@@ -7,6 +7,7 @@ const Project = require('../../models/project');
 const Task = require('../../models/tasks');
 const notificationService = require('../notification/notification.service');
 const { syncChatsForTeam } = require('../utils/chatMembershipSync');
+const { toPaginationMeta } = require('../../helpers/paginationHelper');
 
 const uniqueIdStrings = (values = []) => {
     const set = new Set();
@@ -122,18 +123,39 @@ const teamsService = {
         return team;
     },
 
-    getTeamsByWorkspace: async (workspaceId) => {
+    getTeamsByWorkspace: async (workspaceId, pagination = {}) => {
         const workspace = await Workspace.findById(workspaceId);
         if (!workspace) {
             throw new Error('Workspace not found');
         }
 
-        const teams = await Team.find({ workspace: workspaceId })
+        const filters = { workspace: workspaceId };
+        const query = Team.find(filters)
             .populate('createdBy', 'name email')
             .populate('members.user', 'name email avatar isOnline')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
-        return teams;
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                Team.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.exec();
     },
 
     getTeamById: async (teamId, workspaceId) => {

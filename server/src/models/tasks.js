@@ -30,4 +30,12 @@ const taskSchema = new mongoose.Schema({
     dueDate: Date
 }, { timestamps: true });
 
+taskSchema.index({ workspace: 1, status: 1, createdAt: -1 });
+taskSchema.index({ project: 1, status: 1, createdAt: -1 });
+taskSchema.index({ createdBy: 1, workspace: 1, project: 1, status: 1 });
+taskSchema.index({ assignees: 1, status: 1, createdAt: -1 });
+taskSchema.index({ assigneesTeams: 1, status: 1, createdAt: -1 });
+taskSchema.index({ dueDate: 1, status: 1 });
+taskSchema.index({ chatId: 1 });
+
 module.exports = mongoose.model("Task", taskSchema);

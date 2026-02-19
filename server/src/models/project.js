@@ -64,4 +64,12 @@ const projectSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
+projectSchema.index({ workspace: 1, status: 1, updatedAt: -1 });
+projectSchema.index({ owner: 1, status: 1, updatedAt: -1 });
+projectSchema.index({ "members.user": 1, status: 1, updatedAt: -1 });
+projectSchema.index({ teams: 1, status: 1, updatedAt: -1 });
+projectSchema.index({ workspace: 1, name: 1 });
+projectSchema.index({ workspace: 1, dueDate: 1, status: 1 });
+projectSchema.index({ chatId: 1 });
+
 module.exports = mongoose.model("Project", projectSchema);

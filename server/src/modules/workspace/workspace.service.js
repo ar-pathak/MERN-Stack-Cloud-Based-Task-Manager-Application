@@ -16,6 +16,7 @@ const crypto = require('crypto');
 const { logActivity, getUserLabel } = require('../utils/activityLogger');
 const notificationService = require('../notification/notification.service');
 const { syncWorkspaceChats } = require('../utils/chatMembershipSync');
+const { toPaginationMeta } = require('../../helpers/paginationHelper');
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
@@ -361,25 +362,56 @@ const workspaceService = {
         return workspace;
     },
 
-    getAllWorkspaces: async (userId) => {
-        const members = await WorkspaceMember
+    getAllWorkspaces: async (userId, pagination = {}) => {
+        const filters = { user: userId };
+        const query = WorkspaceMember
             .find({ user: userId })
+            .select("workspace role joinedAt isStarred isMuted status")
             .populate({
                 path: 'workspace',
-                select: '_id name description createdAt chatId' // Added chatId to select
+                select: '_id name description createdAt updatedAt chatId'
             })
-            .populate({
-                path: 'user',
-                select: 'name email'
+            .sort({ joinedAt: -1 })
+            .lean();
+
+        let members = [];
+        let paginationMeta = null;
+
+        if (pagination.enabled) {
+            const [pagedMembers, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                WorkspaceMember.countDocuments(filters)
+            ]);
+            members = pagedMembers;
+            paginationMeta = toPaginationMeta({
+                page: pagination.page,
+                limit: pagination.limit,
+                total
             });
+        } else {
+            members = await query.exec();
+        }
 
         const workspaces = members
-            .map(m => ({
-                ...m.workspace.toObject(),
-                userRole: m.role,
-                joinedAt: m.joinedAt
+            .map((member) => ({
+                ...(member.workspace || {}),
+                userRole: member.role,
+                joinedAt: member.joinedAt,
+                isStarred: Boolean(member.isStarred),
+                isMuted: Boolean(member.isMuted),
+                membershipStatus: member.status || "active"
             }))
-            .filter(Boolean);
+            .filter((workspace) => Boolean(workspace?._id));
+
+        if (paginationMeta) {
+            return {
+                items: workspaces,
+                pagination: paginationMeta
+            };
+        }
 
         return workspaces;
     },
@@ -585,13 +617,35 @@ const workspaceService = {
         };
     },
 
-    getMembers: async (workspaceId) => {
-        const members = await WorkspaceMember
+    getMembers: async (workspaceId, pagination = {}) => {
+        const filters = { workspace: workspaceId };
+        const query = WorkspaceMember
             .find({ workspace: workspaceId })
+            .select("workspace user role isStarred isMuted status joinedAt")
             .populate('user', 'name email isOnline')
-            .sort({ role: 1, joinedAt: 1 });
+            .sort({ role: 1, joinedAt: 1 })
+            .lean();
 
-        return members;
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                WorkspaceMember.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.exec();
     },
 
     removeMember: async ({ workspaceId, memberId, requesterId }) => {

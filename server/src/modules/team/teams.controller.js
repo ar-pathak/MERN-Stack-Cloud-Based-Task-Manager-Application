@@ -7,6 +7,7 @@ const {
     updateTeamMemberRoleSchema
 } = require('./teams.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
+const { parsePaginationQuery } = require('../../helpers/paginationHelper');
 
 const teamController = {
     createTeam: async (req, res) => {
@@ -45,7 +46,11 @@ const teamController = {
                 });
             }
 
-            const teams = await teamsService.getTeamsByWorkspace(workspaceId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 20,
+                maxLimit: 100
+            });
+            const teams = await teamsService.getTeamsByWorkspace(workspaceId, pagination);
             return sendSuccess(res, teams, 'Teams retrieved successfully');
         } catch (error) {
             return handleError(error, res);

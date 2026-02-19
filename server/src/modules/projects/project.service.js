@@ -9,6 +9,7 @@ const Chat = require('../../models/chat');
 const Message = require('../../models/message');
 const ProjectStatusChangeRequest = require('../../models/projectStatusChangeRequest');
 const notificationService = require('../notification/notification.service');
+const { toPaginationMeta } = require('../../helpers/paginationHelper');
 
 const { touchWorkspace } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
@@ -265,17 +266,40 @@ const projectService = {
             .populate('teams', 'name members');
     },
 
-    getProjectsByWorkspace: async (workspaceId, userId) => {
+    getProjectsByWorkspace: async (workspaceId, userId, pagination = {}) => {
         await ensureWorkspaceExists(workspaceId);
         await ensureWorkspaceMember(workspaceId, userId);
 
-        return await Project.find({
+        const filters = {
             workspace: workspaceId,
             status: { $ne: 'deleted' }
-        })
+        };
+        const query = Project.find(filters)
             .populate('members.user', 'name email isOnline')
             .populate('teams', 'name')
-            .sort({ updatedAt: -1 });
+            .sort({ updatedAt: -1 })
+            .lean();
+
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                Project.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.exec();
     },
 
     getProjectById: async (projectId, userId) => {

@@ -38,6 +38,8 @@ const teamSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 teamSchema.index({ "members.user": 1 });
+teamSchema.index({ workspace: 1, createdAt: -1 });
+teamSchema.index({ workspace: 1, "members.user": 1 });
 
 module.exports = mongoose.model("Team", teamSchema);
 

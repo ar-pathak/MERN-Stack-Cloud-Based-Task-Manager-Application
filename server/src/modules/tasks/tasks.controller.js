@@ -8,6 +8,7 @@ const {
     removeTaskAssigneesSchema,
     changeTaskStatusSchema
 } = require("./tasks.validation");
+const { parsePaginationQuery } = require("../../helpers/paginationHelper");
 
 const taskController = {
     createTaskAtGlobalLevel: async (req, res) => {
@@ -202,7 +203,11 @@ const taskController = {
                 });
             }
 
-            const tasks = await taskService.getAllGlobalLevelTasks(userId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 30,
+                maxLimit: 100
+            });
+            const tasks = await taskService.getAllGlobalLevelTasks(userId, pagination);
             return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
             return handleError(error, res);
@@ -238,7 +243,11 @@ const taskController = {
                 });
             }
 
-            const tasks = await taskService.getTasksByWorkspace(workspaceId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 30,
+                maxLimit: 100
+            });
+            const tasks = await taskService.getTasksByWorkspace(workspaceId, pagination);
             return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
             return handleError(error, res);
@@ -263,7 +272,11 @@ const taskController = {
                 });
             }
 
-            const tasks = await taskService.getTasksByProject(projectId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 30,
+                maxLimit: 100
+            });
+            const tasks = await taskService.getTasksByProject(projectId, pagination);
             return sendSuccess(res, tasks, "Tasks retrieved successfully");
         } catch (error) {
             return handleError(error, res);

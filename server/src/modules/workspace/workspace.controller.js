@@ -10,6 +10,7 @@ const {
     respondInviteSchema
 } = require('./workspace.validation');
 const { sendSuccess, handleError } = require('../../helpers/responseHelper');
+const { parsePaginationQuery } = require('../../helpers/paginationHelper');
 
 const workspaceController = {
     createWorkspace: async (req, res) => {
@@ -31,7 +32,11 @@ const workspaceController = {
     getAllWorkspaces: async (req, res) => {
         try {
             const userId = req.user._id;
-            const workspaces = await workspaceService.getAllWorkspaces(userId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 20,
+                maxLimit: 100
+            });
+            const workspaces = await workspaceService.getAllWorkspaces(userId, pagination);
             return sendSuccess(res, workspaces, 'Workspaces retrieved successfully');
         } catch (error) {
             return handleError(error, res);
@@ -197,7 +202,11 @@ const workspaceController = {
                 });
             }
 
-            const members = await workspaceService.getMembers(workspaceId);
+            const pagination = parsePaginationQuery(req.query, {
+                defaultLimit: 25,
+                maxLimit: 100
+            });
+            const members = await workspaceService.getMembers(workspaceId, pagination);
             return sendSuccess(res, members, 'Members retrieved successfully');
         } catch (error) {
             return handleError(error, res);

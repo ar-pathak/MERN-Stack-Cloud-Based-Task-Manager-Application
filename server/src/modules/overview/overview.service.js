@@ -7,6 +7,12 @@ const Chat = require("../../models/chat");
 const Message = require("../../models/message");
 const permissionService = require("./permission.service");
 const WorkspaceMember = require("../../models/workspaceMember");
+const { appCache } = require("../../helpers/cacheHelper");
+
+const OVERVIEW_CACHE_TTL_MS = Math.max(
+    1000,
+    Number(process.env.OVERVIEW_CACHE_TTL_MS) || 15000
+);
 
 const buildMessagePreview = (message) => {
     if (!message) return "";
@@ -26,6 +32,12 @@ const buildMessagePreview = (message) => {
 
 const overviewService = {
     activity: async (userId) => {
+        const cacheKey = `overview:activity:${String(userId)}`;
+        const cached = appCache.get(cacheKey);
+        if (cached.hit) {
+            return cached.value;
+        }
+
         // 1. Get user's permissions and workspace memberships
         const userPermissions = await permissionService.getUserPermissionsForTimeline(userId);
 
@@ -438,6 +450,8 @@ const overviewService = {
 
         const feed = [...workspaceNodes, ...globalTasks, ...chatNodes]
             .sort((a, b) => b.latestActivity - a.latestActivity);
+
+        appCache.set(cacheKey, feed, OVERVIEW_CACHE_TTL_MS);
 
         return feed;
     }

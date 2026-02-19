@@ -14,6 +14,7 @@ const Message = require('../../models/message');
 
 const { touchParents } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
+const { toPaginationMeta } = require('../../helpers/paginationHelper');
 const {
     getTeamMemberIds,
     syncTaskAndSubtaskChatMembers
@@ -873,16 +874,36 @@ const taskService = {
         }
     },
 
-    getAllGlobalLevelTasks: async (userId) => {
-        const globalLevelTasks = await Task.find({
+    getAllGlobalLevelTasks: async (userId, pagination = {}) => {
+        const filters = {
             createdBy: userId,
             workspace: null,
-            team: null,
             project: null,
             status: { $ne: "deleted" }
-        });
+        };
+        const query = Task.find(filters).sort({ createdAt: -1 });
 
-        return globalLevelTasks;
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .lean()
+                    .exec(),
+                Task.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.lean().exec();
     },
 
     getTaskById: async (taskId) => {
@@ -898,6 +919,7 @@ const taskService = {
                 }
             })
             .populate('workspace')
+            .lean()
             .exec();
 
         if (!task) {
@@ -906,24 +928,66 @@ const taskService = {
         return task;
     },
 
-    getTasksByWorkspace: async (workspaceId) => {
-        const tasks = await Task.find({ workspace: workspaceId, status: { $ne: "deleted" } })
+    getTasksByWorkspace: async (workspaceId, pagination = {}) => {
+        const filters = { workspace: workspaceId, status: { $ne: "deleted" } };
+        const query = Task.find(filters)
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
             .populate('project', 'name')
             .sort({ createdAt: -1 })
-            .exec();
-        return tasks;
+            .lean();
+
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                Task.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.exec();
     },
 
-    getTasksByProject: async (projectId) => {
-        const tasks = await Task.find({ project: projectId, status: { $ne: "deleted" } })
+    getTasksByProject: async (projectId, pagination = {}) => {
+        const filters = { project: projectId, status: { $ne: "deleted" } };
+        const query = Task.find(filters)
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email')
             .populate('workspace', 'name')
             .sort({ createdAt: -1 })
-            .exec();
-        return tasks;
+            .lean();
+
+        if (pagination.enabled) {
+            const [items, total] = await Promise.all([
+                query.clone()
+                    .skip(pagination.skip)
+                    .limit(pagination.limit)
+                    .exec(),
+                Task.countDocuments(filters)
+            ]);
+
+            return {
+                items,
+                pagination: toPaginationMeta({
+                    page: pagination.page,
+                    limit: pagination.limit,
+                    total
+                })
+            };
+        }
+
+        return query.exec();
     },
 
     leaveTask: async (taskId, userId) => {
