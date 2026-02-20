@@ -2,6 +2,33 @@ import api from "../config/axios";
 
 const unwrap = (response) => response?.data?.data ?? response?.data ?? null;
 
+const normalizeDueDate = (value) => {
+    if (value === null || value === "") return null;
+    if (value === undefined) return undefined;
+
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) {
+            throw new Error("Invalid date format. Use ISO 8601 format");
+        }
+        return value.toISOString();
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    // Date-only input from <input type="date"> (YYYY-MM-DD)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        return `${raw}T00:00:00.000Z`;
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error("Invalid date format. Use ISO 8601 format");
+    }
+
+    return parsed.toISOString();
+};
+
 export const getSubtasksByTask = async (taskId) => {
     try {
         const response = await api.get(`/api/subtasks/task/${taskId}`);
@@ -49,8 +76,9 @@ export const createSubtask = async (subtaskData) => {
             payload.assignedTo = subtaskData.assignedTo;
         }
 
-        if (subtaskData.dueDate) {
-            payload.dueDate = subtaskData.dueDate;
+        const normalizedDueDate = normalizeDueDate(subtaskData.dueDate);
+        if (normalizedDueDate) {
+            payload.dueDate = normalizedDueDate;
         }
 
         const response = await api.post('/api/subtasks/createSubtask', payload);
@@ -65,7 +93,17 @@ export const createSubtask = async (subtaskData) => {
 
 export const updateSubtask = async (subtaskId, subtaskData) => {
     try {
-        const response = await api.patch(`/api/subtasks/${subtaskId}`, subtaskData);
+        const payload = { ...subtaskData };
+
+        if ("dueDate" in payload) {
+            if (payload.dueDate === undefined) {
+                delete payload.dueDate;
+            } else {
+                payload.dueDate = normalizeDueDate(payload.dueDate);
+            }
+        }
+
+        const response = await api.patch(`/api/subtasks/${subtaskId}`, payload);
         return unwrap(response);
     } catch (error) {
         throw {
