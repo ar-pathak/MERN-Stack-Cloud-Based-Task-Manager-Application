@@ -568,6 +568,20 @@ const setProjectStatusRequestNotificationState = async ({
         read
     });
 
+const setTaskAssigneeRequestNotificationState = async ({
+    requestId,
+    requestState,
+    recipientUserIds = [],
+    read = true
+}) =>
+    setRequestNotificationStateByKind({
+        kind: "global_task_assignee_request",
+        requestId,
+        requestState,
+        recipientUserIds,
+        read
+    });
+
 
 const markAsRead = async (userId, notificationId) => {
     const notification = await Notification.findOneAndUpdate(
@@ -707,6 +721,7 @@ module.exports = {
     setFollowRequestNotificationState,
     setWorkspaceInviteNotificationState,
     setProjectStatusRequestNotificationState,
+    setTaskAssigneeRequestNotificationState,
     markAsRead,
     markAsUnread,
     markAllAsRead,

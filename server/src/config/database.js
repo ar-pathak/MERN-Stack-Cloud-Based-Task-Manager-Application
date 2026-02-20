@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Like = require("../models/like");
+const WorkspaceInvite = require("../models/workspaceInvite");
 
 let shutdownHooksRegistered = false;
 
@@ -69,6 +70,60 @@ const migrateLikeIndexes = async () => {
     console.log("Migrated likes indexes from sparse to partial unique indexes");
 };
 
+const hasStringTokenPartialFilter = (index) => {
+    const typeCondition = index?.partialFilterExpression?.token?.$type;
+    if (Array.isArray(typeCondition)) {
+        return typeCondition.includes("string");
+    }
+    return typeCondition === "string";
+};
+
+const migrateWorkspaceInviteTokenIndex = async () => {
+    const collection = mongoose.connection.db.collection("workspaceinvites");
+    const tokenIndexOptions = {
+        name: "token_1",
+        unique: true,
+        partialFilterExpression: { token: { $type: "string" } }
+    };
+
+    let indexes = [];
+    try {
+        indexes = await collection.indexes();
+    } catch (error) {
+        const namespaceMissing = error?.code === 26 || error?.codeName === "NamespaceNotFound";
+        if (!namespaceMissing) {
+            throw error;
+        }
+
+        await collection.createIndex({ token: 1 }, tokenIndexOptions);
+        console.log("Created workspace invite token partial unique index");
+        return;
+    }
+
+    const tokenIndex = indexes.find((index) => index.name === "token_1");
+
+    const hasExpectedIndex =
+        Boolean(tokenIndex) &&
+        tokenIndex.unique === true &&
+        hasStringTokenPartialFilter(tokenIndex);
+
+    if (!hasExpectedIndex && tokenIndex) {
+        await collection.dropIndex("token_1");
+    }
+
+    // Legacy records may still store token as null; remove it so they are ignored by the partial index.
+    await collection.updateMany({ token: null }, { $unset: { token: "" } });
+
+    if (!hasExpectedIndex) {
+        await collection.createIndex(
+            { token: 1 },
+            tokenIndexOptions
+        );
+
+        console.log("Migrated workspace invite token index to partial unique index");
+    }
+};
+
 const connectDB = async () => {
     try {
         if (!process.env.MONGO_URL) {
@@ -88,7 +143,9 @@ const connectDB = async () => {
         });
 
         await migrateLikeIndexes();
+        await migrateWorkspaceInviteTokenIndex();
         await Like.syncIndexes();
+        await WorkspaceInvite.syncIndexes();
 
         registerShutdownHooks();
         return conn;

@@ -5,12 +5,14 @@ const Task = require('../../models/tasks');
 const Team = require('../../models/team');
 const User = require('../../models/user');
 const Subtask = require('../../models/subtasks');
+const TaskAssigneeRequest = require('../../models/taskAssigneeRequest');
 const Project = require('../../models/project');
 const Workspace = require('../../models/workspace');
 const WorkspaceMember = require('../../models/workspaceMember');
 // Import Chat models
 const Chat = require('../../models/chat');
 const Message = require('../../models/message');
+const notificationService = require('../notification/notification.service');
 
 const { touchParents } = require('../utils/updateParent');
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require('../utils/activityLogger');
@@ -21,6 +23,12 @@ const {
 } = require('../utils/chatMembershipSync');
 
 const withSession = (query, session) => (session ? query.session(session) : query);
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+const TASK_ASSIGNEE_REQUEST_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
 const loadTaskContext = async (task, session = null) => {
     let project = null;
@@ -150,6 +158,79 @@ const syncTaskChatsSafely = async (taskId) => {
     } catch (syncError) {
         console.error("task chat membership sync failed", syncError);
     }
+};
+
+const withAssignmentMeta = (taskDoc, meta = {}) => {
+    const task = taskDoc?.toObject ? taskDoc.toObject() : taskDoc;
+    if (!task || typeof task !== "object") {
+        return task;
+    }
+
+    const summary = {
+        addedAssigneeIds: normalizeUniqueIds(meta.addedAssigneeIds || []),
+        addedTeamIds: normalizeUniqueIds(meta.addedTeamIds || []),
+        requestedAssigneeIds: normalizeUniqueIds(meta.requestedAssigneeIds || []),
+        requestIds: normalizeUniqueIds(meta.requestIds || [])
+    };
+
+    return {
+        ...task,
+        assignmentMode: meta.mode || "member_added",
+        assignmentSummary: summary
+    };
+};
+
+const resolveGlobalAssigneeBuckets = async ({
+    requesterId,
+    assigneeIds = [],
+    existingAssigneeIds = []
+}) => {
+    const uniqueTargetIds = normalizeUniqueIds(assigneeIds);
+    if (!uniqueTargetIds.length) {
+        return { directAddIds: [], requestIds: [], missingIds: [] };
+    }
+
+    const existingSet = new Set((existingAssigneeIds || []).map((id) => String(id)));
+    const users = await User.find({ _id: { $in: uniqueTargetIds } })
+        .select("_id preferences.workspace.autoApproveWorkspaceInvites")
+        .lean();
+    const userMap = new Map(users.map((user) => [String(user._id), user]));
+
+    const directAddIds = [];
+    const requestIds = [];
+    const missingIds = [];
+
+    uniqueTargetIds.forEach((id) => {
+        const idString = String(id);
+        const targetUser = userMap.get(idString);
+
+        if (!targetUser) {
+            missingIds.push(idString);
+            return;
+        }
+
+        if (existingSet.has(idString)) {
+            return;
+        }
+
+        if (String(requesterId) === idString) {
+            directAddIds.push(idString);
+            return;
+        }
+
+        const autoApprove = targetUser?.preferences?.workspace?.autoApproveWorkspaceInvites !== false;
+        if (autoApprove) {
+            directAddIds.push(idString);
+        } else {
+            requestIds.push(idString);
+        }
+    });
+
+    return {
+        directAddIds: normalizeUniqueIds(directAddIds),
+        requestIds: normalizeUniqueIds(requestIds),
+        missingIds: normalizeUniqueIds(missingIds)
+    };
 };
 
 const taskService = {
@@ -396,15 +477,14 @@ const taskService = {
         const updateQuery = {};
         let targetAssigneeIds = [];
         let validatedTeamIds = [];
+        let requestedAssigneeIds = [];
         let scopedProject = null;
         let scopedWorkspaceId = task.workspace || null;
 
-        // 1. Collect Direct IDs
         if (assigneesData.assignees?.length) {
             targetAssigneeIds = [...assigneesData.assignees];
         }
 
-        // 2. Resolve Usernames to IDs
         if (assigneesData.usernames?.length) {
             const usersFound = await User.find({
                 username: { $in: assigneesData.usernames }
@@ -426,23 +506,35 @@ const taskService = {
             scopedWorkspaceId = scoped.workspaceId || task.workspace || null;
         }
 
-        if (targetAssigneeIds.length > 0) {
-            if (!task.workspace && !task.project) {
-                const invalidGlobalAssignees = targetAssigneeIds.filter((id) => String(id) !== String(userId));
-                if (invalidGlobalAssignees.length > 0) {
-                    throw new Error("Global tasks can only be assigned to yourself");
-                }
-            } else {
-                const allowedAssignees = await getAllowedAssigneeIdsForScope({
-                    workspaceId: scopedWorkspaceId,
-                    project: scopedProject
-                });
-                validateAssigneesForScope(targetAssigneeIds, allowedAssignees, task.project ? "project workspace" : "workspace");
+        if (!task.workspace && !task.project) {
+            if (assigneesData.assigneesTeams?.length) {
+                throw new Error("Global tasks cannot include team assignees");
             }
-        }
 
-        if (!task.workspace && !task.project && assigneesData.assigneesTeams?.length) {
-            throw new Error("Global tasks cannot include team assignees");
+            if (targetAssigneeIds.length > 0) {
+                const globalBuckets = await resolveGlobalAssigneeBuckets({
+                    requesterId: userId,
+                    assigneeIds: targetAssigneeIds,
+                    existingAssigneeIds: task.assignees || []
+                });
+
+                if (globalBuckets.missingIds.length > 0) {
+                    throw createError("Some selected users were not found", 404);
+                }
+
+                targetAssigneeIds = globalBuckets.directAddIds;
+                requestedAssigneeIds = globalBuckets.requestIds;
+            }
+        } else if (targetAssigneeIds.length > 0) {
+            const allowedAssignees = await getAllowedAssigneeIdsForScope({
+                workspaceId: scopedWorkspaceId,
+                project: scopedProject
+            });
+            validateAssigneesForScope(
+                targetAssigneeIds,
+                allowedAssignees,
+                task.project ? "project workspace" : "workspace"
+            );
         }
 
         if (assigneesData.assigneesTeams?.length) {
@@ -453,7 +545,6 @@ const taskService = {
             });
         }
 
-        // 3. Prepare Update Query
         if (targetAssigneeIds.length > 0) {
             updateQuery.assignees = {
                 $each: targetAssigneeIds
@@ -466,52 +557,128 @@ const taskService = {
             };
         }
 
-        if (Object.keys(updateQuery).length === 0) {
+        let createdRequests = [];
+        if (requestedAssigneeIds.length > 0) {
+            const now = new Date();
+            const pendingRequests = await TaskAssigneeRequest.find({
+                task: taskId,
+                requestedUser: { $in: requestedAssigneeIds },
+                status: "pending",
+                expiresAt: { $gt: now }
+            }).select("requestedUser");
+
+            if (pendingRequests.length > 0) {
+                throw createError("A pending task assignment request already exists for one or more users", 409);
+            }
+
+            createdRequests = await TaskAssigneeRequest.create(
+                requestedAssigneeIds.map((requestedUserId) => ({
+                    task: taskId,
+                    requestedBy: userId,
+                    requestedUser: requestedUserId,
+                    status: "pending",
+                    expiresAt: new Date(Date.now() + TASK_ASSIGNEE_REQUEST_EXPIRY_MS)
+                }))
+            );
+        }
+
+        if (Object.keys(updateQuery).length === 0 && createdRequests.length === 0) {
             throw new Error("No valid assignees or teams provided");
         }
 
-        await Task.updateOne(
-            { _id: taskId },
-            {
-                $addToSet: updateQuery
-            }
-        );
-
-        await syncTaskChatsSafely(taskId);
-
-        if (targetAssigneeIds.length > 0 || validatedTeamIds.length > 0) {
-            const { project, workspace } = await loadTaskContext(task);
-            const actorLabel = await getUserLabel(userId);
-            const assigneeLabels = targetAssigneeIds.length
-                ? await getUserLabels(targetAssigneeIds)
-                : [];
-            const parts = [];
-
-            if (assigneeLabels.length) {
-                parts.push(formatUserList(assigneeLabels));
-            }
-            if (validatedTeamIds.length) {
-                parts.push(`${validatedTeamIds.length} team assignment(s)`);
-            }
-
-            await logActivity({
-                actorId: userId,
-                action: "task.assignees_added",
-                level: "task",
-                workspaceId: task.workspace || workspace?._id || null,
-                projectId: task.project || project?._id || null,
-                taskId: task._id,
-                chatId: task.chatId,
-                mirrorChatIds: [project?.chatId, workspace?.chatId],
-                message: `${actorLabel} assigned ${parts.join(" and ")} to task "${task.title}".`,
-                meta: {
-                    assigneeIds: targetAssigneeIds,
-                    teamIds: validatedTeamIds
+        const didUpdateTaskAssignees = Object.keys(updateQuery).length > 0;
+        if (didUpdateTaskAssignees) {
+            await Task.updateOne(
+                { _id: taskId },
+                {
+                    $addToSet: updateQuery
                 }
-            });
+            );
+
+            await syncTaskChatsSafely(taskId);
+            await touchParents(task);
         }
 
-        await touchParents(task);
+        if (targetAssigneeIds.length > 0 || validatedTeamIds.length > 0 || createdRequests.length > 0) {
+            const { project, workspace } = await loadTaskContext(task);
+            const actorLabel = await getUserLabel(userId);
+
+            if (targetAssigneeIds.length > 0 || validatedTeamIds.length > 0) {
+                const assigneeLabels = targetAssigneeIds.length
+                    ? await getUserLabels(targetAssigneeIds)
+                    : [];
+                const parts = [];
+
+                if (assigneeLabels.length) {
+                    parts.push(formatUserList(assigneeLabels));
+                }
+                if (validatedTeamIds.length) {
+                    parts.push(`${validatedTeamIds.length} team assignment(s)`);
+                }
+
+                if (parts.length) {
+                    await logActivity({
+                        actorId: userId,
+                        action: "task.assignees_added",
+                        level: "task",
+                        workspaceId: task.workspace || workspace?._id || null,
+                        projectId: task.project || project?._id || null,
+                        taskId: task._id,
+                        chatId: task.chatId,
+                        mirrorChatIds: [project?.chatId, workspace?.chatId],
+                        message: `${actorLabel} assigned ${parts.join(" and ")} to task "${task.title}".`,
+                        meta: {
+                            assigneeIds: targetAssigneeIds,
+                            teamIds: validatedTeamIds
+                        }
+                    });
+                }
+            }
+
+            if (createdRequests.length > 0) {
+                await Promise.all(
+                    createdRequests.map((requestDoc) =>
+                        notificationService.createNotifications({
+                            recipientIds: [requestDoc.requestedUser],
+                            actorId: userId,
+                            title: "Task assignment request",
+                            message: `${actorLabel} invited you to join task "${task.title}".`,
+                            type: "assignment",
+                            category: "task",
+                            priority: "high",
+                            entityType: "task",
+                            entityId: task._id,
+                            taskId: task._id,
+                            link: "/main/notifications",
+                            metadata: {
+                                kind: "global_task_assignee_request",
+                                requestId: String(requestDoc._id),
+                                taskId: String(task._id),
+                                taskTitle: task.title || "",
+                                requestState: null
+                            },
+                            dedupeKey: `task:assignee_request:${String(task._id)}:${String(requestDoc._id)}`
+                        })
+                    )
+                );
+
+                await logActivity({
+                    actorId: userId,
+                    action: "task.assignee_request_sent",
+                    level: "task",
+                    workspaceId: task.workspace || workspace?._id || null,
+                    projectId: task.project || project?._id || null,
+                    taskId: task._id,
+                    chatId: task.chatId,
+                    mirrorChatIds: [project?.chatId, workspace?.chatId],
+                    message: `${actorLabel} sent ${createdRequests.length} task assignment request(s) for "${task.title}".`,
+                    meta: {
+                        assigneeIds: requestedAssigneeIds,
+                        requestIds: createdRequests.map((requestDoc) => requestDoc._id)
+                    }
+                });
+            }
+        }
 
         const updatedTask = await Task.findById(taskId)
             .populate('createdBy', 'name email')
@@ -520,7 +687,27 @@ const taskService = {
             .populate('project', 'name workspace')
             .populate('workspace', 'name');
 
-        return { message: "Added assignees to task", task: updatedTask };
+        const mode = createdRequests.length > 0
+            ? (targetAssigneeIds.length > 0 || validatedTeamIds.length > 0 ? "mixed" : "invite_request")
+            : "member_added";
+
+        let message = "Added assignees to task";
+        if (mode === "invite_request") {
+            message = "Task assignment request sent";
+        } else if (mode === "mixed") {
+            message = "Added assignees and sent task assignment requests";
+        }
+
+        return {
+            message,
+            task: withAssignmentMeta(updatedTask, {
+                mode,
+                addedAssigneeIds: targetAssigneeIds,
+                addedTeamIds: validatedTeamIds,
+                requestedAssigneeIds,
+                requestIds: createdRequests.map((requestDoc) => requestDoc._id)
+            })
+        };
     },
 
     removeTaskAssignees: async (userId, taskId, data) => {
@@ -635,6 +822,140 @@ const taskService = {
         } finally {
             session.endSession();
         }
+    },
+
+    respondTaskAssigneeRequest: async ({ userId, taskId, requestId, action }) => {
+        const now = new Date();
+        const request = await TaskAssigneeRequest.findOne({
+            _id: requestId,
+            task: taskId,
+            requestedUser: userId,
+            status: "pending"
+        });
+
+        if (!request) {
+            throw createError("Task assignment request not found or already processed", 404);
+        }
+
+        if (request.expiresAt && request.expiresAt <= now) {
+            request.status = "expired";
+            request.reviewedAt = now;
+            await request.save();
+
+            await notificationService.setTaskAssigneeRequestNotificationState({
+                requestId: request._id,
+                requestState: "expired",
+                recipientUserIds: [userId],
+                read: true
+            });
+
+            throw createError("Task assignment request has expired", 410);
+        }
+
+        const task = await Task.findById(taskId);
+        if (!task || task.status === "deleted") {
+            request.status = "expired";
+            request.reviewedAt = now;
+            await request.save();
+
+            await notificationService.setTaskAssigneeRequestNotificationState({
+                requestId: request._id,
+                requestState: "expired",
+                recipientUserIds: [userId],
+                read: true
+            });
+
+            throw createError("Task not found", 404);
+        }
+
+        const requestState = action === "approve" ? "approved" : "rejected";
+        request.status = requestState;
+        request.reviewedAt = now;
+        await request.save();
+
+        if (action === "approve") {
+            await Task.updateOne(
+                { _id: taskId },
+                { $addToSet: { assignees: userId } }
+            );
+            await syncTaskChatsSafely(taskId);
+            await touchParents(task);
+        }
+
+        const requesterId = request.requestedBy;
+        const { project, workspace } = await loadTaskContext(task);
+        const actorLabel = await getUserLabel(userId);
+        const requesterLabel = await getUserLabel(requesterId);
+
+        await logActivity({
+            actorId: userId,
+            action: action === "approve"
+                ? "task.assignee_request_approved"
+                : "task.assignee_request_rejected",
+            level: "task",
+            workspaceId: task.workspace || workspace?._id || null,
+            projectId: task.project || project?._id || null,
+            taskId: task._id,
+            chatId: task.chatId,
+            mirrorChatIds: [project?.chatId, workspace?.chatId],
+            message: action === "approve"
+                ? `${actorLabel} accepted ${requesterLabel}'s assignment request for task "${task.title}".`
+                : `${actorLabel} rejected ${requesterLabel}'s assignment request for task "${task.title}".`,
+            meta: {
+                requestId: request._id,
+                requestState
+            }
+        });
+
+        await notificationService.setTaskAssigneeRequestNotificationState({
+            requestId: request._id,
+            requestState,
+            recipientUserIds: [userId],
+            read: true
+        });
+
+        await notificationService.createNotifications({
+            recipientIds: [requesterId],
+            actorId: userId,
+            title: action === "approve"
+                ? "Task assignment request approved"
+                : "Task assignment request rejected",
+            message: action === "approve"
+                ? `${actorLabel} accepted your task assignment request for "${task.title}".`
+                : `${actorLabel} rejected your task assignment request for "${task.title}".`,
+            type: "assignment",
+            category: "task",
+            priority: action === "approve" ? "normal" : "high",
+            entityType: "task",
+            entityId: task._id,
+            taskId: task._id,
+            link: "/main/notifications",
+            metadata: {
+                kind: "global_task_assignee_request_result",
+                requestId: String(request._id),
+                requestState,
+                taskId: String(task._id),
+                taskTitle: task.title || ""
+            },
+            dedupeKey: `task:assignee_request_result:${String(request._id)}:${requestState}`
+        });
+
+        const updatedTask = await Task.findById(taskId)
+            .populate('createdBy', 'name email')
+            .populate('assignees', 'name email isOnline')
+            .populate('assigneesTeams')
+            .populate('project', 'name workspace')
+            .populate('workspace', 'name');
+
+        return {
+            task: withAssignmentMeta(updatedTask, {
+                mode: action === "approve" ? "member_added" : "invite_request",
+                addedAssigneeIds: action === "approve" ? [userId] : [],
+                requestedAssigneeIds: [],
+                requestIds: [request._id]
+            }),
+            request: request.toObject ? request.toObject() : request
+        };
     },
 
     changeTaskStatus: async (userId, taskId, newStatus) => {
@@ -876,10 +1197,13 @@ const taskService = {
 
     getAllGlobalLevelTasks: async (userId, pagination = {}) => {
         const filters = {
-            createdBy: userId,
             workspace: null,
             project: null,
-            status: { $ne: "deleted" }
+            status: { $ne: "deleted" },
+            $or: [
+                { createdBy: userId },
+                { assignees: userId }
+            ]
         };
         const query = Task.find(filters).sort({ createdAt: -1 });
 

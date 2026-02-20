@@ -148,8 +148,16 @@ export const useMembersLogic = (item) => {
             } else if (item.type === 'task') {
                 const result = await assignUsersByUsername(item.id, [username]);
                 if (result?.success) {
-                    notify("success", `${username} added successfully!`);
-                    await loadMembers(false);
+                    const mode = result?.data?.assignmentMode;
+                    if (mode === "invite_request") {
+                        notify("success", `Assignment request sent to ${username}.`);
+                    } else if (mode === "mixed") {
+                        notify("success", `${username} added and assignment requests sent.`);
+                        await loadMembers(false);
+                    } else {
+                        notify("success", `${username} added successfully!`);
+                        await loadMembers(false);
+                    }
                     return true;
                 }
                 notify("error", result?.message || "Failed to add member");
@@ -182,8 +190,16 @@ export const useMembersLogic = (item) => {
             } else if (item.type === 'task') {
                 const result = await assignUsers(item.id, selectedUserIds);
                 if (result?.success) {
-                    notify("success", "Members assigned successfully!");
-                    await loadMembers(false);
+                    const mode = result?.data?.assignmentMode;
+                    if (mode === "invite_request") {
+                        notify("success", "Assignment requests sent.");
+                    } else if (mode === "mixed") {
+                        notify("success", "Members assigned and requests sent.");
+                        await loadMembers(false);
+                    } else {
+                        notify("success", "Members assigned successfully!");
+                        await loadMembers(false);
+                    }
                     return true;
                 }
                 notify("error", result?.message || "Failed to assign members");

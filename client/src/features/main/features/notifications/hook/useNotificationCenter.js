@@ -15,6 +15,7 @@ import {
     rejectFollowRequest
 } from "../../../../../service/follow.service";
 import { respondProjectStatusChangeRequest } from "../../../../../service/project.service";
+import { respondTaskAssigneeRequest } from "../../../../../service/task.service";
 import { respondWorkspaceInvite } from "../../../../../service/workspace.service";
 import * as socketService from "../../../../../service/Chat.socket.service";
 
@@ -505,6 +506,82 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         [loadUnreadCount]
     );
 
+    const taskAssigneeRequestAction = useCallback(
+        async (notification, action) => {
+            const notificationId = notification?._id;
+            const requestId = notification?.metadata?.requestId;
+            const taskId = notification?.metadata?.taskId || notification?.task?._id || notification?.task;
+
+            if (!notificationId || !requestId || !taskId) return null;
+
+            const actionKey = `task-assignee:${action}:${notificationId}`;
+            setActionLoadingKey(actionKey);
+
+            try {
+                const result = await respondTaskAssigneeRequest(taskId, requestId, action);
+
+                await markNotificationRead(notificationId);
+                setNotifications((previous) =>
+                    previous.map((entry) =>
+                        entry._id === notificationId
+                            ? {
+                                  ...entry,
+                                  read: true,
+                                  readAt: new Date().toISOString(),
+                                  metadata: {
+                                      ...(entry.metadata || {}),
+                                      requestState: action === "approve" ? "approved" : "rejected"
+                                  }
+                              }
+                            : entry
+                    )
+                );
+                loadUnreadCount();
+                return result;
+            } catch (error) {
+                const alreadyHandled =
+                    Number(error?.status) === 404
+                    || Number(error?.status) === 410
+                    || String(error?.message || "").toLowerCase().includes("processed")
+                    || String(error?.message || "").toLowerCase().includes("not found")
+                    || String(error?.message || "").toLowerCase().includes("expired")
+                    || String(error?.message || "").toLowerCase().includes("already");
+
+                if (alreadyHandled) {
+                    try {
+                        await markNotificationRead(notificationId);
+                    } catch {
+                        // noop
+                    }
+
+                    setNotifications((previous) =>
+                        previous.map((entry) =>
+                            entry._id === notificationId
+                                ? {
+                                      ...entry,
+                                      read: true,
+                                      readAt: new Date().toISOString(),
+                                      metadata: {
+                                          ...(entry.metadata || {}),
+                                          requestState: "expired"
+                                      }
+                                  }
+                                : entry
+                        )
+                    );
+                    loadUnreadCount();
+                    return null;
+                }
+
+                console.error("Failed task assignee request action", error);
+                return null;
+            } finally {
+                setActionLoadingKey("");
+            }
+        },
+        [loadUnreadCount]
+    );
+
     return {
         loading,
         notifications,
@@ -520,7 +597,8 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         followBack,
         followRequestAction,
         workspaceInviteAction,
-        projectStatusRequestAction
+        projectStatusRequestAction,
+        taskAssigneeRequestAction
     };
 };
 

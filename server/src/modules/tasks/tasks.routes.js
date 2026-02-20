@@ -20,6 +20,7 @@ router.patch('/:taskId/update', taskController.updateTask)
 
 //add assignees to task
 router.patch('/:taskId/assignees/add', taskController.addTaskAssignees)
+router.post('/:taskId/assignees/requests/:requestId/respond', taskController.respondTaskAssigneeRequest)
 
 //remove assignees to task
 router.delete('/:taskId/assignees/remove', taskController.removeTaskAssignees)

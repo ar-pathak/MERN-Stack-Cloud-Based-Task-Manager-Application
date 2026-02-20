@@ -26,10 +26,7 @@ const workspaceInviteSchema = new mongoose.Schema({
         default: "email"
     },
     token: {
-        type: String,
-        unique: true,
-        sparse: true,
-        default: null
+        type: String
     },
     invitedBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -55,5 +52,12 @@ workspaceInviteSchema.index({ workspace: 1, email: 1, inviteType: 1, status: 1, 
 workspaceInviteSchema.index({ invitedBy: 1, status: 1, createdAt: -1 });
 workspaceInviteSchema.index({ invitedUser: 1, status: 1, createdAt: -1 });
 workspaceInviteSchema.index({ expiresAt: 1 });
+workspaceInviteSchema.index(
+    { token: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { token: { $type: "string" } }
+    }
+);
 
 module.exports = mongoose.model("WorkspaceInvite", workspaceInviteSchema);

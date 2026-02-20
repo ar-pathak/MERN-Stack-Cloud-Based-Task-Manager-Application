@@ -87,5 +87,17 @@ const changeTaskStatusSchema = z.object({
     status: z.enum(["active", "archived", "completed"])
 });
 
+const respondTaskAssigneeRequestSchema = z.object({
+    action: z.enum(["approve", "reject"], {
+        errorMap: () => ({ message: "Action must be approve or reject" })
+    })
+});
 
-module.exports = { createTaskSchema, updateTaskSchema, addTaskAssigneesSchema, removeTaskAssigneesSchema, changeTaskStatusSchema };
+module.exports = {
+    createTaskSchema,
+    updateTaskSchema,
+    addTaskAssigneesSchema,
+    removeTaskAssigneesSchema,
+    changeTaskStatusSchema,
+    respondTaskAssigneeRequestSchema
+};

@@ -6,7 +6,8 @@ const {
     updateTaskSchema,
     addTaskAssigneesSchema,
     removeTaskAssigneesSchema,
-    changeTaskStatusSchema
+    changeTaskStatusSchema,
+    respondTaskAssigneeRequestSchema
 } = require("./tasks.validation");
 const { parsePaginationQuery } = require("../../helpers/paginationHelper");
 
@@ -89,6 +90,36 @@ const taskController = {
             const assigneesData = addTaskAssigneesSchema.parse(req.body);
             const result = await taskService.addTaskAssignees(userId, taskId, assigneesData);
             return sendSuccess(res, result.task, result.message);
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    respondTaskAssigneeRequest: async (req, res) => {
+        try {
+            const userId = req.user._id;
+            const { taskId, requestId } = req.params;
+
+            if (!mongoose.Types.ObjectId.isValid(taskId)) {
+                throw new Error("Invalid task ID");
+            }
+            if (!mongoose.Types.ObjectId.isValid(requestId)) {
+                throw new Error("Invalid request ID");
+            }
+
+            const { action } = respondTaskAssigneeRequestSchema.parse(req.body || {});
+            const result = await taskService.respondTaskAssigneeRequest({
+                userId,
+                taskId,
+                requestId,
+                action
+            });
+
+            const message = action === "approve"
+                ? "Task assignment request approved"
+                : "Task assignment request rejected";
+
+            return sendSuccess(res, result, message);
         } catch (error) {
             return handleError(error, res);
         }

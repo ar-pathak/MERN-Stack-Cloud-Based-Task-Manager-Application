@@ -34,6 +34,7 @@ const NotificationsPage = () => {
         followRequestAction,
         workspaceInviteAction,
         projectStatusRequestAction,
+        taskAssigneeRequestAction,
         ensureRead
     } = useNotificationCenter({ enabled: true, limit: 50 });
 
@@ -296,6 +297,50 @@ const NotificationsPage = () => {
                                                 >
                                                     {actionLoadingKey ===
                                                     `project-status:reject:${notification._id}`
+                                                        ? "..."
+                                                        : "Reject"}
+                                                </button>
+                                            </>
+                                        )}
+
+                                    {String(notification?.metadata?.kind || "") ===
+                                        "global_task_assignee_request" &&
+                                        !notification?.metadata?.requestState &&
+                                        Boolean(notification?.metadata?.requestId) && (
+                                            <>
+                                                <button
+                                                    onClick={() =>
+                                                        taskAssigneeRequestAction(
+                                                            notification,
+                                                            "approve"
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        actionLoadingKey ===
+                                                        `task-assignee:approve:${notification._id}`
+                                                    }
+                                                    className="rounded-md border border-emerald-500/35 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-60"
+                                                >
+                                                    {actionLoadingKey ===
+                                                    `task-assignee:approve:${notification._id}`
+                                                        ? "..."
+                                                        : "Approve"}
+                                                </button>
+                                                <button
+                                                    onClick={() =>
+                                                        taskAssigneeRequestAction(
+                                                            notification,
+                                                            "reject"
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        actionLoadingKey ===
+                                                        `task-assignee:reject:${notification._id}`
+                                                    }
+                                                    className="rounded-md border border-rose-500/35 px-2 py-1 text-[11px] text-rose-300 hover:bg-rose-500/15 disabled:opacity-60"
+                                                >
+                                                    {actionLoadingKey ===
+                                                    `task-assignee:reject:${notification._id}`
                                                         ? "..."
                                                         : "Reject"}
                                                 </button>

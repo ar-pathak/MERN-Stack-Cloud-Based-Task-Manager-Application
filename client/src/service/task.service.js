@@ -199,6 +199,21 @@ export const removeAssignTeamsFromTask = async (taskId, assigneesTeams) => {
     }
 };
 
+export const respondTaskAssigneeRequest = async (taskId, requestId, action) => {
+    try {
+        const response = await api.post(
+            `/api/tasks/${taskId}/assignees/requests/${requestId}/respond`,
+            { action }
+        );
+        return unwrap(response);
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to process task assignment request",
+            status: error.response?.status,
+        };
+    }
+};
+
 export const getTasks = async (scope, id, secondaryId = null) => {
     try {
         let url = '';
