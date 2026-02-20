@@ -1,7 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { AuthContext } from "./AuthContext";
-import { login as loginService, logout as logoutService, register as registerService, getUserInfo } from "../service/auth.service";
+import {
+    login as loginService,
+    logout as logoutService,
+    register as registerService,
+    getStoredUser,
+    getUserInfo
+} from "../service/auth.service";
 import { updateActivity as updateUserActivity } from "../service/user.service";
 
 const isProtectedRoutePath = (pathname = "") => {
@@ -14,20 +20,32 @@ const isProtectedRoutePath = (pathname = "") => {
     );
 };
 
+const readStoredUser = () => {
+    try {
+        return getStoredUser();
+    } catch {
+        return null;
+    }
+};
+
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState(readStoredUser);
+    const [loading, setLoading] = useState(() => readStoredUser() == null);
+    const shouldBackgroundLoadRef = useRef(Boolean(readStoredUser()));
     const navigate = useNavigate();
     const location = useLocation();
 
-    const loadUser = useCallback(async () => {
+    const loadUser = useCallback(async ({ background = false } = {}) => {
         // Ensure we don't stay on the loading screen indefinitely if the
         // backend is unreachable or requests hang. Use a short client-side
-        // timeout (5s) as a fallback to allow the app to render public routes.
-        setLoading(true);
+        // timeout (2.5s) as a fallback to allow the app to render public routes.
+        if (!background) {
+            setLoading(true);
+        }
+
         let timedOut = false;
-        const TIMEOUT_MS = 5000;
+        const TIMEOUT_MS = 2500;
 
         const timeoutId = setTimeout(() => {
             timedOut = true;
@@ -36,14 +54,21 @@ export const AuthProvider = ({ children }) => {
 
         try {
             const res = await getUserInfo();
-            console.log("User info loaded:", res);
+            const nextUser = res?.data?.user || null;
             if (!timedOut) {
-                setUser(res?.data?.user || null);
+                setUser(nextUser);
             }
-        } catch (err) {
+
+            if (nextUser) {
+                localStorage.setItem("user", JSON.stringify(nextUser));
+            } else {
+                localStorage.removeItem("user");
+            }
+        } catch (_err) {
             if (!timedOut) {
                 setUser(null);
             }
+            localStorage.removeItem("user");
         } finally {
             if (!timedOut) {
                 clearTimeout(timeoutId);
@@ -54,7 +79,8 @@ export const AuthProvider = ({ children }) => {
 
 
     useEffect(() => {
-        loadUser();
+        loadUser({ background: shouldBackgroundLoadRef.current });
+        shouldBackgroundLoadRef.current = false;
     }, [loadUser]);
 
     useEffect(() => {
@@ -137,18 +163,21 @@ export const AuthProvider = ({ children }) => {
         }
     }, [navigate]);
 
+    const contextValue = useMemo(
+        () => ({
+            user,
+            isAuthenticated: !!user,
+            loading,
+            login,
+            logout,
+            register,
+            refreshUser: loadUser,
+        }),
+        [user, loading, login, logout, register, loadUser]
+    );
+
     return (
-        <AuthContext.Provider
-            value={{
-                user,
-                isAuthenticated: !!user,
-                loading,
-                login,
-                logout,
-                register,
-                refreshUser: loadUser
-            }}
-        >
+        <AuthContext.Provider value={contextValue}>
             {children}
         </AuthContext.Provider>
     );

@@ -106,10 +106,12 @@ export const deactivateAccount = async () => {
  * GET /search
  * @param {String} query - Search text (username or name)
  * @param {Object} params - { page, limit }
+ * @param {Object} requestConfig - optional axios config (signal, headers, etc.)
  */
-export const searchUsers = async (query, params = {}) => {
+export const searchUsers = async (query, params = {}, requestConfig = {}) => {
     try {
         const response = await api.get(`${BASE_URL}/search`, {
+            ...requestConfig,
             params: { query, ...params }
         });
         return response.data?.data || response.data;

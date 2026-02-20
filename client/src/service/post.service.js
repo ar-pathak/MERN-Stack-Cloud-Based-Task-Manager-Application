@@ -49,10 +49,12 @@ export const getTrendingPosts = async (params = {}) => {
  * Search Posts
  * @param {String} query - Search text
  * @param {Object} params - { page, limit }
+ * @param {Object} requestConfig - optional axios config (signal, headers, etc.)
  */
-export const searchPosts = async (query, params = {}) => {
+export const searchPosts = async (query, params = {}, requestConfig = {}) => {
     try {
         const response = await api.get(`${BASE_URL}/search`, {
+            ...requestConfig,
             params: { query, ...params }
         });
         return response.data?.data || response.data;

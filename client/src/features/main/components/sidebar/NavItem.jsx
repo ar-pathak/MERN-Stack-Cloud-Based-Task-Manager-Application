@@ -1,7 +1,23 @@
 import { NavLink } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import * as Icons from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Cloud,
+  LifeBuoy,
+  Newspaper,
+  SquarePen,
+} from "lucide-react";
 import { getColorClasses } from "../utils/sidebarHelpers";
+
+const ICON_COMPONENTS = {
+  Activity,
+  BarChart3,
+  Cloud,
+  LifeBuoy,
+  Newspaper,
+  SquarePen,
+};
 
 export const NavItem = ({
   item,
@@ -9,7 +25,7 @@ export const NavItem = ({
   isMobile,
   onNavigate
 }) => {
-  const Icon = Icons[item.icon];
+  const Icon = ICON_COMPONENTS[item.icon] || Cloud;
 
   return (
     <NavLink

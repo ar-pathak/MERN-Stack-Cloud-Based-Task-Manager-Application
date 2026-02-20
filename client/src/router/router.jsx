@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from "react-router";
+import { createBrowserRouter } from "react-router";
 import { lazy, Suspense } from "react";
 import App from "../App";
 import LoadingPage from "../common/components/LoadingPage";
@@ -23,11 +23,15 @@ const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"));
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"));
 const WorkspaceInviteAcceptPage = lazy(() => import("../features/workspace/WorkspaceInviteAcceptPage.jsx"));
 
-const withSuspense = (Component) => (
-  <Suspense fallback={<LoadingPage />}>
-    <Component />
-  </Suspense>
-);
+const withSuspense = (Component) => {
+  const ResolvedComponent = Component;
+
+  return (
+    <Suspense fallback={<LoadingPage />}>
+      <ResolvedComponent />
+    </Suspense>
+  );
+};
 
 const router = createBrowserRouter([
   {
@@ -35,10 +39,6 @@ const router = createBrowserRouter([
     element: <App />,
     errorElement: <ErrorPage />,
     children: [
-      {
-        index: true,
-        element: <Navigate to="/home" replace />,
-      },
       {
         path: "email-verification/:token",
         element: withSuspense(VerifyEmailPage),
@@ -52,6 +52,10 @@ const router = createBrowserRouter([
       {
         element: <PublicRoute />,
         children: [
+          {
+            index: true,
+            element: withSuspense(HomePage),
+          },
           {
             path: "home",
             element: withSuspense(HomePage),

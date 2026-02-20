@@ -15,17 +15,24 @@ const MainPage = () => {
     const hasScrollHiddenHeaderRef = useRef(false);
     const hasAutoHideTimerRunRef = useRef(false);
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
-        typeof window !== "undefined" ? window.innerWidth < 1024 : false
+        typeof window !== "undefined"
+            ? window.matchMedia("(max-width: 1023px)").matches
+            : false
     );
     const { isToggle } = useToggle();
 
     useEffect(() => {
-        const onResize = () => {
-            setIsMobileViewport(window.innerWidth < 1024);
+        if (typeof window === "undefined") return undefined;
+
+        const mediaQuery = window.matchMedia("(max-width: 1023px)");
+        const handleChange = (event) => {
+            setIsMobileViewport(event.matches);
         };
 
-        window.addEventListener("resize", onResize);
-        return () => window.removeEventListener("resize", onResize);
+        setIsMobileViewport(mediaQuery.matches);
+        mediaQuery.addEventListener("change", handleChange);
+
+        return () => mediaQuery.removeEventListener("change", handleChange);
     }, []);
 
     useEffect(() => {

@@ -17,8 +17,9 @@ const AdvancedDashboardPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
     const profileId = user?._id || user?.id || "";
+    const mobileQuery = `(max-width: ${MOBILE_BREAKPOINT - 1}px)`;
     const [mobile, setMobile] = useState(() =>
-        typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
+        typeof window !== "undefined" ? window.matchMedia(mobileQuery).matches : false
     );
 
     const {
@@ -62,10 +63,16 @@ const AdvancedDashboardPage = () => {
     } = useAdvancedDashboard({ profileId });
 
     useEffect(() => {
-        const onResize = () => setMobile(window.innerWidth < MOBILE_BREAKPOINT);
-        window.addEventListener("resize", onResize);
-        return () => window.removeEventListener("resize", onResize);
-    }, []);
+        if (typeof window === "undefined") return undefined;
+
+        const mediaQuery = window.matchMedia(mobileQuery);
+        const handleChange = (event) => setMobile(event.matches);
+
+        setMobile(mediaQuery.matches);
+        mediaQuery.addEventListener("change", handleChange);
+
+        return () => mediaQuery.removeEventListener("change", handleChange);
+    }, [mobileQuery]);
 
     const showBottom = mobile && Boolean(profileId);
 
