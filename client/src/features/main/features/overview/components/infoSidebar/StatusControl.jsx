@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import {
     Flag,
+    Archive,
     Activity,
     CheckCircle2,
     Loader2
@@ -11,7 +12,7 @@ import { useTask } from "../../hook/useTask";
 import { useProject } from "../../hook/useProject";
 import { useSubtask } from "../../hook/useSubtask";
 
-const StatusControl = ({ item }) => {
+const StatusControl = ({ item, onItemPatch, onMutationSuccess }) => {
     // Initialize state
     const [status, setStatus] = useState('active');
     const [isHighPriority, setIsHighPriority] = useState(false);
@@ -90,10 +91,22 @@ const StatusControl = ({ item }) => {
                     ? subtaskCanUpdate
                     : true;
 
-    const statuses = [
-        { value: 'active', label: 'Active', icon: Activity, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
-        { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-    ];
+    const statuses = item?.type === "subtask"
+        ? [
+            { value: 'active', label: 'Active', icon: Activity, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
+            { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+        ]
+        : [
+            { value: 'active', label: 'Active', icon: Activity, color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20' },
+            { value: 'completed', label: 'Completed', icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+            { value: 'archived', label: 'Archived', icon: Archive, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
+        ];
+
+    const applyItemPatch = (updates = {}) => {
+        if (typeof onItemPatch === "function") {
+            onItemPatch(updates);
+        }
+    };
 
     const handleStatusChange = async (newStatus) => {
         if (loading || newStatus === status) return;
@@ -178,6 +191,23 @@ const StatusControl = ({ item }) => {
 
             if (!result?.success) throw new Error('Status update failed');
 
+            const resultData = result?.data || {};
+            if (item.type === "subtask") {
+                const nextCompleted = typeof resultData?.completed === "boolean"
+                    ? resultData.completed
+                    : newStatus === "completed";
+                const normalizedStatus = nextCompleted ? "completed" : "active";
+                setStatus(normalizedStatus);
+                applyItemPatch({ ...resultData, completed: nextCompleted });
+            } else {
+                const normalizedStatus = resultData?.status || newStatus;
+                setStatus(normalizedStatus);
+                applyItemPatch({ ...resultData, status: normalizedStatus });
+            }
+            if (typeof onMutationSuccess === "function") {
+                onMutationSuccess();
+            }
+
         } catch (err) {
             console.error("Error updating status:", err);
             setStatus(oldStatus);
@@ -236,10 +266,20 @@ const StatusControl = ({ item }) => {
             }
 
             if (!result?.success) throw new Error('Priority update failed');
+
+            const resultData = result?.data || {};
+            const normalizedPriority = typeof resultData?.isHighPriority === "boolean"
+                ? resultData.isHighPriority
+                : isHigh;
+            setIsHighPriority(normalizedPriority);
+            applyItemPatch({ ...resultData, isHighPriority: normalizedPriority });
+            if (typeof onMutationSuccess === "function") {
+                onMutationSuccess();
+            }
         } catch (err) {
             console.error("Error updating priority:", err);
             setIsHighPriority(oldPriority);
-            setError('Failed to update priority');
+            setError(err?.message || 'Failed to update priority');
             setTimeout(() => setError(null), 3000);
         } finally {
             setLoading(false);

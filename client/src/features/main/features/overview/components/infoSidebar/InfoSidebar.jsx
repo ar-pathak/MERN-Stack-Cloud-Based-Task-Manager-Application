@@ -47,6 +47,7 @@ const InfoSidebar = ({
     const { fetchTaskById, updateTask } = useTask();
     const { members, subtaskData } = useMembersLogic(item);
     const { user } = useAuth();
+    const selectedItemId = String(initialItem?.id || initialItem?._id || "");
 
     // Determine if the current user is the creator of the subtask
     const isSubtaskCreator = subtaskData?.createdBy === user?._id;
@@ -58,23 +59,44 @@ const InfoSidebar = ({
         { id: "settings", label: "Settings", icon: Settings }
     ];
 
-    // Update local state if prop changes (e.g. user clicks a different item)
+    // Update local state when a different timeline item is selected.
     useEffect(() => {
+        const incomingId = String(initialItem?.id || initialItem?._id || "");
+        const currentId = String(item?.id || item?._id || "");
+
+        if (incomingId && currentId && incomingId === currentId) {
+            return;
+        }
+
         setItem(initialItem);
-        setTitle(initialItem.name || initialItem.title || "");
+        setTitle(initialItem?.name || initialItem?.title || "");
         setIsEditingTitle(false);
-        setActiveTab(initialTab || "overview");
-    }, [initialItem, initialTab]);
+    }, [initialItem, item?.id, item?._id]);
 
     useEffect(() => {
-        if (item.type === 'task') {
+        setActiveTab(initialTab || "overview");
+    }, [selectedItemId, initialTab]);
+
+    useEffect(() => {
+        const currentItemId = item?.id || item?._id;
+        if (item.type === 'task' && currentItemId) {
             const loadTaskData = async () => {
-                const taskRes = await fetchTaskById(item.id);
+                const taskRes = await fetchTaskById(currentItemId);
                 setTaskData(taskRes.data);
             }
             loadTaskData();
+            return;
         }
-    }, [item, fetchTaskById]);
+        setTaskData(null);
+    }, [item?.type, item?.id, item?._id, fetchTaskById]);
+
+    const handleInlineItemPatch = (updates = {}) => {
+        if (!updates || typeof updates !== "object") return;
+        setItem(prev => ({ ...(prev || {}), ...updates }));
+        if (updates.name || updates.title) {
+            setTitle(updates.name || updates.title);
+        }
+    };
 
     // CHECK ROLE: Support both nested permissions (from feed) and direct role
     const userRole = item.permissions?.role || item?.role || item?.userRole;
@@ -304,7 +326,13 @@ const InfoSidebar = ({
                             <QuickStatsSection item={item} overview={overview} />
                             <ProgressSection item={item} overview={overview} />
 
-                            {(item.type === 'task' || item.type === 'subtask' || item.type == 'project') && <StatusControl item={item} />}
+                            {(item.type === 'task' || item.type === 'subtask' || item.type == 'project') && (
+                                <StatusControl
+                                    item={item}
+                                    onItemPatch={handleInlineItemPatch}
+                                    onMutationSuccess={onUpdate}
+                                />
+                            )}
 
                             {item.type === 'workspace' && <QuickActions item={item} />}
 
