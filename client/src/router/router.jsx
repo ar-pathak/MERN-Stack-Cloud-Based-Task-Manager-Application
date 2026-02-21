@@ -7,6 +7,7 @@ import ProtectedRoute from "./ProtectedRoute";
 import PublicRoute from "./PublicRoute";
 
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
+const OAuthCallbackPage = lazy(() => import("../features/authentication/pages/OAuthCallbackPage"));
 const VerifyEmailPage = lazy(() => import("../features/authentication/pages/VerifyEmailPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
 const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
@@ -46,6 +47,10 @@ const router = createBrowserRouter([
       {
         path: "invites/accept/:token",
         element: withSuspense(WorkspaceInviteAcceptPage),
+      },
+      {
+        path: "home/auth/oauth/callback",
+        element: withSuspense(OAuthCallbackPage),
       },
 
       // Public routes (only for non-auth users)

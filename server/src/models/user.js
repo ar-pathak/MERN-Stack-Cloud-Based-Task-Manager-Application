@@ -23,9 +23,24 @@ const userSchema = new Schema({
     },
     passwordHash: {
         type: String,
-        required: [true, 'Password is required'],
+        required: function requirePasswordHash() {
+            // OAuth-only accounts can be created without a local password.
+            return !this.googleId && !this.githubId;
+        },
         select: false,
         minlength: 60 // bcrypt hash length
+    },
+    googleId: {
+        type: String,
+        trim: true,
+        unique: true,
+        sparse: true
+    },
+    githubId: {
+        type: String,
+        trim: true,
+        unique: true,
+        sparse: true
     },
 
     // --- Profile Info ---
@@ -285,6 +300,8 @@ userSchema.methods.toProfileJSON = function () {
     delete obj.fcmToken;
     delete obj.loginAttempts;
     delete obj.lockUntil;
+    delete obj.googleId;
+    delete obj.githubId;
     delete obj.metadata;
     delete obj.__v;
     return obj;

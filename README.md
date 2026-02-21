@@ -65,6 +65,8 @@ server/
 - MongoDB database.
 - Cloudinary account (for upload/media endpoints).
 - Gmail SMTP credentials (for password reset, verification, invites).
+- Google OAuth app credentials (for Google sign-in).
+- GitHub OAuth app credentials (for GitHub sign-in).
 
 ## Setup
 
@@ -91,6 +93,14 @@ npm install --prefix client
 | `REFRESH_SECRET` | Yes | Refresh token signing secret. |
 | `PORT` | No | API port (default `3000`). |
 | `FRONTEND_URL` | Recommended | Allowed frontend origin(s), comma-separated if multiple. |
+| `BACKEND_URL` | Recommended | Public backend base URL used to build default OAuth callback URLs. |
+| `OAUTH_FRONTEND_URL` | Optional | Explicit frontend URL for OAuth callback redirects (defaults to first `FRONTEND_URL`). |
+| `GOOGLE_CLIENT_ID` | For Google OAuth | Google OAuth client ID. |
+| `GOOGLE_CLIENT_SECRET` | For Google OAuth | Google OAuth client secret. |
+| `GOOGLE_CALLBACK_URL` | Optional | Google callback URL (defaults to `${BACKEND_URL}/api/auth/oauth/google/callback`). |
+| `GITHUB_CLIENT_ID` | For GitHub OAuth | GitHub OAuth app client ID. |
+| `GITHUB_CLIENT_SECRET` | For GitHub OAuth | GitHub OAuth app client secret. |
+| `GITHUB_CALLBACK_URL` | Optional | GitHub callback URL (defaults to `${BACKEND_URL}/api/auth/oauth/github/callback`). |
 | `EMAIL_USER` | For mail features | Gmail account used by Nodemailer. |
 | `EMAIL_PASS` | For mail features | Gmail app password/token. |
 | `CLOUDINARY_CLOUD_NAME` | For upload features | Cloudinary config. |
@@ -110,6 +120,15 @@ npm install --prefix client
 | `VITE_TURN_URLS` | Optional | Comma-separated TURN server URLs for WebRTC. |
 | `VITE_TURN_USERNAME` | Optional | TURN username. |
 | `VITE_TURN_CREDENTIAL` | Optional | TURN credential/password. |
+
+### OAuth Setup (Google + GitHub)
+
+Use these callback URLs in your provider dashboards for local development:
+
+- Google redirect URI: `http://localhost:3000/api/auth/oauth/google/callback`
+- GitHub authorization callback URL: `http://localhost:3000/api/auth/oauth/github/callback`
+
+Production callback URLs should match your deployed backend domain and the corresponding `/api/auth/oauth/{provider}/callback` path.
 
 ## Run Locally
 

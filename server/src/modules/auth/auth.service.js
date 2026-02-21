@@ -19,6 +19,19 @@ const createAuthError = (message, statusCode = 400) => {
 };
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizeBaseUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
+const getBackendBaseUrl = () => normalizeBaseUrl(process.env.BACKEND_URL)
+  || `http://localhost:${process.env.PORT || 3000}`;
+
+const OAUTH_PROVIDER_FIELDS = {
+  google: "googleId",
+  github: "githubId"
+};
+
+const OAUTH_PROVIDER_LABELS = {
+  google: "Google",
+  github: "GitHub"
+};
 
 const hashToken = (value) =>
   crypto.createHash('sha256').update(String(value || '')).digest('hex');
@@ -39,6 +52,161 @@ const deleteRefreshTokenByRawValue = async (token) => {
   await RefreshToken.deleteMany({
     token: { $in: refreshTokenLookupCandidates(token) }
   });
+};
+
+const getOAuthProviderField = (provider) => OAUTH_PROVIDER_FIELDS[provider] || null;
+const getOAuthProviderLabel = (provider) => OAUTH_PROVIDER_LABELS[provider] || "OAuth";
+
+const getOAuthProviderConfig = (provider) => {
+  if (provider === "google") {
+    return {
+      clientId: String(process.env.GOOGLE_CLIENT_ID || "").trim(),
+      clientSecret: String(process.env.GOOGLE_CLIENT_SECRET || "").trim(),
+      callbackUrl: normalizeBaseUrl(process.env.GOOGLE_CALLBACK_URL)
+        || `${getBackendBaseUrl()}/api/auth/oauth/google/callback`,
+      authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+      tokenUrl: "https://oauth2.googleapis.com/token",
+      userInfoUrl: "https://www.googleapis.com/oauth2/v3/userinfo"
+    };
+  }
+
+  if (provider === "github") {
+    return {
+      clientId: String(process.env.GITHUB_CLIENT_ID || "").trim(),
+      clientSecret: String(process.env.GITHUB_CLIENT_SECRET || "").trim(),
+      callbackUrl: normalizeBaseUrl(process.env.GITHUB_CALLBACK_URL)
+        || `${getBackendBaseUrl()}/api/auth/oauth/github/callback`,
+      authorizationUrl: "https://github.com/login/oauth/authorize",
+      tokenUrl: "https://github.com/login/oauth/access_token",
+      userInfoUrl: "https://api.github.com/user",
+      userEmailsUrl: "https://api.github.com/user/emails"
+    };
+  }
+
+  throw createAuthError("Unsupported OAuth provider", 400);
+};
+
+const ensureOAuthConfig = (provider) => {
+  const config = getOAuthProviderConfig(provider);
+  if (!config.clientId || !config.clientSecret || !config.callbackUrl) {
+    throw createAuthError(`${getOAuthProviderLabel(provider)} OAuth is not configured`, 500);
+  }
+  return config;
+};
+
+const ensureFetchAvailable = () => {
+  if (typeof fetch !== "function") {
+    throw createAuthError("Global fetch API is unavailable in this Node.js runtime", 500);
+  }
+};
+
+const readJsonResponse = async (response) => {
+  try {
+    return await response.json();
+  } catch (_error) {
+    return {};
+  }
+};
+
+const assertOAuthHttpResponse = async (response, provider) => {
+  const payload = await readJsonResponse(response);
+
+  if (!response.ok) {
+    const providerMessage = payload?.error_description
+      || payload?.error
+      || payload?.message
+      || payload?.error?.message;
+    const fallbackMessage = `${getOAuthProviderLabel(provider)} OAuth request failed`;
+    throw createAuthError(
+      providerMessage ? `${fallbackMessage}: ${providerMessage}` : fallbackMessage,
+      502
+    );
+  }
+
+  return payload;
+};
+
+const toAuthUserPayload = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  username: user.username
+});
+
+const issueAuthTokensForUser = async (user) => {
+  const accessToken = generateAccessToken(user._id);
+  const refreshToken = generateRefreshToken(user._id);
+
+  await RefreshToken.deleteMany({ user: user._id });
+  await persistRefreshToken(user._id, refreshToken);
+
+  return {
+    accessToken,
+    refreshToken,
+    user: toAuthUserPayload(user)
+  };
+};
+
+const deriveNameFromEmail = (email) => {
+  const [localPart] = String(email || "").split("@");
+  const fallback = localPart || "Aurora User";
+  return fallback.slice(0, 50);
+};
+
+const resolveOAuthUser = async ({ provider, providerId, email, name, avatar }) => {
+  const providerField = getOAuthProviderField(provider);
+  if (!providerField) {
+    throw createAuthError("Unsupported OAuth provider", 400);
+  }
+
+  const normalizedProviderId = String(providerId || "").trim();
+  if (!normalizedProviderId) {
+    throw createAuthError(`${getOAuthProviderLabel(provider)} did not return a valid account ID`, 400);
+  }
+
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw createAuthError(`${getOAuthProviderLabel(provider)} account did not return an email address`, 400);
+  }
+
+  const sanitizedName = String(name || "").trim();
+  const sanitizedAvatar = String(avatar || "").trim();
+
+  let user = await User.findOne({ [providerField]: normalizedProviderId });
+
+  if (!user) {
+    user = await User.findOne({ email: normalizedEmail });
+    if (user) {
+      user[providerField] = normalizedProviderId;
+      if (!user.emailVerified) {
+        user.emailVerified = true;
+      }
+      if (!user.name && sanitizedName) {
+        user.name = sanitizedName.slice(0, 50);
+      }
+      if (!user.avatar && sanitizedAvatar) {
+        user.avatar = sanitizedAvatar;
+      }
+      await user.save({ validateBeforeSave: false });
+    } else {
+      const username = await generateUniqueUsername(normalizedEmail);
+      user = new User({
+        name: sanitizedName ? sanitizedName.slice(0, 50) : deriveNameFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        username,
+        avatar: sanitizedAvatar,
+        emailVerified: true,
+        [providerField]: normalizedProviderId
+      });
+      await user.save({ validateBeforeSave: false });
+    }
+  }
+
+  if (user.accountStatus !== "active") {
+    throw createAuthError("Account is not active", 403);
+  }
+
+  return user;
 };
 
 const AuthService = {
@@ -66,22 +234,7 @@ const AuthService = {
 
     //  Save to DB
     await user.save();
-
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
-
-    await persistRefreshToken(user._id, refreshToken);
-
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username
-      }
-    };
+    return issueAuthTokensForUser(user);
   },
   logIn: async ({ email, password }) => {
     const normalizedEmail = normalizeEmail(email);
@@ -93,6 +246,10 @@ const AuthService = {
 
     if (user.accountStatus !== "active") {
       throw createAuthError("Account is not active", 403);
+    }
+
+    if (!user.passwordHash) {
+      throw createAuthError("This account uses social login. Continue with Google or GitHub.", 400);
     }
 
     if (user.lockUntil && user.lockUntil < Date.now()) {
@@ -121,25 +278,177 @@ const AuthService = {
       await user.resetLoginAttempts();
     }
 
-    const accessToken = generateAccessToken(user._id);
-    const refreshToken = generateRefreshToken(user._id);
+    return issueAuthTokensForUser(user);
+  },
+  getOAuthAuthorizationUrl: (provider, state) => {
+    const normalizedProvider = String(provider || "").trim().toLowerCase();
+    const normalizedState = String(state || "").trim();
 
-    //Invalidate old tokens on login
-    await RefreshToken.deleteMany({ user: user._id });
+    if (!normalizedState) {
+      throw createAuthError("Missing OAuth state", 400);
+    }
 
-    // Store refresh token hash in DB
-    await persistRefreshToken(user._id, refreshToken);
+    const config = ensureOAuthConfig(normalizedProvider);
+    const url = new URL(config.authorizationUrl);
 
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        username: user.username
+    if (normalizedProvider === "google") {
+      url.searchParams.set("client_id", config.clientId);
+      url.searchParams.set("redirect_uri", config.callbackUrl);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("scope", "openid email profile");
+      url.searchParams.set("state", normalizedState);
+      url.searchParams.set("access_type", "online");
+      url.searchParams.set("prompt", "select_account");
+      return url.toString();
+    }
+
+    if (normalizedProvider === "github") {
+      url.searchParams.set("client_id", config.clientId);
+      url.searchParams.set("redirect_uri", config.callbackUrl);
+      url.searchParams.set("scope", "read:user user:email");
+      url.searchParams.set("state", normalizedState);
+      url.searchParams.set("allow_signup", "true");
+      return url.toString();
+    }
+
+    throw createAuthError("Unsupported OAuth provider", 400);
+  },
+  exchangeOAuthCodeForProfile: async (provider, code) => {
+    ensureFetchAvailable();
+    const normalizedProvider = String(provider || "").trim().toLowerCase();
+    const normalizedCode = String(code || "").trim();
+
+    if (!normalizedCode) {
+      throw createAuthError("Missing OAuth authorization code", 400);
+    }
+
+    const config = ensureOAuthConfig(normalizedProvider);
+
+    if (normalizedProvider === "google") {
+      const tokenResponse = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          code: normalizedCode,
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+          redirect_uri: config.callbackUrl,
+          grant_type: "authorization_code"
+        })
+      });
+
+      const tokenPayload = await assertOAuthHttpResponse(tokenResponse, normalizedProvider);
+      const accessToken = String(tokenPayload?.access_token || "").trim();
+      if (!accessToken) {
+        throw createAuthError("Google OAuth token exchange failed", 502);
       }
-    };
+
+      const profileResponse = await fetch(config.userInfoUrl, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json"
+        }
+      });
+
+      const profilePayload = await assertOAuthHttpResponse(profileResponse, normalizedProvider);
+      if (!profilePayload?.sub) {
+        throw createAuthError("Google account ID is missing in OAuth response", 502);
+      }
+      if (!profilePayload?.email) {
+        throw createAuthError("Google account did not return an email address", 400);
+      }
+      if (profilePayload?.email_verified === false) {
+        throw createAuthError("Google account email is not verified", 403);
+      }
+
+      return {
+        providerId: String(profilePayload.sub),
+        email: profilePayload.email,
+        name: profilePayload.name || "",
+        avatar: profilePayload.picture || ""
+      };
+    }
+
+    if (normalizedProvider === "github") {
+      const tokenResponse = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json"
+        },
+        body: new URLSearchParams({
+          client_id: config.clientId,
+          client_secret: config.clientSecret,
+          code: normalizedCode,
+          redirect_uri: config.callbackUrl
+        })
+      });
+
+      const tokenPayload = await assertOAuthHttpResponse(tokenResponse, normalizedProvider);
+      if (tokenPayload?.error) {
+        throw createAuthError(tokenPayload.error_description || "GitHub OAuth authorization failed", 400);
+      }
+
+      const accessToken = String(tokenPayload?.access_token || "").trim();
+      if (!accessToken) {
+        throw createAuthError("GitHub OAuth token exchange failed", 502);
+      }
+
+      const githubHeaders = {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Aurora-App"
+      };
+
+      const [profileResponse, emailsResponse] = await Promise.all([
+        fetch(config.userInfoUrl, { headers: githubHeaders }),
+        fetch(config.userEmailsUrl, { headers: githubHeaders })
+      ]);
+
+      const profilePayload = await assertOAuthHttpResponse(profileResponse, normalizedProvider);
+      const emailPayload = await assertOAuthHttpResponse(emailsResponse, normalizedProvider);
+      const verifiedEmail = Array.isArray(emailPayload)
+        ? (
+          emailPayload.find((entry) => entry?.primary && entry?.verified)
+          || emailPayload.find((entry) => entry?.verified)
+        )
+        : null;
+
+      const fallbackEmail = String(profilePayload?.email || "").trim();
+      const resolvedEmail = verifiedEmail?.email
+        || (!Array.isArray(emailPayload) || emailPayload.length === 0 ? fallbackEmail : "");
+
+      if (!resolvedEmail) {
+        throw createAuthError("GitHub account did not return a usable email address", 400);
+      }
+
+      if (!profilePayload?.id) {
+        throw createAuthError("GitHub account ID is missing in OAuth response", 502);
+      }
+
+      return {
+        providerId: String(profilePayload.id),
+        email: resolvedEmail,
+        name: profilePayload.name || profilePayload.login || "",
+        avatar: profilePayload.avatar_url || ""
+      };
+    }
+
+    throw createAuthError("Unsupported OAuth provider", 400);
+  },
+  logInWithOAuth: async ({ provider, profile }) => {
+    const normalizedProvider = String(provider || "").trim().toLowerCase();
+    const user = await resolveOAuthUser({
+      provider: normalizedProvider,
+      providerId: profile?.providerId,
+      email: profile?.email,
+      name: profile?.name,
+      avatar: profile?.avatar
+    });
+
+    return issueAuthTokensForUser(user);
   },
   logOut: async (token, userId) => {
     try {
