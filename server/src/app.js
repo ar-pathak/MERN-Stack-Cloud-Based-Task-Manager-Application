@@ -8,6 +8,7 @@ const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const connectDB = require("./config/database");
+const MongoRateLimitStore = require("./helpers/mongoRateLimitStore");
 
 // ---------------------------------------------------------------------------
 // Route imports
@@ -52,6 +53,57 @@ if (missingEnvVars.length > 0) {
     process.exit(1);
 }
 
+const resolveTrustProxySetting = () => {
+    const rawValue = process.env.TRUST_PROXY;
+    if (rawValue == null || String(rawValue).trim() === "") {
+        return process.env.NODE_ENV === "production" ? 1 : false;
+    }
+
+    const normalized = String(rawValue).trim().toLowerCase();
+    if (["true", "yes", "on"].includes(normalized)) {
+        return true;
+    }
+    if (["false", "no", "off"].includes(normalized)) {
+        return false;
+    }
+
+    const numeric = Number(normalized);
+    if (Number.isFinite(numeric)) {
+        return numeric;
+    }
+
+    return rawValue;
+};
+
+const resolveRateLimitStoreMode = () => {
+    const explicit = String(process.env.RATE_LIMIT_STORE || "").trim().toLowerCase();
+    if (explicit === "mongo") return "mongo";
+    if (explicit === "memory") return "memory";
+    return process.env.NODE_ENV === "production" ? "mongo" : "memory";
+};
+
+const rateLimitStoreMode = resolveRateLimitStoreMode();
+if (process.env.NODE_ENV === "production" && rateLimitStoreMode === "memory") {
+    console.warn("[rate-limit] Using in-memory store in production. Set RATE_LIMIT_STORE=mongo for shared limits.");
+}
+
+const buildRateLimitStore = (prefix, windowMs) => {
+    if (rateLimitStoreMode !== "mongo") {
+        return undefined;
+    }
+
+    return new MongoRateLimitStore({
+        prefix,
+        windowMs,
+        collectionName: "rate_limits"
+    });
+};
+
+const GLOBAL_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const globalRateLimitStore = buildRateLimitStore("global", GLOBAL_RATE_LIMIT_WINDOW_MS);
+const authRateLimitStore = buildRateLimitStore("auth", AUTH_RATE_LIMIT_WINDOW_MS);
+
 const allowedOrigins = String(process.env.FRONTEND_URL || "http://localhost:5173")
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
@@ -70,6 +122,8 @@ const corsOrigin = (origin, callback) => {
     return callback(new Error(`CORS origin not allowed: ${origin}`));
 };
 
+app.set("trust proxy", resolveTrustProxySetting());
+
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
 
@@ -84,19 +138,21 @@ app.use(cors({
 // ── Rate limiting ─────────────────────────────────────────────────────────
 // Global limiter – tightened; auth routes get their own tighter limiter below.
 const globalLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,   // 15 min
+    windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,   // 15 min
     max: 200,              // 200 requests per window
     standardHeaders: true,
     legacyHeaders: false,
+    ...(globalRateLimitStore ? { store: globalRateLimitStore } : {}),
     message: { success: false, message: "Too many requests, please try again later." }
 });
 app.use(globalLimiter);
 
 const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
+    windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
     max: 20,               // 20 login/register attempts per 15 min
     standardHeaders: true,
     legacyHeaders: false,
+    ...(authRateLimitStore ? { store: authRateLimitStore } : {}),
     message: { success: false, message: "Too many auth attempts, please try again later." }
 });
 

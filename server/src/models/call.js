@@ -65,6 +65,12 @@ const callSchema = new mongoose.Schema({
         index: true
     },
     
+    // Per-user soft-hide for call history.
+    hiddenFor: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User"
+    }],
+    
     // Call timeline
     initiatedAt: { type: Date, default: Date.now },
     startedAt: { type: Date }, // When first person joined
@@ -123,6 +129,7 @@ callSchema.index({ callerId: 1, createdAt: -1 });
 callSchema.index({ chatId: 1, createdAt: -1 });
 callSchema.index({ status: 1, createdAt: -1 });
 callSchema.index({ "participants.userId": 1 });
+callSchema.index({ hiddenFor: 1, createdAt: -1 });
 
 // Virtual for active participants
 callSchema.virtual("activeParticipants").get(function() {

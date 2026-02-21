@@ -105,6 +105,15 @@ const callHistoryQuerySchema = z.object({
     status: z.enum(["initiating", "ringing", "ongoing", "ended", "missed", "rejected", "failed"]).optional()
 });
 
+const activeCallQuerySchema = z.object({
+    chatId: objectId.optional()
+});
+
+const chatCallLogsQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(20)
+});
+
 const callStatsQuerySchema = z.object({
     period: z.coerce.number().int().min(1).max(365).default(30)
 });
@@ -135,6 +144,8 @@ module.exports = {
     callActionSchema,
     callFeedbackSchema,
     callHistoryQuerySchema,
+    activeCallQuerySchema,
+    chatCallLogsQuerySchema,
     callStatsQuerySchema,
     callIdParamSchema,
     chatIdParamSchema

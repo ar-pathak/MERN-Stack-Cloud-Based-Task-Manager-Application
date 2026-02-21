@@ -256,7 +256,7 @@ const taskController = {
                 });
             }
 
-            const task = await taskService.getTaskById(taskId);
+            const task = await taskService.getTaskById(taskId, req.user._id);
             return sendSuccess(res, task, "Task retrieved successfully");
         } catch (error) {
             return handleError(error, res);

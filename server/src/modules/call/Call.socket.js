@@ -39,6 +39,40 @@ function emitToMembers(io, chat, excludeUserId, event, payload) {
     });
 }
 
+const isActiveCallParticipant = (call, userId) => (
+    (call?.participants || []).some(
+        (participant) =>
+            String(participant?.userId?._id || participant?.userId) === String(userId)
+            && !participant?.leftAt
+    )
+);
+
+async function authorizeCallSignaling({ callId, senderId, targetUserId }) {
+    if (!callId || !targetUserId) {
+        return { allowed: false, reason: "Invalid signaling payload" };
+    }
+
+    const call = await Call.findById(callId)
+        .select("status callerId participants.userId participants.leftAt")
+        .lean();
+
+    if (!call || !["ringing", "ongoing", "initiating"].includes(call.status)) {
+        return { allowed: false, reason: "Call not available" };
+    }
+
+    const senderIsParticipant = isActiveCallParticipant(call, senderId);
+    if (!senderIsParticipant) {
+        return { allowed: false, reason: "Not authorized for this call" };
+    }
+
+    const targetIsParticipant = isActiveCallParticipant(call, targetUserId);
+    if (!targetIsParticipant) {
+        return { allowed: false, reason: "Target user is not in this call" };
+    }
+
+    return { allowed: true };
+}
+
 function serializeChatMembers(chat) {
     return (chat?.members || []).map((member) => ({
         _id: member._id,
@@ -559,21 +593,63 @@ module.exports = (io, socket) => {
     // ========================================================================
     // 3. WebRTC SIGNALING
     // ========================================================================
-    socket.on("call:offer", ({ callId, offer, targetUserId }) => {
-        if (targetUserId) {
+    socket.on("call:offer", async ({ callId, offer, targetUserId }) => {
+        try {
+            const authorization = await authorizeCallSignaling({
+                callId,
+                senderId: userId,
+                targetUserId
+            });
+
+            if (!authorization.allowed) {
+                socket.emit("call:error", { reason: authorization.reason || "Not authorized" });
+                return;
+            }
+
             io.to(`user:${targetUserId}`).emit("call:offer", { callId, offer, fromUserId: userId });
+        } catch (error) {
+            console.error("call:offer relay error", error);
+            socket.emit("call:error", { reason: "Failed to relay call offer" });
         }
     });
 
-    socket.on("call:answer", ({ callId, answer, targetUserId }) => {
-        if (targetUserId) {
+    socket.on("call:answer", async ({ callId, answer, targetUserId }) => {
+        try {
+            const authorization = await authorizeCallSignaling({
+                callId,
+                senderId: userId,
+                targetUserId
+            });
+
+            if (!authorization.allowed) {
+                socket.emit("call:error", { reason: authorization.reason || "Not authorized" });
+                return;
+            }
+
             io.to(`user:${targetUserId}`).emit("call:answer", { callId, answer, fromUserId: userId });
+        } catch (error) {
+            console.error("call:answer relay error", error);
+            socket.emit("call:error", { reason: "Failed to relay call answer" });
         }
     });
 
-    socket.on("call:ice-candidate", ({ callId, candidate, targetUserId }) => {
-        if (targetUserId) {
+    socket.on("call:ice-candidate", async ({ callId, candidate, targetUserId }) => {
+        try {
+            const authorization = await authorizeCallSignaling({
+                callId,
+                senderId: userId,
+                targetUserId
+            });
+
+            if (!authorization.allowed) {
+                socket.emit("call:error", { reason: authorization.reason || "Not authorized" });
+                return;
+            }
+
             io.to(`user:${targetUserId}`).emit("call:ice-candidate", { callId, candidate, fromUserId: userId });
+        } catch (error) {
+            console.error("call:ice-candidate relay error", error);
+            socket.emit("call:error", { reason: "Failed to relay ICE candidate" });
         }
     });
 

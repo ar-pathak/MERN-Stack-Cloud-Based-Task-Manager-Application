@@ -2,6 +2,16 @@ const Call = require("../../models/call");
 const Chat = require("../../models/chat");
 const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 
+const toPositiveInt = (value, { defaultValue = 1, min = 1, max = 50 } = {}) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return defaultValue;
+    return Math.min(max, Math.max(min, Math.trunc(parsed)));
+};
+
+const notHiddenForUser = (userId) => ({
+    hiddenFor: { $ne: userId }
+});
+
 module.exports = {
 
     // ========================================================================
@@ -11,8 +21,11 @@ module.exports = {
         try {
             const userId = req.user._id;
             const { page = 1, limit = 20, type, status } = req.query;
+            const safePage = toPositiveInt(page, { defaultValue: 1, min: 1, max: 10000 });
+            const safeLimit = toPositiveInt(limit, { defaultValue: 20, min: 1, max: 50 });
 
             const query = {
+                ...notHiddenForUser(userId),
                 $or: [
                     { callerId: userId },
                     { "participants.userId": userId }
@@ -34,8 +47,8 @@ module.exports = {
                 .populate("participants.userId", "name avatar")
                 .populate("chatId", "name type avatar")
                 .sort({ createdAt: -1 })
-                .skip((page - 1) * limit)
-                .limit(parseInt(limit))
+                .skip((safePage - 1) * safeLimit)
+                .limit(safeLimit)
                 .lean();
 
             // Get total count for pagination
@@ -69,11 +82,11 @@ module.exports = {
             sendSuccess(res, {
                 calls: transformedCalls,
                 pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
+                    page: safePage,
+                    limit: safeLimit,
                     total,
-                    totalPages: Math.ceil(total / limit),
-                    hasMore: page * limit < total
+                    totalPages: Math.ceil(total / safeLimit),
+                    hasMore: safePage * safeLimit < total
                 }
             });
 
@@ -215,7 +228,10 @@ module.exports = {
             const { callId } = req.params;
             const userId = req.user._id;
 
-            const call = await Call.findById(callId)
+            const call = await Call.findOne({
+                _id: callId,
+                ...notHiddenForUser(userId)
+            })
                 .populate("callerId", "name avatar email")
                 .populate("participants.userId", "name avatar email")
                 .populate("chatId", "name type avatar")
@@ -253,6 +269,7 @@ module.exports = {
             startDate.setDate(startDate.getDate() - parseInt(period));
 
             const calls = await Call.find({
+                ...notHiddenForUser(userId),
                 $or: [
                     { callerId: userId },
                     { "participants.userId": userId }
@@ -300,7 +317,10 @@ module.exports = {
             const { callId } = req.params;
             const userId = req.user._id;
 
-            const call = await Call.findById(callId);
+            const call = await Call.findOne({
+                _id: callId,
+                ...notHiddenForUser(userId)
+            });
 
             if (!call) {
                 return res.status(404).json({ error: "Call not found" });
@@ -315,9 +335,12 @@ module.exports = {
                 return res.status(403).json({ error: "Not authorized" });
             }
 
-            await Call.findByIdAndDelete(callId);
+            await Call.updateOne(
+                { _id: callId },
+                { $addToSet: { hiddenFor: userId } }
+            );
 
-            sendSuccess(res, { message: "Call deleted from history" });
+            sendSuccess(res, { message: "Call removed from your history" });
 
         } catch (error) {
             handleError(error, res);
@@ -331,17 +354,23 @@ module.exports = {
         try {
             const userId = req.user._id;
 
-            const result = await Call.deleteMany({
+            const result = await Call.updateMany({
+                ...notHiddenForUser(userId),
                 $or: [
                     { callerId: userId },
                     { "participants.userId": userId }
                 ],
                 status: { $in: ["ended", "missed", "rejected", "failed"] }
+            }, {
+                $addToSet: { hiddenFor: userId }
             });
+
+            const updatedCount = Number(result.modifiedCount || result.nModified || 0);
 
             sendSuccess(res, {
                 message: "Call history cleared",
-                deletedCount: result.deletedCount
+                updatedCount,
+                deletedCount: updatedCount
             });
 
         } catch (error) {
@@ -357,6 +386,7 @@ module.exports = {
             const userId = req.user._id;
 
             const count = await Call.countDocuments({
+                ...notHiddenForUser(userId),
                 "participants.userId": userId,
                 status: "missed",
                 callerId: { $ne: userId } // Don't count own missed calls
@@ -395,6 +425,8 @@ module.exports = {
             const { chatId } = req.params;
             const userId = req.user._id;
             const { page = 1, limit = 20 } = req.query;
+            const safePage = toPositiveInt(page, { defaultValue: 1, min: 1, max: 10000 });
+            const safeLimit = toPositiveInt(limit, { defaultValue: 20, min: 1, max: 50 });
 
             // Verify user is member of chat
             const chat = await Chat.findById(chatId);
@@ -406,23 +438,28 @@ module.exports = {
                 return res.status(403).json({ error: "Not authorized" });
             }
 
-            const calls = await Call.find({ chatId })
+            const callFilters = {
+                chatId,
+                ...notHiddenForUser(userId)
+            };
+
+            const calls = await Call.find(callFilters)
                 .populate("callerId", "name avatar")
                 .populate("participants.userId", "name avatar")
                 .sort({ createdAt: -1 })
-                .skip((page - 1) * limit)
-                .limit(parseInt(limit))
+                .skip((safePage - 1) * safeLimit)
+                .limit(safeLimit)
                 .lean();
 
-            const total = await Call.countDocuments({ chatId });
+            const total = await Call.countDocuments(callFilters);
 
             sendSuccess(res, {
                 calls,
                 pagination: {
-                    page: parseInt(page),
-                    limit: parseInt(limit),
+                    page: safePage,
+                    limit: safeLimit,
                     total,
-                    totalPages: Math.ceil(total / limit)
+                    totalPages: Math.ceil(total / safeLimit)
                 }
             });
 

@@ -2,6 +2,7 @@ const express = require('express');
 const authMiddleware = require('../../middleware/authMiddleware');
 const canCreateSubtask = require('../../middleware/canCreateSubtask');
 const canModifySubtask = require('../../middleware/canModifySubtask');
+const canViewSubtask = require('../../middleware/canViewSubtask');
 const { validateCreateSubtask, validateUpdateSubtask, validateManageAssignees } = require('./subtask.validation');
 const subtaskController = require('./subtask.controller');
 
@@ -21,12 +22,14 @@ router.post(
 // Get all subtasks for a task
 router.get(
     '/task/:taskId',
+    canViewSubtask,
     subtaskController.getSubtasksByTask
 );
 
 // Get subtask statistics
 router.get(
     '/task/:taskId/stats',
+    canViewSubtask,
     subtaskController.getSubtaskStats
 );
 
@@ -40,6 +43,7 @@ router.put(
 // Get single subtask
 router.get(
     '/:subtaskId',
+    canViewSubtask,
     subtaskController.getSubtask
 );
 

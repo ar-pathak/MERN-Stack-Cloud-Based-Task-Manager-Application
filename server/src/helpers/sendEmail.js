@@ -6,8 +6,16 @@ const inviteTemplatePath = path.join(__dirname, '../emails/inviteEmail.html');
 const resetPasswordTemplatePath = path.join(__dirname, '../emails/resetPasswordEmail.html');
 const emailVerificationTemplatePath = path.join(__dirname, '../emails/emailVerificationEmail.html');
 
+const normalizeBaseUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
+const getFirstConfiguredValue = (value) => (
+    String(value || "")
+        .split(",")
+        .map((entry) => entry.trim())
+        .find(Boolean) || ""
+);
 const getFrontendBaseUrl = () =>
-    String(process.env.FRONTEND_URL || 'http://localhost:5173').trim().replace(/\/+$/, '');
+    normalizeBaseUrl(getFirstConfiguredValue(process.env.FRONTEND_URL))
+    || "http://localhost:5173";
 
 const applyTemplateToken = (template, placeholder, value) =>
     template.replace(new RegExp(placeholder, 'g'), value);

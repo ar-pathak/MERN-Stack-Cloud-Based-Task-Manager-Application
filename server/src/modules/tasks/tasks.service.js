@@ -233,6 +233,49 @@ const resolveGlobalAssigneeBuckets = async ({
     };
 };
 
+const canUserReadTask = async (task, userId) => {
+    if (!task || !userId) {
+        return false;
+    }
+
+    const isTaskAssignee = await isUserTaskAssignee(task, userId);
+    if (isTaskAssignee) {
+        return true;
+    }
+
+    if (task.workspace) {
+        const workspaceMember = await WorkspaceMember.exists({
+            workspace: task.workspace,
+            user: userId
+        });
+
+        if (workspaceMember) {
+            return true;
+        }
+    }
+
+    if (task.project) {
+        const project = await Project.findById(task.project)
+            .select("owner members")
+            .lean();
+
+        if (project) {
+            if (String(project.owner) === String(userId)) {
+                return true;
+            }
+
+            const isProjectMember = (project.members || []).some(
+                (member) => String(member.user) === String(userId)
+            );
+            if (isProjectMember) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+};
+
 const taskService = {
     createTask: async (userId, taskData, scope = {}) => {
         const { project, workspaceId: scopedWorkspaceId } = await ensureProjectScope(
@@ -1230,7 +1273,19 @@ const taskService = {
         return query.lean().exec();
     },
 
-    getTaskById: async (taskId) => {
+    getTaskById: async (taskId, userId) => {
+        const taskAccessProbe = await Task.findById(taskId)
+            .select("createdBy assignees assigneesTeams workspace project");
+
+        if (!taskAccessProbe) {
+            throw new Error('Task not found')
+        }
+
+        const canReadTask = await canUserReadTask(taskAccessProbe, userId);
+        if (!canReadTask) {
+            throw createError("You are not allowed to access this task", 403);
+        }
+
         const task = await Task.findById(taskId)
             .populate('createdBy', 'name email')
             .populate('assignees', 'name email isOnline')
@@ -1246,9 +1301,6 @@ const taskService = {
             .lean()
             .exec();
 
-        if (!task) {
-            throw new Error('Task not found')
-        }
         return task;
     },
 

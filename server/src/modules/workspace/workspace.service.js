@@ -26,9 +26,15 @@ const createError = (message, statusCode = 400) => {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-const FRONTEND_BASE_URL = String(process.env.FRONTEND_URL || "http://localhost:5173")
-    .trim()
-    .replace(/\/+$/, "");
+const normalizeBaseUrl = (value = '') => String(value || '').trim().replace(/\/+$/, "");
+const getFirstConfiguredValue = (value = '') => (
+    String(value || '')
+        .split(',')
+        .map((entry) => entry.trim())
+        .find(Boolean) || ''
+);
+const FRONTEND_BASE_URL = normalizeBaseUrl(getFirstConfiguredValue(process.env.FRONTEND_URL))
+    || "http://localhost:5173";
 
 const normalizeEmail = (value = '') => String(value || '').trim().toLowerCase();
 

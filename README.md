@@ -111,6 +111,8 @@ npm install --prefix client
 | `COOKIE_SECURE` | No | Force secure cookies (`true`/`false`). |
 | `COOKIE_DOMAIN` | No | Cookie domain override. |
 | `COOKIE_SAME_SITE` | No | `lax`, `strict`, or `none`. |
+| `TRUST_PROXY` | No | Express trust-proxy setting (`false`, `true`, number, or proxy string). |
+| `RATE_LIMIT_STORE` | No | `memory` or `mongo` (defaults to `mongo` in production). |
 
 ### Client Environment (`client/.env`)
 
@@ -204,7 +206,7 @@ Base routes mounted in `server/src/app.js`:
 
 ## Current Gaps
 
-- No automated test suite is configured yet.
+- Test coverage is currently limited to baseline server unit tests; broader integration/e2e coverage is still pending.
 - Root monorepo scripts are not defined; `client` and `server` are run separately.
 
 ## License
