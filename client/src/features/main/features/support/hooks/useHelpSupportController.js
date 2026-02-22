@@ -13,8 +13,7 @@ import {
     getSupportTicketById,
     getSupportTickets,
     submitContactSupport,
-    submitSupportFeedback,
-    updateSupportTicketStatus
+    submitSupportFeedback
 } from "../../../../../service/support.service";
 import {
     CATEGORY_OPTIONS,
@@ -60,7 +59,6 @@ const useHelpSupportController = () => {
     const [ticketDetail, setTicketDetail] = useState(null);
     const [ticketDetailLoading, setTicketDetailLoading] = useState(false);
     const [ticketDetailError, setTicketDetailError] = useState("");
-    const [statusUpdating, setStatusUpdating] = useState(false);
     const [ticketForm, setTicketForm] = useState({ ...INITIAL_TICKET_FORM });
     const [ticketFiles, setTicketFiles] = useState([]);
     const [ticketSubmitting, setTicketSubmitting] = useState(false);
@@ -373,25 +371,6 @@ const useHelpSupportController = () => {
         }
     };
 
-    const handleUpdateTicketStatus = async (status) => {
-        if (!selectedTicketId || statusUpdating) return;
-
-        try {
-            setStatusUpdating(true);
-            await updateSupportTicketStatus(selectedTicketId, status);
-            toast.success("Ticket status updated.");
-
-            await Promise.all([
-                loadTickets({ silent: true }),
-                loadTicketDetail(selectedTicketId, { silent: true })
-            ]);
-        } catch (error) {
-            toast.error(normalizeErrorMessage(error, "Could not update ticket status."));
-        } finally {
-            setStatusUpdating(false);
-        }
-    };
-
     const handleAddComment = async (event) => {
         event.preventDefault();
         if (!selectedTicketId || commentSubmitting) return;
@@ -522,8 +501,6 @@ const useHelpSupportController = () => {
             ticketDetailLoading,
             ticketDetailError,
             ticketDetail,
-            statusUpdating,
-            handleUpdateTicketStatus,
             commentTree,
             setCommentReplyParentId,
             replyingToComment,

@@ -58,6 +58,18 @@ const normalizeAttachments = (attachments = []) => {
         .slice(0, 5);
 };
 
+const isVisibleCommentForRequester = (comment) =>
+    Boolean(comment) &&
+    comment.visibleToRequester !== false &&
+    comment.internalNote !== true;
+
+const normalizeRequesterComments = (comments = []) => {
+    if (!Array.isArray(comments)) return [];
+    return comments
+        .filter(isVisibleCommentForRequester)
+        .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+};
+
 const buildCategorySummary = (rows = []) => {
     const rowMap = new Map(
         rows.map((row) => [String(row?._id || ""), Number(row?.count || 0)])
@@ -333,7 +345,7 @@ const listTickets = async (userId, query = {}) => {
     ]);
 
     const summaries = tickets.map((ticket) => {
-        const comments = Array.isArray(ticket.comments) ? ticket.comments : [];
+        const comments = normalizeRequesterComments(ticket.comments);
         const attachments = Array.isArray(ticket.attachments) ? ticket.attachments : [];
         const lastComment = comments.length ? comments[comments.length - 1] : null;
 
@@ -383,9 +395,7 @@ const getTicketById = async (userId, ticketId) => {
     }
 
     const comments = Array.isArray(ticket.comments)
-        ? [...ticket.comments].sort(
-            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        )
+        ? normalizeRequesterComments(ticket.comments)
         : [];
 
     return {
@@ -448,17 +458,17 @@ const addTicketComment = async (user, ticketId, payload = {}) => {
     const now = new Date();
     ticket.comments.push({
         author: requesterId,
+        authorModel: "User",
+        authorRole: "user",
         authorName: String(user?.name || user?.username || user?.email || "User").trim(),
         body: String(payload.body || "").trim(),
         attachments: normalizeAttachments(payload.attachments),
         parentCommentId: parentCommentId || null,
+        visibleToRequester: true,
+        internalNote: false,
         createdAt: now,
         updatedAt: now
     });
-
-    if (ticket.status === "resolved" || ticket.status === "closed") {
-        ticket.status = "in_progress";
-    }
 
     ticket.lastRepliedAt = now;
     await ticket.save();

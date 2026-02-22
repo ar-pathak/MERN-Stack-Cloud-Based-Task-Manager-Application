@@ -20,7 +20,7 @@ const getFrontendBaseUrl = () =>
 const applyTemplateToken = (template, placeholder, value) =>
     template.replace(new RegExp(placeholder, 'g'), value);
 
-async function sendEmail({ to, subject, token, type = 'invite', html }) {
+async function sendEmail({ to, subject, token, type = 'invite', html, actionUrl }) {
     let htmlContent = html;
 
     if (!htmlContent) {
@@ -32,15 +32,15 @@ async function sendEmail({ to, subject, token, type = 'invite', html }) {
 
         if (type === 'reset-password') {
             const template = fs.readFileSync(resetPasswordTemplatePath, 'utf-8');
-            const resetLink = `${frontendBaseUrl}/home/auth/reset-password/${token}`;
+            const resetLink = String(actionUrl || `${frontendBaseUrl}/home/auth/reset-password/${token}`).trim();
             htmlContent = applyTemplateToken(template, '{{RESET_LINK}}', resetLink);
         } else if (type === 'email-verification') {
             const template = fs.readFileSync(emailVerificationTemplatePath, 'utf-8');
-            const verificationLink = `${frontendBaseUrl}/email-verification/${token}`;
+            const verificationLink = String(actionUrl || `${frontendBaseUrl}/email-verification/${token}`).trim();
             htmlContent = applyTemplateToken(template, '{{VERIFY_LINK}}', verificationLink);
         } else {
             const template = fs.readFileSync(inviteTemplatePath, 'utf-8');
-            const inviteLink = `${frontendBaseUrl}/invites/accept/${token}`;
+            const inviteLink = String(actionUrl || `${frontendBaseUrl}/invites/accept/${token}`).trim();
             htmlContent = applyTemplateToken(template, '{{INVITE_LINK}}', inviteLink);
         }
     }

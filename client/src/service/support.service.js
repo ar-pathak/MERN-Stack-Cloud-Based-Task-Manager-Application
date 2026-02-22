@@ -62,11 +62,6 @@ export const getSupportTicketById = async (ticketId) => {
     return response.data?.data || response.data || null;
 };
 
-export const updateSupportTicketStatus = async (ticketId, status) => {
-    const response = await api.patch(`${BASE}/tickets/${ticketId}/status`, { status });
-    return response.data?.data || response.data || null;
-};
-
 export const addSupportTicketComment = async (ticketId, payload) => {
     const response = await api.post(`${BASE}/tickets/${ticketId}/comments`, payload);
     return response.data?.data || response.data || null;

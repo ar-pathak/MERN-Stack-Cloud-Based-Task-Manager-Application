@@ -1,9 +1,26 @@
 export const toIdString = (value) => String(value?._id || value?.id || value || "");
 
-export const normalizeErrorMessage = (error, fallback) =>
-    error?.response?.data?.message ||
-    error?.message ||
-    fallback;
+export const normalizeErrorMessage = (error, fallback) => {
+    const responseData = error?.response?.data || {};
+    const validationErrors = Array.isArray(responseData?.errors)
+        ? responseData.errors
+        : [];
+
+    if (validationErrors.length > 0) {
+        const firstError = validationErrors[0] || {};
+        const field = String(firstError?.field || "").trim();
+        const message = String(firstError?.message || "").trim();
+
+        if (field && message) {
+            return `${field}: ${message}`;
+        }
+        if (message) {
+            return message;
+        }
+    }
+
+    return responseData?.message || error?.message || fallback;
+};
 
 export const formatRelativeTime = (value) => {
     if (!value) return "";

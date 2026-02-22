@@ -9,7 +9,10 @@ export const TicketCommentNode = ({ node, onReply }) => {
     const depth = Number(node?.depth || 0);
     const marginLeft = Math.min(depth, 4) * 14;
     const author = node?.author || {};
-    const authorName = author?.name || node?.authorName || author?.username || "User";
+    const isAdminReply = node?.authorRole === "admin" || node?.authorModel === "AdminAccount";
+    const authorName = isAdminReply
+        ? "Aurora Team"
+        : author?.name || node?.authorName || author?.username || "User";
     const attachments = Array.isArray(node?.attachments) ? node.attachments : [];
 
     return (
@@ -20,6 +23,11 @@ export const TicketCommentNode = ({ node, onReply }) => {
                         <p className="truncate text-xs font-semibold text-slate-200">
                             {authorName}
                         </p>
+                        {isAdminReply ? (
+                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.12em] text-sky-300">
+                                Support Team
+                            </p>
+                        ) : null}
                         <p className="mt-0.5 text-[11px] text-slate-500">
                             {formatDateTime(node?.createdAt)}
                         </p>

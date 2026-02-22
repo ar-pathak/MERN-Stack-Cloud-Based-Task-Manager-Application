@@ -11,15 +11,25 @@ const validate = (schema, source = "body") => (req, res, next) => {
     const result = schema.safeParse(data);
 
     if (!result.success) {
-        const errors = result.error.errors.map(err => ({
-            field: err.path.join('.'),
-            message: err.message
+        const rawIssues = Array.isArray(result.error?.issues)
+            ? result.error.issues
+            : Array.isArray(result.error?.errors)
+                ? result.error.errors
+                : [];
+
+        const errors = rawIssues.map((issue) => ({
+            field: Array.isArray(issue.path) && issue.path.length
+                ? issue.path.join(".")
+                : source,
+            message: issue.message
         }));
 
         return res.status(400).json({
             success: false,
             message: "Validation Error",
-            errors
+            errors: errors.length > 0
+                ? errors
+                : [{ field: source, message: "Invalid request data" }]
         });
     }
 

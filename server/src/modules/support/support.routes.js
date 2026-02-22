@@ -42,13 +42,6 @@ router.get(
     controller.getTicketById
 );
 
-router.patch(
-    "/tickets/:ticketId/status",
-    validate(validation.ticketParamSchema, "params"),
-    validate(validation.updateTicketStatusSchema),
-    controller.updateTicketStatus
-);
-
 router.post(
     "/tickets/:ticketId/comments",
     validate(validation.ticketParamSchema, "params"),

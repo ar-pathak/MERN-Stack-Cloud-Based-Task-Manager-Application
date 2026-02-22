@@ -11,6 +11,7 @@ const SUPPORT_CATEGORIES = [
 const TICKET_PRIORITIES = ["low", "medium", "high", "urgent"];
 const TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"];
 const TICKET_SOURCES = ["ticket", "contact"];
+const COMMENT_AUTHOR_ROLES = ["user", "admin", "system"];
 
 const attachmentSchema = new mongoose.Schema(
     {
@@ -46,8 +47,19 @@ const commentSchema = new mongoose.Schema(
     {
         author: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "User",
+            refPath: "authorModel",
             required: true
+        },
+        authorModel: {
+            type: String,
+            enum: ["User", "AdminAccount"],
+            default: "User"
+        },
+        authorRole: {
+            type: String,
+            enum: COMMENT_AUTHOR_ROLES,
+            default: "user",
+            index: true
         },
         authorName: {
             type: String,
@@ -68,6 +80,14 @@ const commentSchema = new mongoose.Schema(
         parentCommentId: {
             type: mongoose.Schema.Types.ObjectId,
             default: null
+        },
+        visibleToRequester: {
+            type: Boolean,
+            default: true
+        },
+        internalNote: {
+            type: Boolean,
+            default: false
         },
         createdAt: {
             type: Date,
@@ -98,6 +118,26 @@ const supportTicketSchema = new mongoose.Schema(
             index: true
         },
         requesterSnapshot: {
+            name: {
+                type: String,
+                trim: true,
+                maxlength: 120,
+                default: ""
+            },
+            email: {
+                type: String,
+                trim: true,
+                maxlength: 180,
+                default: ""
+            }
+        },
+        assignee: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "AdminAccount",
+            default: null,
+            index: true
+        },
+        assigneeSnapshot: {
             name: {
                 type: String,
                 trim: true,
@@ -162,6 +202,10 @@ const supportTicketSchema = new mongoose.Schema(
             type: Date,
             default: null
         },
+        lastAdminReplyAt: {
+            type: Date,
+            default: null
+        },
         closedAt: {
             type: Date,
             default: null
@@ -174,8 +218,11 @@ supportTicketSchema.index({ requester: 1, status: 1, updatedAt: -1 });
 supportTicketSchema.index({ requester: 1, category: 1, updatedAt: -1 });
 supportTicketSchema.index({ requester: 1, priority: 1, updatedAt: -1 });
 supportTicketSchema.index({ requester: 1, ticketNumber: 1 });
+supportTicketSchema.index({ status: 1, priority: 1, updatedAt: -1 });
+supportTicketSchema.index({ assignee: 1, status: 1, updatedAt: -1 });
 
-supportTicketSchema.pre("save", function(next) {
+// Mongoose 9 executes this as promise middleware, so avoid callback `next`.
+supportTicketSchema.pre("save", function() {
     if (this.isModified("status")) {
         if (this.status === "closed") {
             this.closedAt = new Date();
@@ -187,9 +234,12 @@ supportTicketSchema.pre("save", function(next) {
     if (Array.isArray(this.comments) && this.comments.length > 0) {
         const lastComment = this.comments[this.comments.length - 1];
         this.lastRepliedAt = lastComment.createdAt || new Date();
-    }
 
-    next();
+        const lastAdminComment = [...this.comments]
+            .reverse()
+            .find((comment) => comment?.authorRole === "admin");
+        this.lastAdminReplyAt = lastAdminComment?.createdAt || this.lastAdminReplyAt || null;
+    }
 });
 
 module.exports = mongoose.model("SupportTicket", supportTicketSchema);

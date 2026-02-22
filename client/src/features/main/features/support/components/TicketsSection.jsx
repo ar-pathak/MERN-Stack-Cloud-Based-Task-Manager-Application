@@ -5,8 +5,7 @@ import {
     PRIORITY_LABEL_MAP,
     PRIORITY_OPTIONS,
     STATUS_CLASS_MAP,
-    STATUS_LABEL_MAP,
-    STATUS_OPTIONS
+    STATUS_LABEL_MAP
 } from "../constants/support.constants";
 import {
     formatDateTime,
@@ -33,8 +32,6 @@ const TicketsSection = ({
     ticketDetailLoading,
     ticketDetailError,
     ticketDetail,
-    statusUpdating,
-    handleUpdateTicketStatus,
     commentTree,
     setCommentReplyParentId,
     replyingToComment,
@@ -64,6 +61,8 @@ const TicketsSection = ({
                             }))
                         }
                         placeholder="Subject"
+                        minLength={3}
+                        maxLength={200}
                         className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                         required
                     />
@@ -114,6 +113,8 @@ const TicketsSection = ({
                         }
                         rows={5}
                         placeholder="Describe the issue clearly and include steps to reproduce."
+                        minLength={10}
+                        maxLength={5000}
                         className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                         required
                     />
@@ -293,22 +294,8 @@ const TicketsSection = ({
                             </div>
                         </div>
 
-                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem]">
-                            <div className="rounded-xl border border-slate-800/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-500">
-                                Last update: {formatDateTime(ticketDetail.updatedAt)}
-                            </div>
-                            <select
-                                value={ticketDetail.status || "open"}
-                                disabled={statusUpdating}
-                                onChange={(event) => handleUpdateTicketStatus(event.target.value)}
-                                className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300 outline-none focus:border-sky-500/60 disabled:opacity-60"
-                            >
-                                {STATUS_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
+                        <div className="rounded-xl border border-slate-800/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-500">
+                            Last update: {formatDateTime(ticketDetail.updatedAt)}
                         </div>
 
                         <div className="space-y-2">

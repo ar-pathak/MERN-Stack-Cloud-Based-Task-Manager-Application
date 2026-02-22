@@ -30,6 +30,8 @@ const uploadRoutes = require("./modules/upload/upload.routes");
 const callsRoutes = require("./modules/call/call.routes");
 const notificationRoutes = require("./modules/notification/notification.routes");
 const supportRoutes = require("./modules/support/support.routes");
+const adminAuthRoutes = require("./modules/admin/adminAuth.routes");
+const adminSupportRoutes = require("./modules/admin/adminSupport.routes");
 const postService = require("./modules/posts/post.service");
 
 // Socket handler + auth middleware for Socket.IO
@@ -172,6 +174,8 @@ app.get("/health", (req, res) => {
 // API Routes
 // ---------------------------------------------------------------------------
 app.use("/api/auth", authLimiter, authRoutes);   // auth gets its own limiter
+app.use("/api/admin/auth", authLimiter, adminAuthRoutes);
+app.use("/api/admin/support", adminSupportRoutes);
 app.use("/api/workspace", workspaceRoutes);
 app.use("/api/teams", teamsRoutes);
 app.use("/api/projects", projectsRoutes);

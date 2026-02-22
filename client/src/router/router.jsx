@@ -1,10 +1,12 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, Navigate } from "react-router";
 import { lazy, Suspense } from "react";
 import App from "../App";
 import LoadingPage from "../common/components/LoadingPage";
 import ErrorPage from "../common/components/ErrorPage";
 import ProtectedRoute from "./ProtectedRoute";
 import PublicRoute from "./PublicRoute";
+import AdminProtectedRoute from "../features/admin/components/AdminProtectedRoute";
+import AdminPublicRoute from "../features/admin/components/AdminPublicRoute";
 
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
 const OAuthCallbackPage = lazy(() => import("../features/authentication/pages/OAuthCallbackPage"));
@@ -23,6 +25,11 @@ const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"))
 const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"));
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"));
 const WorkspaceInviteAcceptPage = lazy(() => import("../features/workspace/WorkspaceInviteAcceptPage.jsx"));
+const AdminApp = lazy(() => import("../features/admin/AdminApp.jsx"));
+const AdminAuthPage = lazy(() => import("../features/admin/pages/AdminAuthPage.jsx"));
+const AdminVerifyEmailPage = lazy(() => import("../features/admin/pages/AdminVerifyEmailPage.jsx"));
+const AdminResetPasswordPage = lazy(() => import("../features/admin/pages/AdminResetPasswordPage.jsx"));
+const AdminSupportPanelPage = lazy(() => import("../features/admin/pages/AdminSupportPanelPage.jsx"));
 
 const withSuspense = (Component) => {
   const ResolvedComponent = Component;
@@ -105,6 +112,43 @@ const router = createBrowserRouter([
           {
             path: "post/:id",
             element: withSuspense(PostDetailPage),
+          },
+        ],
+      },
+    ],
+  },
+  {
+    path: "/admin",
+    element: withSuspense(AdminApp),
+    errorElement: <ErrorPage />,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/admin/panel" replace />,
+      },
+      {
+        path: "verify-email/:token",
+        element: withSuspense(AdminVerifyEmailPage),
+      },
+      {
+        element: <AdminPublicRoute />,
+        children: [
+          {
+            path: "auth",
+            element: withSuspense(AdminAuthPage),
+          },
+          {
+            path: "auth/reset-password/:token",
+            element: withSuspense(AdminResetPasswordPage),
+          },
+        ],
+      },
+      {
+        element: <AdminProtectedRoute />,
+        children: [
+          {
+            path: "panel",
+            element: withSuspense(AdminSupportPanelPage),
           },
         ],
       },

@@ -39,6 +39,8 @@ const ContactFeedbackSection = ({
                                 }))
                             }
                             placeholder="Name"
+                            minLength={2}
+                            maxLength={120}
                             className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                             required
                         />
@@ -52,6 +54,7 @@ const ContactFeedbackSection = ({
                                 }))
                             }
                             placeholder="Email"
+                            maxLength={180}
                             className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                             required
                         />
@@ -67,6 +70,8 @@ const ContactFeedbackSection = ({
                         }
                         rows={5}
                         placeholder="How can we help?"
+                        minLength={10}
+                        maxLength={5000}
                         className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                         required
                     />
@@ -131,6 +136,7 @@ const ContactFeedbackSection = ({
                             }))
                         }
                         placeholder="Title (optional)"
+                        maxLength={140}
                         className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                     />
 
@@ -144,6 +150,8 @@ const ContactFeedbackSection = ({
                         }
                         rows={4}
                         placeholder="Share your feature idea or bug details."
+                        minLength={10}
+                        maxLength={4000}
                         className="w-full rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-200 outline-none focus:border-sky-500/60"
                         required
                     />

@@ -44,14 +44,19 @@ const sendError = (res, message = 'An error occurred', statusCode = 400, errors 
  * @param {Response} res - Express response object
  */
 const handleError = (error, res) => {
+    // Handle validation errors (Zod)
+    if (error.name === 'ZodError') {
+        const issues = Array.isArray(error?.issues)
+            ? error.issues
+            : Array.isArray(error?.errors)
+                ? error.errors
+                : null;
+        return sendError(res, 'Validation error', 400, issues);
+    }
+
     const statusCode = Number(error?.statusCode || error?.status || 500);
     if (statusCode >= 500 || !Number.isFinite(statusCode)) {
         console.error('Controller error:', error);
-    }
-
-    // Handle validation errors (Zod)
-    if (error.name === 'ZodError') {
-        return sendError(res, 'Validation error', 400, error.errors);
     }
 
     // Handle MongoDB errors

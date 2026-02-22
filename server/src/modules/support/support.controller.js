@@ -56,19 +56,6 @@ module.exports = {
         }
     },
 
-    updateTicketStatus: async (req, res) => {
-        try {
-            const result = await supportService.updateTicketStatus(
-                req.user._id,
-                req.params.ticketId,
-                req.body.status
-            );
-            return sendSuccess(res, result, "Ticket status updated");
-        } catch (error) {
-            return handleError(error, res);
-        }
-    },
-
     addTicketComment: async (req, res) => {
         try {
             const result = await supportService.addTicketComment(
