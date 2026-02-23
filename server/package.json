@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "test:unit": "node --test \"test/*.test.js\"",
+    "test:integration": "node --test \"test/integration/**/*.test.js\"",
     "test": "node --test \"test/**/*.test.js\"",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js"
