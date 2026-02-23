@@ -49,11 +49,6 @@ const SCHEDULED_POST_PUBLISH_INTERVAL_MS = 30 * 1000;
 let scheduledPostPublishTimer = null;
 
 const requiredEnvVars = ["MONGO_URL", "JWT_SECRET", "REFRESH_SECRET"];
-const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
-if (missingEnvVars.length > 0) {
-    console.error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
-    process.exit(1);
-}
 
 const resolveTrustProxySetting = () => {
     const rawValue = process.env.TRUST_PROXY;
@@ -317,23 +312,51 @@ const startScheduledPostPublisher = () => {
     }
 };
 
-connectDB()
-    .then(() => {
-        startScheduledPostPublisher();
+const assertRequiredEnvVars = () => {
+    const missingEnvVars = requiredEnvVars.filter((key) => !process.env[key]);
+    if (missingEnvVars.length > 0) {
+        throw new Error(`Missing required environment variables: ${missingEnvVars.join(", ")}`);
+    }
+};
 
-        httpServer.listen(port, () => {
-            console.log("✅  DB connected successfully");
-            console.log(`🚀  Server listening on port ${port}`);
-            console.log(`🌍  Environment: ${process.env.NODE_ENV || "development"}`);
-        });
-    })
-    .catch((err) => {
-        console.error("❌  MongoDB connection ERROR:", err);
+const startServer = async () => {
+    assertRequiredEnvVars();
+    await connectDB();
+    startScheduledPostPublisher();
+
+    await new Promise((resolve, reject) => {
+        const handleError = (error) => {
+            httpServer.off("listening", handleListening);
+            reject(error);
+        };
+
+        const handleListening = () => {
+            httpServer.off("error", handleError);
+            resolve();
+        };
+
+        httpServer.once("error", handleError);
+        httpServer.once("listening", handleListening);
+        httpServer.listen(port);
+    });
+
+    console.log("DB connected successfully");
+    console.log(`Server listening on port ${port}`);
+    console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+
+    return { app, httpServer, io };
+};
+
+if (require.main === module) {
+    startServer().catch((err) => {
+        console.error("MongoDB connection ERROR:", err);
         process.exit(1);
     });
+}
 
 // ---------------------------------------------------------------------------
 // Export  –  needed for tests and for any external tooling that references the
 // Express app or the HTTP / Socket.IO servers.
 // ---------------------------------------------------------------------------
-module.exports = { app, httpServer, io };
+module.exports = { app, httpServer, io, startServer };
+

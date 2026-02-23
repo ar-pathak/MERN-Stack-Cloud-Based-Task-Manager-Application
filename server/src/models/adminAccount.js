@@ -85,7 +85,6 @@ const adminAccountSchema = new mongoose.Schema(
     { timestamps: true }
 );
 
-adminAccountSchema.index({ email: 1 }, { unique: true });
 adminAccountSchema.index({ role: 1, accountStatus: 1 });
 
 adminAccountSchema.methods.toSafeJSON = function toSafeJSON() {
