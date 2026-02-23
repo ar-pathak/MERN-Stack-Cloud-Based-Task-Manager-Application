@@ -55,6 +55,39 @@ const resetEmailMock = () => {
 
 const sha256 = (value) => crypto.createHash("sha256").update(String(value || "")).digest("hex");
 
+const getSetCookieHeaders = (response) => {
+    if (typeof response.headers.getSetCookie === "function") {
+        return response.headers.getSetCookie();
+    }
+
+    const setCookieHeader = response.headers.get("set-cookie");
+    return setCookieHeader ? [setCookieHeader] : [];
+};
+
+const parseCookieJar = (setCookieHeaders) => {
+    const jar = {};
+
+    for (const cookieLine of setCookieHeaders) {
+        const firstSegment = String(cookieLine || "").split(";")[0].trim();
+        if (!firstSegment) continue;
+
+        const separatorIndex = firstSegment.indexOf("=");
+        if (separatorIndex === -1) continue;
+
+        const name = firstSegment.slice(0, separatorIndex).trim();
+        const value = firstSegment.slice(separatorIndex + 1).trim();
+        if (name) {
+            jar[name] = value;
+        }
+    }
+
+    return jar;
+};
+
+const toCookieHeader = (jar) => Object.entries(jar)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+
 const requestJson = async (route, options = {}) => {
     const response = await fetch(`${baseUrl}${route}`, options);
     const body = await response.json();
@@ -291,4 +324,72 @@ testWithDb("reset-password with valid token updates password and invalidates ref
 
     assert.equal(loginWithNewPassword.response.status, 200);
     assert.equal(loginWithNewPassword.body.success, true);
+});
+
+testWithDb("send-verification and verify-email success path marks account verified", async () => {
+    resetEmailMock();
+    const payload = buildUniqueAuthPayload();
+    const signup = await signupUser(payload);
+    const signupCookies = parseCookieJar(getSetCookieHeaders(signup.response));
+
+    assert.ok(signupCookies.accessToken, "signup should set accessToken cookie");
+
+    const sendVerification = await requestJson("/api/auth/send-verification", {
+        method: "POST",
+        headers: {
+            Cookie: toCookieHeader(signupCookies)
+        }
+    });
+
+    assert.equal(sendVerification.response.status, 200);
+    assert.equal(sendVerification.body.success, true);
+    assert.equal(sendVerification.body.message, "Verification email sent successfully.");
+    assert.equal(emailMockState.calls.length, 1);
+
+    const verificationMail = emailMockState.calls[0];
+    assert.equal(verificationMail.to, payload.email.toLowerCase());
+    assert.equal(verificationMail.type, "email-verification");
+    assert.match(String(verificationMail.token || ""), /^[a-f0-9]{64}$/i);
+
+    const userBeforeVerification = await User.findById(signup.userId)
+        .select("+emailVerificationToken +emailVerificationExpires emailVerified")
+        .lean();
+
+    assert.equal(userBeforeVerification?.emailVerified, false);
+    assert.equal(userBeforeVerification?.emailVerificationToken, sha256(verificationMail.token));
+    assert.ok(new Date(userBeforeVerification?.emailVerificationExpires).getTime() > Date.now());
+
+    const verifyEmail = await requestJson("/api/auth/verify-email", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            token: verificationMail.token
+        })
+    });
+
+    assert.equal(verifyEmail.response.status, 200);
+    assert.equal(verifyEmail.body.success, true);
+    assert.equal(verifyEmail.body.message, "Email verified successfully.");
+
+    const userAfterVerification = await User.findById(signup.userId)
+        .select("+emailVerificationToken +emailVerificationExpires emailVerified")
+        .lean();
+
+    assert.equal(userAfterVerification?.emailVerified, true);
+    assert.equal(userAfterVerification?.emailVerificationToken, undefined);
+    assert.equal(userAfterVerification?.emailVerificationExpires, undefined);
+
+    const alreadyVerified = await requestJson("/api/auth/send-verification", {
+        method: "POST",
+        headers: {
+            Cookie: toCookieHeader(signupCookies)
+        }
+    });
+
+    assert.equal(alreadyVerified.response.status, 200);
+    assert.equal(alreadyVerified.body.success, true);
+    assert.equal(alreadyVerified.body.message, "Email is already verified.");
+    assert.equal(emailMockState.calls.length, 1);
 });

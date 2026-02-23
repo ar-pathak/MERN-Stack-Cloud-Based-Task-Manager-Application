@@ -3,6 +3,11 @@ const Chat = require("../../models/chat");
 const Message = require("../../models/message");
 const { createNotifications } = require("../notification/notification.service");
 
+const parsedCallRingTimeoutMs = Number.parseInt(process.env.CALL_RING_TIMEOUT_MS || "60000", 10);
+const CALL_RING_TIMEOUT_MS = Number.isFinite(parsedCallRingTimeoutMs) && parsedCallRingTimeoutMs > 0
+    ? parsedCallRingTimeoutMs
+    : 60000;
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -105,6 +110,16 @@ function emitToAllMembers(io, chat, event, payload) {
     chat.members.forEach(member => {
         io.to(`user:${member._id}`).emit(event, payload);
     });
+}
+
+function isIgnorableCallMutationError(error) {
+    const name = String(error?.name || "");
+    const message = String(error?.message || "").toLowerCase();
+    return (
+        name === "VersionError"
+        || name === "MongoNotConnectedError"
+        || message.includes("no matching document found for id")
+    );
 }
 
 async function emitSystemMessageToChatMembers(io, chat, senderId, messageId) {
@@ -356,18 +371,28 @@ module.exports = (io, socket) => {
             });
 
             // Timeout Logic
-            setTimeout(async () => {
-                const call = await Call.findById(newCall._id);
-                if (call && call.status === "ringing") {
-                    // Only expire if no one else joined
-                    if (call.participants.length <= 1) {
-                         call.status = "missed";
-                         call.endedAt = new Date();
-                         await call.save();
-                         await emitCallEnded(io, call, "timeout");
+            const ringTimeout = setTimeout(async () => {
+                try {
+                    const call = await Call.findById(newCall._id);
+                    if (call && call.status === "ringing") {
+                        // Only expire if no one else joined
+                        if (call.participants.length <= 1) {
+                            call.status = "missed";
+                            call.endedAt = new Date();
+                            await call.save();
+                            await emitCallEnded(io, call, "timeout");
+                        }
+                    }
+                } catch (timeoutError) {
+                    if (!isIgnorableCallMutationError(timeoutError)) {
+                        console.error("call:start timeout error", timeoutError);
                     }
                 }
-            }, 60000);
+            }, CALL_RING_TIMEOUT_MS);
+
+            if (typeof ringTimeout.unref === "function") {
+                ringTimeout.unref();
+            }
 
         } catch (error) {
             console.error("call:start error", error);
@@ -693,17 +718,29 @@ module.exports = (io, socket) => {
     });
 
     socket.on("disconnect", async () => {
-        const activeCalls = await Call.find({ "participants.userId": userId, status: { $in: ["ringing", "ongoing"] } });
-        for (const call of activeCalls) {
-            await call.removeParticipant(userId);
-            io.to(`call:${call._id}`).emit("call:participant-left", { callId: call._id, userId });
+        try {
+            const activeCalls = await Call.find({ "participants.userId": userId, status: { $in: ["ringing", "ongoing"] } });
+            for (const call of activeCalls) {
+                try {
+                    await call.removeParticipant(userId);
+                    io.to(`call:${call._id}`).emit("call:participant-left", { callId: call._id, userId });
 
-            const active = call.participants.filter(p => !p.leftAt);
-            if (active.length === 0) {
-                call.status = "ended";
-                call.endedAt = new Date();
-                await call.save();
-                await emitCallEnded(io, call, "all_left", userId);
+                    const active = call.participants.filter(p => !p.leftAt);
+                    if (active.length === 0) {
+                        call.status = "ended";
+                        call.endedAt = new Date();
+                        await call.save();
+                        await emitCallEnded(io, call, "all_left", userId);
+                    }
+                } catch (callMutationError) {
+                    if (!isIgnorableCallMutationError(callMutationError)) {
+                        console.error("call:disconnect participant cleanup error", callMutationError);
+                    }
+                }
+            }
+        } catch (disconnectError) {
+            if (!isIgnorableCallMutationError(disconnectError)) {
+                console.error("call:disconnect error", disconnectError);
             }
         }
     });
