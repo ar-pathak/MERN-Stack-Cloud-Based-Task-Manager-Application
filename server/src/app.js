@@ -79,6 +79,14 @@ const resolveRateLimitStoreMode = () => {
     return process.env.NODE_ENV === "production" ? "mongo" : "memory";
 };
 
+const resolveRateLimitMax = (envKey, fallback) => {
+    const parsedValue = Number.parseInt(process.env[envKey], 10);
+    if (Number.isFinite(parsedValue) && parsedValue > 0) {
+        return parsedValue;
+    }
+    return fallback;
+};
+
 const rateLimitStoreMode = resolveRateLimitStoreMode();
 if (process.env.NODE_ENV === "production" && rateLimitStoreMode === "memory") {
     console.warn("[rate-limit] Using in-memory store in production. Set RATE_LIMIT_STORE=mongo for shared limits.");
@@ -98,6 +106,8 @@ const buildRateLimitStore = (prefix, windowMs) => {
 
 const GLOBAL_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const GLOBAL_RATE_LIMIT_MAX = resolveRateLimitMax("GLOBAL_RATE_LIMIT_MAX", 200);
+const AUTH_RATE_LIMIT_MAX = resolveRateLimitMax("AUTH_RATE_LIMIT_MAX", 20);
 const globalRateLimitStore = buildRateLimitStore("global", GLOBAL_RATE_LIMIT_WINDOW_MS);
 const authRateLimitStore = buildRateLimitStore("auth", AUTH_RATE_LIMIT_WINDOW_MS);
 
@@ -136,7 +146,7 @@ app.use(cors({
 // Global limiter – tightened; auth routes get their own tighter limiter below.
 const globalLimiter = rateLimit({
     windowMs: GLOBAL_RATE_LIMIT_WINDOW_MS,   // 15 min
-    max: 200,              // 200 requests per window
+    max: GLOBAL_RATE_LIMIT_MAX,
     standardHeaders: true,
     legacyHeaders: false,
     ...(globalRateLimitStore ? { store: globalRateLimitStore } : {}),
@@ -146,7 +156,7 @@ app.use(globalLimiter);
 
 const authLimiter = rateLimit({
     windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
-    max: 20,               // 20 login/register attempts per 15 min
+    max: AUTH_RATE_LIMIT_MAX,
     standardHeaders: true,
     legacyHeaders: false,
     ...(authRateLimitStore ? { store: authRateLimitStore } : {}),

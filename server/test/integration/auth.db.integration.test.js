@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const { after, before, test } = require("node:test");
 const path = require("node:path");
 const mongoose = require("mongoose");
+const jwt = require("jsonwebtoken");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -10,6 +11,8 @@ process.env.NODE_ENV = process.env.NODE_ENV || "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "integration-jwt-secret";
 process.env.REFRESH_SECRET = process.env.REFRESH_SECRET || "integration-refresh-secret";
 process.env.RATE_LIMIT_STORE = "memory";
+process.env.GLOBAL_RATE_LIMIT_MAX = process.env.GLOBAL_RATE_LIMIT_MAX || "1000";
+process.env.AUTH_RATE_LIMIT_MAX = process.env.AUTH_RATE_LIMIT_MAX || "1000";
 
 const connectDB = require("../../src/config/database");
 const User = require("../../src/models/user");
@@ -64,6 +67,62 @@ const requestJson = async (route, options = {}) => {
     return { response, body };
 };
 
+const buildUniqueAuthPayload = () => {
+    const uniqueSuffix = `${Date.now()}-${crypto.randomInt(100000, 999999)}`;
+    return {
+        name: "Integration User",
+        email: `integration.${uniqueSuffix}@example.com`,
+        password: "Str0ng@Pass1"
+    };
+};
+
+const signupUser = async (payload) => {
+    const signup = await requestJson("/api/auth/signup", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+    });
+
+    assert.equal(signup.response.status, 201);
+    assert.equal(signup.body.success, true);
+
+    const createdUserId = signup.body.data?.user?.id;
+    assert.ok(createdUserId, "signup should return created user id");
+
+    createdEmails.add(String(payload.email || "").toLowerCase());
+    createdUserIds.add(createdUserId);
+
+    return {
+        response: signup.response,
+        body: signup.body,
+        userId: createdUserId
+    };
+};
+
+const createSocialOnlyUser = async () => {
+    const uniqueSuffix = `${Date.now()}-${crypto.randomInt(100000, 999999)}`;
+    const email = `oauth.${uniqueSuffix}@example.com`;
+    const username = `oauth${crypto.randomInt(100000, 999999)}`;
+
+    const user = await User.create({
+        name: "OAuth User",
+        email,
+        username,
+        googleId: `google-${uniqueSuffix}`,
+        accountStatus: "active"
+    });
+
+    createdEmails.add(email.toLowerCase());
+    createdUserIds.add(String(user._id));
+
+    return {
+        userId: String(user._id),
+        email
+    };
+};
+
 before(async () => {
     if (!hasMongoUrl) return;
 
@@ -106,28 +165,13 @@ after(async () => {
 });
 
 testWithDb("signup -> login -> refresh -> logout rotates and clears refresh tokens", async () => {
-    const uniqueSuffix = `${Date.now()}-${crypto.randomInt(100000, 999999)}`;
-    const email = `integration.${uniqueSuffix}@example.com`;
-    const password = "Str0ng@Pass1";
-    const name = "Integration User";
+    const payload = buildUniqueAuthPayload();
+    const email = payload.email;
+    const password = payload.password;
 
-    createdEmails.add(email.toLowerCase());
-
-    const signup = await requestJson("/api/auth/signup", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ name, email, password })
-    });
-
-    assert.equal(signup.response.status, 201);
-    assert.equal(signup.body.success, true);
+    const signup = await signupUser(payload);
     assert.equal(signup.body.data?.user?.email, email.toLowerCase());
-
-    const createdUserId = signup.body.data?.user?.id;
-    assert.ok(createdUserId, "signup should return created user id");
-    createdUserIds.add(createdUserId);
+    const createdUserId = signup.userId;
 
     const signupCookies = parseCookieJar(getSetCookieHeaders(signup.response));
     assert.ok(signupCookies.accessToken, "signup should set accessToken cookie");
@@ -199,4 +243,281 @@ testWithDb("signup -> login -> refresh -> logout rotates and clears refresh toke
 
     const tokenCountAfterLogout = await RefreshToken.countDocuments({ user: createdUserId });
     assert.equal(tokenCountAfterLogout, 0);
+});
+
+testWithDb("signup rejects duplicate email with 409", async () => {
+    const payload = buildUniqueAuthPayload();
+    await signupUser(payload);
+
+    const duplicateAttempt = await requestJson("/api/auth/signup", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            name: payload.name,
+            email: payload.email.toUpperCase(),
+            password: payload.password
+        })
+    });
+
+    assert.equal(duplicateAttempt.response.status, 409);
+    assert.equal(duplicateAttempt.body.success, false);
+    assert.equal(duplicateAttempt.body.message, "Email already registered");
+});
+
+testWithDb("login fails with wrong password and increments login attempts", async () => {
+    const payload = buildUniqueAuthPayload();
+    const signup = await signupUser(payload);
+
+    const loginAttempt = await requestJson("/api/auth/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            email: payload.email,
+            password: "Wrong@Pass1"
+        })
+    });
+
+    assert.equal(loginAttempt.response.status, 401);
+    assert.equal(loginAttempt.body.success, false);
+    assert.equal(loginAttempt.body.message, "Invalid email or password");
+
+    const user = await User.findById(signup.userId).select("+loginAttempts +lockUntil").lean();
+    assert.equal(user?.loginAttempts, 1);
+    assert.equal(user?.lockUntil, undefined);
+});
+
+testWithDb("login fails for suspended account", async () => {
+    const payload = buildUniqueAuthPayload();
+    const signup = await signupUser(payload);
+
+    await User.updateOne(
+        { _id: signup.userId },
+        { $set: { accountStatus: "suspended" } }
+    );
+
+    const loginAttempt = await requestJson("/api/auth/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            email: payload.email,
+            password: payload.password
+        })
+    });
+
+    assert.equal(loginAttempt.response.status, 403);
+    assert.equal(loginAttempt.body.success, false);
+    assert.equal(loginAttempt.body.message, "Account is not active");
+});
+
+testWithDb("refresh rejects valid JWT that is missing in DB", async () => {
+    const orphanRefreshToken = jwt.sign(
+        { id: new mongoose.Types.ObjectId().toString() },
+        process.env.REFRESH_SECRET,
+        { expiresIn: "7d" }
+    );
+
+    const refresh = await requestJson("/api/auth/refresh", {
+        method: "POST",
+        headers: {
+            Cookie: `refreshToken=${orphanRefreshToken}`
+        }
+    });
+
+    assert.equal(refresh.response.status, 403);
+    assert.equal(refresh.body.success, false);
+    assert.equal(refresh.body.message, "Refresh token not found or already used");
+
+    const rawSetCookie = getSetCookieHeaders(refresh.response).join("; ");
+    assert.match(rawSetCookie, /accessToken=/);
+    assert.match(rawSetCookie, /refreshToken=/);
+});
+
+testWithDb("refresh rejects malformed JWT", async () => {
+    const refresh = await requestJson("/api/auth/refresh", {
+        method: "POST",
+        headers: {
+            Cookie: "refreshToken=not-a-valid-jwt"
+        }
+    });
+
+    assert.equal(refresh.response.status, 403);
+    assert.equal(refresh.body.success, false);
+    assert.equal(refresh.body.message, "Invalid refresh token");
+});
+
+testWithDb("send-verification rejects unauthenticated request", async () => {
+    const sendVerification = await requestJson("/api/auth/send-verification", {
+        method: "POST"
+    });
+
+    assert.equal(sendVerification.response.status, 401);
+    assert.equal(sendVerification.body.success, false);
+    assert.equal(sendVerification.body.message, "Authentication required. No token provided.");
+});
+
+testWithDb("verify-email rejects malformed token payload", async () => {
+    const verify = await requestJson("/api/auth/verify-email", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            token: "bad-token"
+        })
+    });
+
+    assert.equal(verify.response.status, 400);
+    assert.equal(verify.body.success, false);
+    assert.equal(verify.body.message, "Validation error");
+});
+
+testWithDb("login locks account after repeated failed attempts", async () => {
+    const payload = buildUniqueAuthPayload();
+    const signup = await signupUser(payload);
+
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const failure = await requestJson("/api/auth/login", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                email: payload.email,
+                password: "Wrong@Pass1"
+            })
+        });
+
+        assert.equal(failure.response.status, 401);
+        assert.equal(failure.body.success, false);
+        assert.equal(failure.body.message, "Invalid email or password");
+    }
+
+    const lockoutAttempt = await requestJson("/api/auth/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            email: payload.email,
+            password: "Wrong@Pass1"
+        })
+    });
+
+    assert.equal(lockoutAttempt.response.status, 423);
+    assert.equal(lockoutAttempt.body.success, false);
+    assert.match(lockoutAttempt.body.message, /^Account is temporarily locked\./);
+
+    const lockedUser = await User.findById(signup.userId).select("+loginAttempts +lockUntil").lean();
+    assert.ok(lockedUser?.lockUntil, "lockUntil should be set after repeated failed logins");
+    assert.ok(Number(lockedUser?.loginAttempts) >= 5);
+});
+
+testWithDb("login rejects social-login-only accounts for password auth", async () => {
+    const socialUser = await createSocialOnlyUser();
+
+    const loginAttempt = await requestJson("/api/auth/login", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            email: socialUser.email,
+            password: "Any@Pass1"
+        })
+    });
+
+    assert.equal(loginAttempt.response.status, 400);
+    assert.equal(loginAttempt.body.success, false);
+    assert.equal(loginAttempt.body.message, "This account uses social login. Continue with Google or GitHub.");
+});
+
+testWithDb("refresh rejects expired refresh JWT", async () => {
+    const expiredRefreshToken = jwt.sign(
+        { id: new mongoose.Types.ObjectId().toString() },
+        process.env.REFRESH_SECRET,
+        { expiresIn: -1 }
+    );
+
+    const refresh = await requestJson("/api/auth/refresh", {
+        method: "POST",
+        headers: {
+            Cookie: `refreshToken=${expiredRefreshToken}`
+        }
+    });
+
+    assert.equal(refresh.response.status, 403);
+    assert.equal(refresh.body.success, false);
+    assert.equal(refresh.body.message, "Refresh token expired. Please login again.");
+});
+
+testWithDb("send-verification rejects malformed access token", async () => {
+    const response = await requestJson("/api/auth/send-verification", {
+        method: "POST",
+        headers: {
+            Cookie: "accessToken=malformed.jwt.token"
+        }
+    });
+
+    assert.equal(response.response.status, 401);
+    assert.equal(response.body.success, false);
+    assert.equal(response.body.message, "Invalid token");
+    assert.equal(response.body.code, "TOKEN_INVALID");
+});
+
+testWithDb("send-verification rejects expired access token", async () => {
+    const expiredAccessToken = jwt.sign(
+        { id: new mongoose.Types.ObjectId().toString() },
+        process.env.JWT_SECRET,
+        { expiresIn: -1 }
+    );
+
+    const response = await requestJson("/api/auth/send-verification", {
+        method: "POST",
+        headers: {
+            Cookie: `accessToken=${expiredAccessToken}`
+        }
+    });
+
+    assert.equal(response.response.status, 401);
+    assert.equal(response.body.success, false);
+    assert.equal(response.body.message, "Token expired. Please refresh your session.");
+    assert.equal(response.body.code, "TOKEN_EXPIRED");
+});
+
+testWithDb("reset-password rejects unknown but well-formed token", async () => {
+    const reset = await requestJson(`/api/auth/reset-password/${"a".repeat(64)}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            password: "Str0ng@Pass1"
+        })
+    });
+
+    assert.equal(reset.response.status, 400);
+    assert.equal(reset.body.success, false);
+    assert.equal(reset.body.message, "Invalid or expired reset token");
+});
+
+testWithDb("verify-email rejects unknown but well-formed token", async () => {
+    const verify = await requestJson("/api/auth/verify-email", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            token: "b".repeat(64)
+        })
+    });
+
+    assert.equal(verify.response.status, 400);
+    assert.equal(verify.body.success, false);
+    assert.equal(verify.body.message, "Invalid or expired verification token");
 });
