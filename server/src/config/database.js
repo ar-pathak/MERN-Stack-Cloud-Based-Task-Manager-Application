@@ -185,11 +185,11 @@ const connectDB = async () => {
         const baseRetryDelayMs = parsePositiveInt(process.env.MONGO_CONNECT_RETRY_DELAY_MS, 1500);
         const serverSelectionTimeoutMS = parsePositiveInt(
             process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS,
-            isTestEnv ? 10000 : 30000
+            isTestEnv ? 20000 : 30000
         );
         const connectTimeoutMS = parsePositiveInt(
             process.env.MONGO_CONNECT_TIMEOUT_MS,
-            isTestEnv ? 10000 : 30000
+            isTestEnv ? 20000 : 30000
         );
         const socketTimeoutMS = parsePositiveInt(
             process.env.MONGO_SOCKET_TIMEOUT_MS,
@@ -210,10 +210,31 @@ const connectDB = async () => {
                     maxPoolSize,
                     minPoolSize
                 });
-                break;
+
+                registerConnectionListeners();
+
+                await migrateLikeIndexes();
+                await migrateWorkspaceInviteTokenIndex();
+                await Like.syncIndexes();
+                await WorkspaceInvite.syncIndexes();
+
+                console.log(`MongoDB connected: ${conn.connection.host}`);
+
+                registerShutdownHooks();
+                return conn;
             } catch (error) {
                 lastError = error;
                 const shouldRetry = attempt < maxRetries && hasRetryableMongoCause(error);
+
+                if (mongoose.connection.readyState !== 0) {
+                    try {
+                        // Ensure next retry starts from a clean state.
+                        // eslint-disable-next-line no-await-in-loop
+                        await mongoose.connection.close();
+                    } catch (_closeError) {
+                        // Ignore close errors; next connect attempt will still run.
+                    }
+                }
 
                 if (!shouldRetry) {
                     throw error;
@@ -227,21 +248,7 @@ const connectDB = async () => {
             }
         }
 
-        if (!conn) {
-            throw lastError || new Error("MongoDB connection failed");
-        }
-
-        console.log(`MongoDB connected: ${conn.connection.host}`);
-
-        registerConnectionListeners();
-
-        await migrateLikeIndexes();
-        await migrateWorkspaceInviteTokenIndex();
-        await Like.syncIndexes();
-        await WorkspaceInvite.syncIndexes();
-
-        registerShutdownHooks();
-        return conn;
+        throw lastError || new Error("MongoDB connection failed");
     } catch (error) {
         console.error("MongoDB connection failed:", error.message);
         throw error;

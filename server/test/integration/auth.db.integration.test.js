@@ -1,11 +1,10 @@
 const crypto = require("node:crypto");
 const assert = require("node:assert/strict");
 const { after, before, test } = require("node:test");
-const path = require("node:path");
 const mongoose = require("mongoose");
 const jwt = require("jsonwebtoken");
 
-require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
+require("./helpers/loadEnv");
 
 process.env.NODE_ENV = process.env.NODE_ENV || "test";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "integration-jwt-secret";
