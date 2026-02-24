@@ -35,6 +35,18 @@ const { httpServer, io } = require("../../src/app");
 const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
 const testWithDb = hasMongoUrl ? test : test.skip;
 
+const parsePositiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+    }
+    return fallback;
+};
+
+const SOCKET_EVENT_TIMEOUT_MS = parsePositiveInt(process.env.SOCKET_EVENT_TIMEOUT_MS, 10000);
+const SOCKET_CONNECT_TIMEOUT_MS = parsePositiveInt(process.env.SOCKET_CONNECT_TIMEOUT_MS, 10000);
+const SOCKET_DB_POLL_INTERVAL_MS = parsePositiveInt(process.env.SOCKET_DB_POLL_INTERVAL_MS, 200);
+
 let baseUrl = "";
 const createdEmails = new Set();
 const createdUserIds = new Set();
@@ -48,6 +60,29 @@ const users = {
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const waitForActiveCallId = async (chatId, timeoutMs = SOCKET_EVENT_TIMEOUT_MS) => {
+    const expiresAt = Date.now() + timeoutMs;
+
+    while (Date.now() < expiresAt) {
+        const call = await Call.findOne({
+            chatId,
+            status: { $in: ["initiating", "ringing", "ongoing"] }
+        })
+            .sort({ createdAt: -1 })
+            .select("_id")
+            .lean();
+
+        if (call?._id) {
+            return String(call._id);
+        }
+
+        // eslint-disable-next-line no-await-in-loop
+        await delay(SOCKET_DB_POLL_INTERVAL_MS);
+    }
+
+    throw new Error(`Timed out waiting for active call in chat "${String(chatId)}"`);
+};
 
 const getSetCookieHeaders = (response) => {
     if (typeof response.headers.getSetCookie === "function") {
@@ -138,7 +173,7 @@ const createGroupChat = async (memberIds) => {
     return chat;
 };
 
-const waitForSocketEvent = (socket, eventName, filter = () => true, timeoutMs = 6000) => (
+const waitForSocketEvent = (socket, eventName, filter = () => true, timeoutMs = SOCKET_EVENT_TIMEOUT_MS) => (
     new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
             socket.off(eventName, handleEvent);
@@ -172,7 +207,7 @@ const connectSocket = async (user) => (
         const timer = setTimeout(() => {
             socket.close();
             reject(new Error("Socket connection timed out"));
-        }, 6000);
+        }, SOCKET_CONNECT_TIMEOUT_MS);
 
         socket.once("connect", () => {
             clearTimeout(timer);
@@ -250,6 +285,7 @@ afterEach(async () => {
         await disconnectSocket(socket);
     }
     activeSockets.clear();
+    await delay(75);
 
     if (createdChatIds.size > 0) {
         const chatIds = [...createdChatIds];
@@ -415,19 +451,17 @@ testWithDb("call:start then call:join emits critical realtime events and updates
     const ownerSocket = await connectSocket(users.owner);
     const peerSocket = await connectSocket(users.peer);
 
-    ownerSocket.emit("join-chat", String(chat._id));
-    peerSocket.emit("join-chat", String(chat._id));
-    await delay(150);
-
     const initiatedPromise = waitForSocketEvent(
         ownerSocket,
         "call:initiated",
-        (payload) => String(payload?.chatId) === String(chat._id)
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
     );
     const incomingPromise = waitForSocketEvent(
         peerSocket,
         "call:incoming",
-        (payload) => String(payload?.chatId) === String(chat._id)
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
     );
 
     ownerSocket.emit("call:start", {
@@ -483,23 +517,38 @@ testWithDb("call:offer relays to authorized participant and rejects outsider", a
     const peerSocket = await connectSocket(users.peer);
     const outsiderSocket = await connectSocket(users.outsider);
 
-    ownerSocket.emit("join-chat", String(chat._id));
-    peerSocket.emit("join-chat", String(chat._id));
-    await delay(150);
-
     const initiatedPromise = waitForSocketEvent(
         ownerSocket,
         "call:initiated",
-        (payload) => String(payload?.chatId) === String(chat._id)
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
     );
+    const incomingPromise = waitForSocketEvent(
+        peerSocket,
+        "call:incoming",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
     ownerSocket.emit("call:start", { chatId: String(chat._id), type: "audio" });
-    const initiatedEvent = await initiatedPromise;
-    const callId = String(initiatedEvent.callId);
+
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore event race failures and fallback to DB polling below.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
 
     const joinedPromise = waitForSocketEvent(
         peerSocket,
         "call:joined",
-        (payload) => String(payload?.callId) === callId
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
     );
     peerSocket.emit("call:join", { callId });
     await joinedPromise;

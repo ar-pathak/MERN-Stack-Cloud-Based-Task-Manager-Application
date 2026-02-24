@@ -3,6 +3,39 @@ const Like = require("../models/like");
 const WorkspaceInvite = require("../models/workspaceInvite");
 
 let shutdownHooksRegistered = false;
+let connectionListenersRegistered = false;
+
+const parsePositiveInt = (value, fallback) => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+    }
+    return fallback;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const hasRetryableMongoCause = (error) => {
+    const name = String(error?.name || "");
+    const message = String(error?.message || "");
+    const causeMessage = String(error?.cause?.message || "");
+    const reasonType = String(error?.reason?.type || "");
+    const combined = `${message} ${causeMessage} ${reasonType}`.toLowerCase();
+
+    if (name === "MongooseServerSelectionError" || name === "MongoNetworkError") {
+        return true;
+    }
+
+    return (
+        combined.includes("replicasetnoprimary")
+        || combined.includes("server selection timed out")
+        || combined.includes("could not connect to any servers")
+        || combined.includes("connection timed out")
+        || combined.includes("etimedout")
+        || combined.includes("econnreset")
+        || combined.includes("econnrefused")
+    );
+};
 
 const registerShutdownHooks = () => {
     if (shutdownHooksRegistered) return;
@@ -21,6 +54,19 @@ const registerShutdownHooks = () => {
 
     process.once("SIGINT", () => closeConnection("SIGINT"));
     process.once("SIGTERM", () => closeConnection("SIGTERM"));
+};
+
+const registerConnectionListeners = () => {
+    if (connectionListenersRegistered) return;
+    connectionListenersRegistered = true;
+
+    mongoose.connection.on("error", (err) => {
+        console.error("MongoDB connection error:", err);
+    });
+
+    mongoose.connection.on("disconnected", () => {
+        console.warn("MongoDB disconnected");
+    });
 };
 
 const migrateLikeIndexes = async () => {
@@ -130,17 +176,64 @@ const connectDB = async () => {
             throw new Error("MONGO_URL environment variable is not set");
         }
 
-        const conn = await mongoose.connect(process.env.MONGO_URL);
+        if (mongoose.connection.readyState === 1) {
+            return mongoose.connection;
+        }
+
+        const isTestEnv = String(process.env.NODE_ENV || "").toLowerCase() === "test";
+        const maxRetries = parsePositiveInt(process.env.MONGO_CONNECT_MAX_RETRIES, isTestEnv ? 5 : 3);
+        const baseRetryDelayMs = parsePositiveInt(process.env.MONGO_CONNECT_RETRY_DELAY_MS, 1500);
+        const serverSelectionTimeoutMS = parsePositiveInt(
+            process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS,
+            isTestEnv ? 10000 : 30000
+        );
+        const connectTimeoutMS = parsePositiveInt(
+            process.env.MONGO_CONNECT_TIMEOUT_MS,
+            isTestEnv ? 10000 : 30000
+        );
+        const socketTimeoutMS = parsePositiveInt(
+            process.env.MONGO_SOCKET_TIMEOUT_MS,
+            isTestEnv ? 45000 : 60000
+        );
+        const maxPoolSize = parsePositiveInt(process.env.MONGO_MAX_POOL_SIZE, 10);
+        const minPoolSize = parsePositiveInt(process.env.MONGO_MIN_POOL_SIZE, 1);
+
+        let conn = null;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+            try {
+                conn = await mongoose.connect(process.env.MONGO_URL, {
+                    serverSelectionTimeoutMS,
+                    connectTimeoutMS,
+                    socketTimeoutMS,
+                    maxPoolSize,
+                    minPoolSize
+                });
+                break;
+            } catch (error) {
+                lastError = error;
+                const shouldRetry = attempt < maxRetries && hasRetryableMongoCause(error);
+
+                if (!shouldRetry) {
+                    throw error;
+                }
+
+                const retryDelayMs = baseRetryDelayMs * attempt;
+                console.warn(
+                    `MongoDB connect attempt ${attempt}/${maxRetries} failed; retrying in ${retryDelayMs}ms`
+                );
+                await sleep(retryDelayMs);
+            }
+        }
+
+        if (!conn) {
+            throw lastError || new Error("MongoDB connection failed");
+        }
 
         console.log(`MongoDB connected: ${conn.connection.host}`);
 
-        mongoose.connection.on("error", (err) => {
-            console.error("MongoDB connection error:", err);
-        });
-
-        mongoose.connection.on("disconnected", () => {
-            console.warn("MongoDB disconnected");
-        });
+        registerConnectionListeners();
 
         await migrateLikeIndexes();
         await migrateWorkspaceInviteTokenIndex();
