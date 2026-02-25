@@ -1,6 +1,5 @@
 const crypto = require("node:crypto");
 const assert = require("node:assert/strict");
-const { after, afterEach, before, test } = require("node:test");
 const path = require("node:path");
 const mongoose = require("mongoose");
 
@@ -237,7 +236,7 @@ const disconnectSocket = async (socket) => {
     });
 };
 
-before(async () => {
+beforeAll(async () => {
     if (!hasMongoUrl) return;
 
     await connectDB();
@@ -297,7 +296,7 @@ afterEach(async () => {
     }
 });
 
-after(async () => {
+afterAll(async () => {
     if (!hasMongoUrl) return;
 
     if (createdChatIds.size > 0) {

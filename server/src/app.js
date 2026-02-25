@@ -5,7 +5,7 @@ const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const connectDB = require("./config/database");
 const MongoRateLimitStore = require("./helpers/mongoRateLimitStore");

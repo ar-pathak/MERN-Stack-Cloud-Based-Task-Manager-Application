@@ -6,8 +6,8 @@ const serverRoot = path.resolve(__dirname, "../../..");
 const defaultEnvPath = path.join(serverRoot, ".env");
 const testEnvPath = path.join(serverRoot, ".env.test");
 
-dotenv.config({ path: defaultEnvPath });
+dotenv.config({ path: defaultEnvPath, quiet: true });
 
 if (fs.existsSync(testEnvPath)) {
-    dotenv.config({ path: testEnvPath, override: true });
+    dotenv.config({ path: testEnvPath, override: true, quiet: true });
 }

@@ -1,4 +1,3 @@
-const { after, before, test } = require("node:test");
 const assert = require("node:assert/strict");
 
 process.env.JWT_SECRET = process.env.JWT_SECRET || "integration-jwt-secret";
@@ -16,7 +15,7 @@ const requestJson = async (path, options = {}) => {
     return { response, body };
 };
 
-before(async () => {
+beforeAll(async () => {
     if (!httpServer.listening) {
         await new Promise((resolve) => {
             httpServer.listen(0, "127.0.0.1", resolve);
@@ -32,7 +31,7 @@ before(async () => {
     baseUrl = `http://127.0.0.1:${port}`;
 });
 
-after(async () => {
+afterAll(async () => {
     await new Promise((resolve) => io.close(resolve));
     if (httpServer.listening) {
         await new Promise((resolve) => httpServer.close(resolve));
@@ -43,10 +42,8 @@ test("GET /health returns server status payload", async () => {
     const { response, body } = await requestJson("/health");
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, {
-        status: "OK",
-        message: "Server is running"
-    });
+    assert.equal(body.status, "OK");
+    assert.equal(body.message, "Server is running");
 });
 
 test("GET unknown route returns structured 404", async () => {

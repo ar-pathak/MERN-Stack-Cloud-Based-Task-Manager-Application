@@ -1,4 +1,3 @@
-const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const { signupSchema, loginSchema } = require("../src/modules/auth/auth.validation");

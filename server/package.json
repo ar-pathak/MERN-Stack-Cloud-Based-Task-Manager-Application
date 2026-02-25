@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test:unit": "node --test \"test/*.test.js\"",
-    "test:integration": "node --test --test-concurrency=1 \"test/integration/**/*.test.js\"",
-    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:unit": "jest --runInBand --testPathIgnorePatterns=\"test/integration\"",
+    "test:integration": "jest --runInBand --testPathPatterns=\"test/integration\"",
+    "test": "jest --runInBand",
     "start": "node src/app.js",
     "dev": "nodemon src/app.js"
   },
@@ -32,6 +32,8 @@
     "zod": "^4.2.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "jest": "^30.2.0",
+    "nodemon": "^3.1.11",
+    "supertest": "^7.2.2"
   }
 }

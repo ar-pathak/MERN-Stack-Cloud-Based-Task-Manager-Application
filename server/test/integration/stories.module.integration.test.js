@@ -1,4 +1,3 @@
-const { after, before, test } = require("node:test");
 
 require("./helpers/loadEnv");
 
@@ -12,11 +11,11 @@ const { expectUserAuthRequired } = require("./helpers/authAssertions");
 
 let baseUrl = "";
 
-before(async () => {
+beforeAll(async () => {
     baseUrl = await startHttpServer();
 });
 
-after(async () => {
+afterAll(async () => {
     await stopHttpServer();
 });
 

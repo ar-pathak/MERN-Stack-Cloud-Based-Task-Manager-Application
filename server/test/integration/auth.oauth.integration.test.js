@@ -1,6 +1,5 @@
 const crypto = require("node:crypto");
 const assert = require("node:assert/strict");
-const { after, before, test } = require("node:test");
 const mongoose = require("mongoose");
 
 require("./helpers/loadEnv");
@@ -169,7 +168,7 @@ const assertOAuthCallbackRedirect = (response, expected) => {
     return redirectUrl;
 };
 
-before(async () => {
+beforeAll(async () => {
     if (!hasMongoUrl) return;
 
     await connectDB();
@@ -189,7 +188,7 @@ before(async () => {
     baseUrl = `http://127.0.0.1:${port}`;
 });
 
-after(async () => {
+afterAll(async () => {
     resetFetchMock();
     global.fetch = originalFetch;
 
