@@ -42,6 +42,9 @@ jest.mock("../../src/models/subtasks", () => ({
 
 const User = require("../../src/models/user");
 const Follow = require("../../src/models/follow");
+const Chat = require("../../src/models/chat");
+const WorkspaceMember = require("../../src/models/workspaceMember");
+const mongoose = require("mongoose");
 const userService = require("../../src/modules/user/user.service");
 
 const mockSelectResolved = (value) => ({
@@ -60,6 +63,19 @@ const makeFindQuery = (value) => ({
     skip: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     lean: jest.fn().mockResolvedValue(value)
+});
+
+const mockSelectSession = (value) => ({
+    select: jest.fn().mockReturnValue({
+        session: jest.fn().mockResolvedValue(value)
+    })
+});
+
+const createSession = () => ({
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    abortTransaction: jest.fn(),
+    endSession: jest.fn()
 });
 
 beforeEach(() => {
@@ -177,6 +193,161 @@ test("searchUsers returns relationship-aware results", async () => {
     });
 });
 
+test("getPublicProfile returns private-limited profile for non-follower", async () => {
+    User.findById
+        .mockReturnValueOnce(mockSelectResolved({
+            _id: "u2",
+            email: "private@example.com",
+            accountStatus: "active",
+            isPrivate: true,
+            isOnline: true,
+            lastSeen: new Date("2026-01-01T00:00:00.000Z"),
+            blockedUsers: [],
+            preferences: { privacy: { showEmail: true, showOnlineStatus: true } },
+            toPublicJSON: () => ({
+                _id: "u2",
+                username: "private-user",
+                bio: "private bio",
+                headline: "headline",
+                location: "location",
+                website: "https://example.com",
+                coverImage: "cover.png",
+                followersCount: 10,
+                followingCount: 4,
+                postsCount: 20
+            })
+        }))
+        .mockReturnValueOnce(mockSelectLean({ blockedUsers: [] }));
+    Follow.checkRelationship
+        .mockResolvedValueOnce({ isFollowing: false, isPending: false })
+        .mockResolvedValueOnce({ isFollowing: false, isPending: false });
+
+    const result = await userService.getPublicProfile("u2", "u1");
+
+    expect(result.access.canViewFullProfile).toBe(false);
+    expect(result.relationship).toEqual(expect.objectContaining({
+        isFollowing: false,
+        blockedByMe: false,
+        blockedMe: false,
+        canMessage: false
+    }));
+    expect(result.headline).toBe("");
+    expect(result.location).toBe("");
+    expect(result.followersCount).toBe(0);
+    expect(result.postsCount).toBe(0);
+});
+
+test("getPublicProfile hides profile details in blocked context", async () => {
+    User.findById
+        .mockReturnValueOnce(mockSelectResolved({
+            _id: "u2",
+            email: "blocked@example.com",
+            accountStatus: "active",
+            isPrivate: false,
+            blockedUsers: ["u1"],
+            preferences: { privacy: { showEmail: true, showOnlineStatus: true } },
+            toPublicJSON: () => ({
+                _id: "u2",
+                bio: "blocked bio",
+                headline: "headline",
+                location: "location",
+                website: "https://example.com",
+                coverImage: "cover.png",
+                followersCount: 1,
+                followingCount: 1,
+                postsCount: 1
+            })
+        }))
+        .mockReturnValueOnce(mockSelectLean({ blockedUsers: [] }));
+    Follow.checkRelationship
+        .mockResolvedValueOnce({ isFollowing: false, isPending: false })
+        .mockResolvedValueOnce({ isFollowing: false, isPending: false });
+
+    const result = await userService.getPublicProfile("u2", "u1");
+
+    expect(result.access.canViewFullProfile).toBe(false);
+    expect(result.relationship).toEqual(expect.objectContaining({
+        blockedByMe: false,
+        blockedMe: true,
+        canMessage: false
+    }));
+    expect(result.bio).toBe("");
+    expect(result.headline).toBe("");
+});
+
+test("searchMentionCandidates returns empty when requester is outside workspace scope", async () => {
+    WorkspaceMember.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([{ user: "u2" }, { user: "u3" }])
+        })
+    });
+
+    const result = await userService.searchMentionCandidates("a", "u1", {
+        workspaceId: "workspace-1"
+    });
+
+    expect(result).toEqual({ users: [] });
+    expect(User.find).not.toHaveBeenCalled();
+});
+
+test("searchMentionCandidates resolves chat scope members and returns scored list", async () => {
+    Chat.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue({
+                members: ["u1", "u2", "u3"]
+            })
+        })
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { _id: "u2", username: "alice", name: "Alice", isOnline: true, preferences: { privacy: {} } },
+                    { _id: "u3", username: "alex", name: "Alex", isOnline: false, preferences: { privacy: {} } }
+                ])
+            })
+        })
+    });
+
+    const result = await userService.searchMentionCandidates("al", "u1", {
+        chatId: "chat-1",
+        limit: 2
+    });
+
+    expect(result.users).toHaveLength(2);
+    expect(result.users[0]).toEqual(expect.objectContaining({ _id: "u2", username: "alice" }));
+});
+
+test("autoApprovePendingFollowRequests marks requests approved and increments counts", async () => {
+    Follow.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            session: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { _id: "req-1", follower: "u2" },
+                    { _id: "req-2", follower: "u3" }
+                ])
+            })
+        })
+    });
+    Follow.updateMany.mockResolvedValue({});
+    User.updateMany.mockResolvedValue({});
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    const result = await userService.autoApprovePendingFollowRequests("u1", { id: "session" });
+
+    expect(result).toEqual({ autoApprovedFollowRequests: 2 });
+    expect(Follow.updateMany).toHaveBeenCalledWith(
+        { _id: { $in: ["req-1", "req-2"] } },
+        { $set: { isApproved: true } },
+        { session: { id: "session" } }
+    );
+    expect(User.updateMany).toHaveBeenCalledWith(
+        { _id: { $in: ["u2", "u3"] } },
+        { $inc: { followingCount: 1 } },
+        { session: { id: "session" } }
+    );
+});
+
 test("getBlockedUsers throws 404 when current user does not exist", async () => {
     User.findById.mockReturnValue(mockSelectLean(null));
 
@@ -228,6 +399,58 @@ test("blockUser rejects self block attempts", async () => {
     await expect(userService.blockUser("u1", "u1"))
         .rejects
         .toMatchObject({ message: "You cannot block yourself", statusCode: 400 });
+});
+
+test("blockUser returns alreadyBlocked true when target is already blocked", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({ _id: "u1", blockedUsers: ["u2"] }))
+        .mockReturnValueOnce(mockSelectSession({ _id: "u2", accountStatus: "active" }));
+
+    const result = await userService.blockUser("u1", "u2");
+
+    expect(result).toEqual({ success: true, alreadyBlocked: true });
+    expect(Follow.find).not.toHaveBeenCalled();
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("blockUser removes approved follow relations and updates counters", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({ _id: "u1", blockedUsers: [] }))
+        .mockReturnValueOnce(mockSelectSession({ _id: "u2", accountStatus: "active" }));
+    Follow.find.mockReturnValue({
+        session: jest.fn().mockResolvedValue([
+            { _id: "f-1", follower: "u1", following: "u2", isApproved: true },
+            { _id: "f-2", follower: "u2", following: "u1", isApproved: true }
+        ])
+    });
+    Follow.deleteMany.mockReturnValue({
+        session: jest.fn().mockResolvedValue({ deletedCount: 2 })
+    });
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    const result = await userService.blockUser("u1", "u2");
+
+    expect(result).toEqual({ success: true, alreadyBlocked: false });
+    expect(Follow.deleteMany).toHaveBeenCalledWith({
+        _id: { $in: ["f-1", "f-2"] }
+    });
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "u1",
+        {
+            $addToSet: { blockedUsers: "u2" },
+            $inc: { followersCount: -1, followingCount: -1 }
+        },
+        { session }
+    );
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "u2",
+        { $inc: { followersCount: -1, followingCount: -1 } },
+        { session }
+    );
 });
 
 test("unblockUser validates update result and returns success", async () => {

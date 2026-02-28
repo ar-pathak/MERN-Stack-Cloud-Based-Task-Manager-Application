@@ -4,6 +4,7 @@ jest.mock("mongoose", () => ({
 
 jest.mock("../../src/models/post", () => ({
     updateMany: jest.fn(),
+    create: jest.fn(),
     findById: jest.fn(),
     findByIdAndUpdate: jest.fn(),
     find: jest.fn(),
@@ -52,6 +53,9 @@ const Like = require("../../src/models/like");
 const PostSave = require("../../src/models/postSave");
 const Follow = require("../../src/models/follow");
 const User = require("../../src/models/user");
+const mongoose = require("mongoose");
+const notificationService = require("../../src/modules/notification/notification.service");
+const { resolveMentionUsersFromText, notifyMentionedUsers } = require("../../src/modules/utils/mentionService");
 const postService = require("../../src/modules/posts/post.service");
 
 const mockSelectLean = (value) => ({
@@ -73,7 +77,21 @@ const makePostFindQuery = (value) => ({
     lean: jest.fn().mockResolvedValue(value)
 });
 
+const createSession = () => ({
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    abortTransaction: jest.fn(),
+    endSession: jest.fn()
+});
+
+const mockSelectSession = (value) => ({
+    select: jest.fn().mockReturnValue({
+        session: jest.fn().mockResolvedValue(value)
+    })
+});
+
 beforeEach(() => {
+    jest.restoreAllMocks();
     jest.clearAllMocks();
 });
 
@@ -246,6 +264,134 @@ test("getUserPosts returns empty list for private profile without follow access"
             hasMore: false
         }
     });
+});
+
+test("createPost rejects inactive users", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById.mockReturnValue(mockSelectSession({
+        _id: "author-1",
+        accountStatus: "suspended"
+    }));
+
+    await expect(postService.createPost("author-1", { content: "Hello" }))
+        .rejects
+        .toThrow("User not found or inactive");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("createPost stores scheduled posts and skips mention notifications", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById.mockReturnValue(mockSelectSession({
+        _id: "author-1",
+        accountStatus: "active",
+        name: "Alice",
+        username: "alice"
+    }));
+    resolveMentionUsersFromText.mockResolvedValue([]);
+    const postDoc = {
+        _id: "post-1",
+        populate: jest.fn().mockResolvedValue({}),
+        toPublicJSON: jest.fn().mockReturnValue({ _id: "post-1", status: "scheduled" })
+    };
+    Post.create.mockResolvedValue([postDoc]);
+
+    const scheduledFor = new Date(Date.now() + 60_000).toISOString();
+    const result = await postService.createPost("author-1", {
+        content: "Scheduled",
+        scheduledFor
+    });
+
+    expect(result).toEqual({ _id: "post-1", status: "scheduled" });
+    const savedPayload = Post.create.mock.calls[0][0][0];
+    expect(savedPayload.status).toBe("scheduled");
+    expect(savedPayload.publishedAt).toBeUndefined();
+    expect(notifyMentionedUsers).not.toHaveBeenCalled();
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("savePost validates access and upserts bookmark", async () => {
+    jest.spyOn(postService, "assertCanAccessPostById").mockResolvedValue({ _id: "post-1" });
+    PostSave.updateOne.mockResolvedValue({ acknowledged: true });
+
+    const result = await postService.savePost("u1", "post-1");
+
+    expect(result).toEqual({ saved: true });
+    expect(PostSave.updateOne).toHaveBeenCalledWith(
+        { user: "u1", post: "post-1" },
+        { $setOnInsert: { user: "u1", post: "post-1" } },
+        { upsert: true }
+    );
+});
+
+test("getBookmarkedPosts filters active posts and enriches engagement data", async () => {
+    jest.spyOn(postService, "publishDueScheduledPosts").mockResolvedValue(0);
+    jest.spyOn(postService, "filterAccessiblePosts").mockResolvedValue([{ _id: "post-1", status: "active" }]);
+    jest.spyOn(postService, "addUserEngagementData").mockResolvedValue([{
+        _id: "post-1",
+        status: "active",
+        userEngagement: { hasLiked: false }
+    }]);
+    PostSave.find.mockReturnValue({
+        sort: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        populate: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue([
+            { post: { _id: "post-1", status: "active" } },
+            { post: { _id: "post-2", status: "deleted" } }
+        ])
+    });
+    PostSave.countDocuments.mockResolvedValue(2);
+
+    const result = await postService.getBookmarkedPosts("u1", 1, 20);
+
+    expect(result.posts).toEqual([
+        expect.objectContaining({ _id: "post-1" })
+    ]);
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 2,
+        pages: 1,
+        hasMore: false
+    });
+});
+
+test("sharePost increments share count and notifies post author", async () => {
+    jest.spyOn(postService, "assertCanAccessPostById").mockResolvedValue({
+        _id: "post-1",
+        author: "author-1"
+    });
+    Post.findByIdAndUpdate.mockResolvedValue({});
+    User.findById
+        .mockReturnValueOnce(mockSelectLean({
+            preferences: { notifications: { likes: true } }
+        }))
+        .mockReturnValueOnce(mockSelectLean({
+            name: "Viewer Name",
+            username: "viewer"
+        }));
+    notificationService.createNotifications.mockResolvedValue([]);
+
+    const result = await postService.sharePost("viewer-1", "post-1", "telegram");
+
+    expect(result).toEqual({
+        shared: true,
+        channel: "telegram",
+        shareUrl: "/post/post-1"
+    });
+    expect(notificationService.createNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({
+            recipientIds: ["author-1"],
+            metadata: expect.objectContaining({
+                postId: "post-1",
+                channel: "telegram"
+            })
+        })
+    );
 });
 
 test("addUserEngagementData enriches posts with engagement flags", async () => {

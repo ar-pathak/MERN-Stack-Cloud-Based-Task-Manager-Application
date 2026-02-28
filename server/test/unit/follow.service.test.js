@@ -213,6 +213,149 @@ test("checkIsFollowing returns false for invalid ids", async () => {
     expect(Follow.checkRelationship).not.toHaveBeenCalled();
 });
 
+test("assertCanViewConnections rejects unauthenticated access", async () => {
+    await expect(followService.assertCanViewConnections("u2", null))
+        .rejects
+        .toMatchObject({ message: "Authentication required", statusCode: 401 });
+});
+
+test("getFollowers returns paginated relationship-aware follower list", async () => {
+    jest.spyOn(followService, "assertCanViewConnections").mockResolvedValue(undefined);
+    Follow.countDocuments.mockResolvedValue(2);
+    Follow.find
+        .mockReturnValueOnce(mockFindListQuery([
+            {
+                createdAt: new Date("2026-01-01T00:00:00.000Z"),
+                follower: { _id: "u2", username: "bob", name: "Bob" }
+            },
+            {
+                createdAt: new Date("2026-01-02T00:00:00.000Z"),
+                follower: { _id: "u3", username: "cat", name: "Cat" }
+            }
+        ]))
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([{ follower: "u3" }])
+            })
+        });
+    Follow.checkMultipleRelationships.mockResolvedValue({ u2: true, u3: false });
+
+    const result = await followService.getFollowers("target-1", "viewer-1", 1, 10);
+
+    expect(result.followers).toEqual([
+        expect.objectContaining({
+            _id: "u2",
+            isFollowing: true,
+            isFollowedBy: false
+        }),
+        expect.objectContaining({
+            _id: "u3",
+            isFollowing: false,
+            isFollowedBy: true
+        })
+    ]);
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 10,
+        total: 2,
+        pages: 1,
+        hasMore: false
+    });
+});
+
+test("getFollowing marks current user's own following entries as followed", async () => {
+    jest.spyOn(followService, "assertCanViewConnections").mockResolvedValue(undefined);
+    Follow.countDocuments.mockResolvedValue(1);
+    Follow.find
+        .mockReturnValueOnce(mockFindListQuery([
+            {
+                createdAt: new Date("2026-01-01T00:00:00.000Z"),
+                following: { _id: "u2", username: "bob" }
+            }
+        ]))
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([])
+            })
+        });
+
+    const result = await followService.getFollowing("u1", "u1", 1, 10);
+
+    expect(result.following).toEqual([
+        expect.objectContaining({
+            _id: "u2",
+            isFollowing: true,
+            isFollowedBy: false
+        })
+    ]);
+    expect(Follow.checkMultipleRelationships).not.toHaveBeenCalled();
+});
+
+test("getMutualFollowers returns empty list when private profile blocks access", async () => {
+    jest.spyOn(followService, "assertCanViewConnections")
+        .mockRejectedValue({ statusCode: 403, message: "This account is private" });
+
+    const result = await followService.getMutualFollowers("u1", "u2");
+
+    expect(result).toEqual([]);
+});
+
+test("getFollowSuggestions excludes users already followed", async () => {
+    const asId = (id) => ({ equals: (other) => String(other) === id, toString: () => id });
+
+    Follow.find
+        .mockReturnValueOnce({
+            distinct: jest.fn().mockResolvedValue(["u2", "u3"])
+        })
+        .mockReturnValueOnce({
+            distinct: jest.fn().mockResolvedValue([asId("u4")])
+        });
+    Follow.aggregate.mockResolvedValue([
+        { _id: "u4", count: 2 },
+        { _id: "u5", count: 1 }
+    ]);
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([
+                { _id: "u5", username: "eve", accountStatus: "active" }
+            ])
+        })
+    });
+
+    const result = await followService.getFollowSuggestions("u1", 5);
+
+    expect(result).toEqual([
+        expect.objectContaining({ _id: "u5", username: "eve" })
+    ]);
+});
+
+test("removeFollower removes approved relation and decrements counters", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Follow.findOne.mockReturnValue(mockSessionQuery({
+        _id: "follow-1",
+        follower: "u2",
+        following: "u1",
+        isApproved: true
+    }));
+    Follow.findByIdAndDelete.mockReturnValue(mockSessionQuery({}));
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    const result = await followService.removeFollower("u1", "u2");
+
+    expect(result).toEqual({ success: true });
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "u2",
+        { $inc: { followingCount: -1 } },
+        { session }
+    );
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "u1",
+        { $inc: { followersCount: -1 } },
+        { session }
+    );
+});
+
 test("getPendingRequests returns empty response for public accounts", async () => {
     User.findById.mockReturnValue(mockSelectLean({
         accountStatus: "active",
