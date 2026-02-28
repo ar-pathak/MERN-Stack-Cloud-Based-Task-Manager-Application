@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 
-const { getCookieOptions } = require("../src/helpers/cookieHelper");
+const { getCookieOptions } = require("../../src/helpers/cookieHelper");
 
 const withEnv = (envValues, run) => {
     const previousValues = {};

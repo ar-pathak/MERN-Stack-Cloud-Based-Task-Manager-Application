@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 
-const { signupSchema, loginSchema } = require("../src/modules/auth/auth.validation");
+const { signupSchema, loginSchema } = require("../../src/modules/auth/auth.validation");
 
 test("signup schema accepts strong password and normalizes email", () => {
     const parsed = signupSchema.parse({
