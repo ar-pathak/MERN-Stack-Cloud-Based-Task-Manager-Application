@@ -475,11 +475,11 @@ class ChatService {
     async createGroupChat(adminId, name, members) {
         // Validate name
         if (!name || name.trim().length < 2) {
-            throw new Error("Group name must be at least 2 characters");
+            throw createError("Group name must be at least 2 characters", 400);
         }
 
         if (!members || members.length < 2) {
-            throw new Error("A group chat requires at least 2 other members");
+            throw createError("A group chat requires at least 2 other members", 400);
         }
 
         // Deduplicate and always include the creator
@@ -879,22 +879,22 @@ class ChatService {
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
         await this.assertCanViewSectionChat(chatId, userId);
 
         const message = await Message.findById(messageId);
         if (!message) {
-            throw new Error("Message not found");
+            throw createError("Message not found", 404);
         }
         if (String(message.chatId) !== String(chatId)) {
-            throw new Error("Message does not belong to this chat");
+            throw createError("Message does not belong to this chat", 400);
         }
         if (!["active", "edited"].includes(String(message.status))) {
-            throw new Error("Only active messages can be pinned");
+            throw createError("Only active messages can be pinned", 400);
         }
 
         let evictedMessageId = null;
@@ -964,23 +964,23 @@ class ChatService {
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
 
         const message = await Message.findById(messageId);
         if (!message) {
-            throw new Error("Message not found");
+            throw createError("Message not found", 404);
         }
         if (String(message.chatId) !== String(chatId)) {
-            throw new Error("Message does not belong to this chat");
+            throw createError("Message does not belong to this chat", 400);
         }
 
         // Only the sender can delete their own message
         if (String(message.senderId) !== String(userId)) {
-            throw new Error("You can only delete your own messages");
+            throw createError("You can only delete your own messages", 403);
         }
 
         message.status = "deleted";
@@ -994,29 +994,29 @@ class ChatService {
     // -----------------------------------------------------------------------
     async editMessage(messageId, userId, chatId, newContent) {
         if (!newContent || newContent.trim().length === 0) {
-            throw new Error("Message content cannot be empty");
+            throw createError("Message content cannot be empty", 400);
         }
 
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
 
         const message = await Message.findById(messageId);
         if (!message) {
-            throw new Error("Message not found");
+            throw createError("Message not found", 404);
         }
         if (String(message.chatId) !== String(chatId)) {
-            throw new Error("Message does not belong to this chat");
+            throw createError("Message does not belong to this chat", 400);
         }
 
         // Only the sender can edit their own message
         if (String(message.senderId) !== String(userId)) {
-            throw new Error("You can only edit your own messages");
+            throw createError("You can only edit your own messages", 403);
         }
 
         const cleanContent = newContent.trim();
@@ -1080,18 +1080,18 @@ class ChatService {
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
 
         const message = await Message.findById(messageId);
         if (!message) {
-            throw new Error("Message not found");
+            throw createError("Message not found", 404);
         }
         if (String(message.chatId) !== String(chatId)) {
-            throw new Error("Message does not belong to this chat");
+            throw createError("Message does not belong to this chat", 400);
         }
 
         await message.addReaction(userId, emoji);
@@ -1110,18 +1110,18 @@ class ChatService {
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
 
         const message = await Message.findById(messageId);
         if (!message) {
-            throw new Error("Message not found");
+            throw createError("Message not found", 404);
         }
         if (String(message.chatId) !== String(chatId)) {
-            throw new Error("Message does not belong to this chat");
+            throw createError("Message does not belong to this chat", 400);
         }
 
         await message.removeReaction(userId, emoji);
@@ -1139,17 +1139,17 @@ class ChatService {
     async updateGroupChat(chatId, userId, updates) {
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
 
         // Only group chats can be updated
         if (chat.type !== "group") {
-            throw new Error("Cannot update private chats");
+            throw createError("Cannot update private chats", 400);
         }
 
         // Only admin can update group
         if (String(chat.admin) !== String(userId)) {
-            throw new Error("Only the admin can update this group");
+            throw createError("Only the admin can update this group", 403);
         }
 
         // Update allowed fields
@@ -1166,16 +1166,16 @@ class ChatService {
     async addMembers(chatId, userId, newMembers) {
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
 
         if (chat.type !== "group") {
-            throw new Error("Cannot add members to private chats");
+            throw createError("Cannot add members to private chats", 400);
         }
 
         // Only admin can add members
         if (String(chat.admin) !== String(userId)) {
-            throw new Error("Only the admin can add members");
+            throw createError("Only the admin can add members", 403);
         }
 
         // Add new members (avoid duplicates)
@@ -1183,7 +1183,7 @@ class ChatService {
         const membersToAdd = newMembers.filter(m => !currentMembers.includes(String(m)));
 
         if (membersToAdd.length === 0) {
-            throw new Error("All users are already members");
+            throw createError("All users are already members", 400);
         }
 
         chat.members.push(...membersToAdd);
@@ -1198,21 +1198,21 @@ class ChatService {
     async removeMember(chatId, userId, memberToRemove) {
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
 
         if (chat.type !== "group") {
-            throw new Error("Cannot remove members from private chats");
+            throw createError("Cannot remove members from private chats", 400);
         }
 
         // Only admin can remove members
         if (String(chat.admin) !== String(userId)) {
-            throw new Error("Only the admin can remove members");
+            throw createError("Only the admin can remove members", 403);
         }
 
         // Cannot remove admin
         if (String(memberToRemove) === String(chat.admin)) {
-            throw new Error("Cannot remove the admin");
+            throw createError("Cannot remove the admin", 400);
         }
 
         chat.members = chat.members.filter(m => String(m) !== String(memberToRemove));
@@ -1227,11 +1227,11 @@ class ChatService {
     async leaveGroup(chatId, userId) {
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
 
         if (chat.type !== "group") {
-            throw new Error("Cannot leave private chats");
+            throw createError("Cannot leave private chats", 400);
         }
 
         // If admin is leaving, transfer admin to first member
@@ -1305,10 +1305,10 @@ class ChatService {
         // Verify membership
         const chat = await Chat.findById(chatId);
         if (!chat) {
-            throw new Error("Chat not found");
+            throw createError("Chat not found", 404);
         }
         if (!chat.members.some((id) => String(id) === String(userId))) {
-            throw new Error("You are not a member of this chat");
+            throw createError("You are not a member of this chat", 403);
         }
 
         return Message.find({

@@ -586,3 +586,327 @@ testWithDb("call:offer relays to authorized participant and rejects outsider", a
     const outsiderError = await outsiderErrorPromise;
     assert.equal(outsiderError.reason, "Not authorized for this call");
 });
+
+testWithDb("call:answer and call:ice-candidate relay to authorized participants", async () => {
+    const chat = await createGroupChat([users.owner.userId, users.peer.userId]);
+    const ownerSocket = await connectSocket(users.owner);
+    const peerSocket = await connectSocket(users.peer);
+    const outsiderSocket = await connectSocket(users.outsider);
+
+    const initiatedPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:initiated",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const incomingPromise = waitForSocketEvent(
+        peerSocket,
+        "call:incoming",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    ownerSocket.emit("call:start", { chatId: String(chat._id), type: "video" });
+
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore and fallback to DB polling.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
+
+    const joinedPromise = waitForSocketEvent(
+        peerSocket,
+        "call:joined",
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:join", { callId });
+    await joinedPromise;
+
+    const answerPayload = {
+        type: "answer",
+        sdp: "v=0\r\n"
+    };
+    const answerRelayPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:answer",
+        (payload) => String(payload?.callId) === callId && String(payload?.fromUserId) === String(users.peer.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:answer", {
+        callId,
+        answer: answerPayload,
+        targetUserId: users.owner.userId
+    });
+
+    const answerRelay = await answerRelayPromise;
+    assert.equal(String(answerRelay.callId), callId);
+    assert.equal(String(answerRelay.fromUserId), String(users.peer.userId));
+
+    const candidatePayload = {
+        candidate: "candidate:1 1 udp 2122260223 192.168.1.2 54321 typ host",
+        sdpMLineIndex: 0,
+        sdpMid: "0"
+    };
+    const candidateRelayPromise = waitForSocketEvent(
+        peerSocket,
+        "call:ice-candidate",
+        (payload) => String(payload?.callId) === callId && String(payload?.fromUserId) === String(users.owner.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    ownerSocket.emit("call:ice-candidate", {
+        callId,
+        candidate: candidatePayload,
+        targetUserId: users.peer.userId
+    });
+
+    const candidateRelay = await candidateRelayPromise;
+    assert.equal(String(candidateRelay.callId), callId);
+    assert.equal(String(candidateRelay.fromUserId), String(users.owner.userId));
+    assert.equal(candidateRelay.candidate?.candidate, candidatePayload.candidate);
+
+    const outsiderErrorPromise = waitForSocketEvent(
+        outsiderSocket,
+        "call:error",
+        (payload) => String(payload?.reason || "").toLowerCase().includes("not authorized"),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    outsiderSocket.emit("call:answer", {
+        callId,
+        answer: answerPayload,
+        targetUserId: users.owner.userId
+    });
+
+    const outsiderError = await outsiderErrorPromise;
+    assert.equal(outsiderError.reason, "Not authorized for this call");
+});
+
+testWithDb("call:media-state updates participant media and call:leave emits participant-left", async () => {
+    const chat = await createGroupChat([users.owner.userId, users.peer.userId]);
+    const ownerSocket = await connectSocket(users.owner);
+    const peerSocket = await connectSocket(users.peer);
+
+    const initiatedPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:initiated",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const incomingPromise = waitForSocketEvent(
+        peerSocket,
+        "call:incoming",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    ownerSocket.emit("call:start", { chatId: String(chat._id), type: "video" });
+
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore and fallback to DB polling.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
+
+    const joinedPromise = waitForSocketEvent(
+        peerSocket,
+        "call:joined",
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:join", { callId });
+    await joinedPromise;
+
+    const mediaState = {
+        video: false,
+        audio: true,
+        screenShare: true
+    };
+    const mediaUpdatePromise = waitForSocketEvent(
+        ownerSocket,
+        "call:participant-media-update",
+        (payload) => String(payload?.callId) === callId && String(payload?.userId) === String(users.peer.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    peerSocket.emit("call:media-state", {
+        callId,
+        mediaState
+    });
+
+    const mediaUpdate = await mediaUpdatePromise;
+    assert.equal(String(mediaUpdate.callId), callId);
+    assert.equal(String(mediaUpdate.userId), String(users.peer.userId));
+    assert.equal(mediaUpdate.mediaState?.screenShare, true);
+
+    const participantLeftPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:participant-left",
+        (payload) => String(payload?.callId) === callId && String(payload?.userId) === String(users.peer.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:leave", { callId });
+    const participantLeft = await participantLeftPromise;
+
+    assert.equal(String(participantLeft.callId), callId);
+    assert.equal(String(participantLeft.userId), String(users.peer.userId));
+
+    const callAfterLeave = await Call.findById(callId).lean();
+    const peerParticipant = (callAfterLeave?.participants || []).find(
+        (participant) => String(participant.userId) === String(users.peer.userId)
+    );
+    assert.ok(peerParticipant?.leftAt, "peer should be marked left in call document");
+});
+
+testWithDb("call:end from host marks call ended and emits call:ended", async () => {
+    const chat = await createGroupChat([users.owner.userId, users.peer.userId]);
+    const ownerSocket = await connectSocket(users.owner);
+    const peerSocket = await connectSocket(users.peer);
+
+    const initiatedPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:initiated",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const incomingPromise = waitForSocketEvent(
+        peerSocket,
+        "call:incoming",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    ownerSocket.emit("call:start", { chatId: String(chat._id), type: "audio" });
+
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore and fallback to DB polling.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
+
+    const joinedPromise = waitForSocketEvent(
+        peerSocket,
+        "call:joined",
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:join", { callId });
+    await joinedPromise;
+
+    const endedPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:ended",
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    ownerSocket.emit("call:end", { callId });
+
+    const endedEvent = await endedPromise;
+    assert.equal(String(endedEvent.callId), callId);
+    assert.equal(endedEvent.reason, "host_ended");
+
+    const endedCall = await Call.findById(callId).lean();
+    assert.equal(endedCall?.status, "ended");
+    assert.ok(endedCall?.endedAt, "host end should set endedAt");
+});
+
+testWithDb("call:invite invites eligible group members and emits call:invite:sent", async () => {
+    const chat = await createGroupChat([users.owner.userId, users.peer.userId, users.outsider.userId]);
+    const ownerSocket = await connectSocket(users.owner);
+    const peerSocket = await connectSocket(users.peer);
+    const outsiderSocket = await connectSocket(users.outsider);
+
+    const initiatedPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:initiated",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const incomingPromise = waitForSocketEvent(
+        peerSocket,
+        "call:incoming",
+        (payload) => String(payload?.chatId) === String(chat._id),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    ownerSocket.emit("call:start", { chatId: String(chat._id), type: "video" });
+
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore and fallback to DB polling.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
+
+    const joinedPromise = waitForSocketEvent(
+        peerSocket,
+        "call:joined",
+        (payload) => String(payload?.callId) === callId,
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    peerSocket.emit("call:join", { callId });
+    await joinedPromise;
+
+    const inviteSentPromise = waitForSocketEvent(
+        ownerSocket,
+        "call:invite:sent",
+        (payload) => String(payload?.callId) === callId
+            && Array.isArray(payload?.invitedUserIds)
+            && payload.invitedUserIds.includes(String(users.outsider.userId)),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const invitedPromise = waitForSocketEvent(
+        outsiderSocket,
+        "call:invited",
+        (payload) => String(payload?.callId) === callId
+            && String(payload?.targetUserId) === String(users.outsider.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+    const incomingInvitePromise = waitForSocketEvent(
+        outsiderSocket,
+        "call:incoming",
+        (payload) => String(payload?.callId) === callId
+            && String(payload?.invitedBy) === String(users.owner.userId),
+        SOCKET_EVENT_TIMEOUT_MS
+    );
+
+    ownerSocket.emit("call:invite", {
+        callId,
+        targetUserIds: [users.outsider.userId]
+    });
+
+    const [inviteSent, invited, incomingInvite] = await Promise.all([
+        inviteSentPromise,
+        invitedPromise,
+        incomingInvitePromise
+    ]);
+
+    assert.equal(String(inviteSent.callId), callId);
+    assert.ok(inviteSent.invitedUserIds.includes(String(users.outsider.userId)));
+    assert.equal(String(invited.callId), callId);
+    assert.equal(String(invited.targetUserId), String(users.outsider.userId));
+    assert.equal(String(incomingInvite.callId), callId);
+    assert.equal(String(incomingInvite.invitedBy), String(users.owner.userId));
+});
