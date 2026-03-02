@@ -3,7 +3,7 @@ const { sendSuccess, handleError } = require("../../helpers/responseHelper");
 module.exports = {
     uploadFile: async (req, res) => {
         try {
-            if (!req.file && !req.files) {
+            if (!req.file && (!Array.isArray(req.files) || req.files.length === 0)) {
                 return res.status(400).json({ success: false, message: "No file uploaded" });
             }
 
@@ -28,8 +28,9 @@ module.exports = {
                 return sendSuccess(res, filesData);
             }
 
+            return res.status(400).json({ success: false, message: "No file uploaded" });
         } catch (error) {
-            handleError(error, res);
+            return handleError(error, res);
         }
     }
 };

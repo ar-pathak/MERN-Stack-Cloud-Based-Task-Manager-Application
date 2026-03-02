@@ -108,12 +108,16 @@ module.exports = {
             // Chat-scoped active call lookup:
             // required for users who open a chat after call already started.
             if (chatId) {
-                const chat = await Chat.findById(chatId).select("members");
+                const chatLookup = Chat.findById(chatId);
+                const chat = typeof chatLookup?.select === "function"
+                    ? await chatLookup.select("members")
+                    : await chatLookup;
                 if (!chat) {
                     return res.status(404).json({ error: "Chat not found" });
                 }
 
-                if (!chat.members.some((m) => String(m) === String(userId))) {
+                const memberIds = Array.isArray(chat.members) ? chat.members : [];
+                if (!memberIds.some((m) => String(m) === String(userId))) {
                     return res.status(403).json({ error: "Not authorized" });
                 }
 
@@ -429,12 +433,16 @@ module.exports = {
             const safeLimit = toPositiveInt(limit, { defaultValue: 20, min: 1, max: 50 });
 
             // Verify user is member of chat
-            const chat = await Chat.findById(chatId);
+            const chatLookup = Chat.findById(chatId);
+            const chat = typeof chatLookup?.select === "function"
+                ? await chatLookup.select("members")
+                : await chatLookup;
             if (!chat) {
                 return res.status(404).json({ error: "Chat not found" });
             }
 
-            if (!chat.members.some(m => String(m) === String(userId))) {
+            const memberIds = Array.isArray(chat.members) ? chat.members : [];
+            if (!memberIds.some(m => String(m) === String(userId))) {
                 return res.status(403).json({ error: "Not authorized" });
             }
 

@@ -1,0 +1,230 @@
+jest.mock("mongoose", () => ({
+    startSession: jest.fn()
+}));
+
+jest.mock("../../src/models/comment", () => ({
+    findById: jest.fn(),
+    find: jest.fn(),
+    countDocuments: jest.fn(),
+    create: jest.fn()
+}));
+
+jest.mock("../../src/models/post", () => ({
+    findById: jest.fn()
+}));
+
+jest.mock("../../src/models/like", () => ({
+    find: jest.fn()
+}));
+
+jest.mock("../../src/models/user", () => ({
+    findById: jest.fn()
+}));
+
+jest.mock("../../src/modules/notification/notification.service", () => ({
+    createNotifications: jest.fn()
+}));
+
+jest.mock("../../src/modules/utils/mentionService", () => ({
+    resolveMentionUsersFromText: jest.fn(),
+    notifyMentionedUsers: jest.fn(),
+    getMentionSnippet: jest.fn().mockReturnValue("snippet")
+}));
+
+jest.mock("../../src/modules/posts/post.service", () => ({
+    publishDueScheduledPosts: jest.fn(),
+    assertCanAccessPost: jest.fn(),
+    assertCanAccessPostById: jest.fn()
+}));
+
+const mongoose = require("mongoose");
+const Comment = require("../../src/models/comment");
+const Post = require("../../src/models/post");
+const Like = require("../../src/models/like");
+const {
+    resolveMentionUsersFromText,
+    notifyMentionedUsers
+} = require("../../src/modules/utils/mentionService");
+const postService = require("../../src/modules/posts/post.service");
+const commentService = require("../../src/modules/posts/comment.service");
+
+const createSession = () => ({
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    abortTransaction: jest.fn().mockResolvedValue(undefined),
+    endSession: jest.fn()
+});
+
+const selectSession = (value) => ({
+    select: jest.fn(() => ({
+        session: jest.fn().mockResolvedValue(value)
+    }))
+});
+
+const makeCommentFindQuery = (value) => ({
+    sort: jest.fn().mockReturnThis(),
+    skip: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockReturnThis(),
+    populate: jest.fn().mockReturnThis(),
+    lean: jest.fn().mockResolvedValue(value)
+});
+
+beforeEach(() => {
+    jest.clearAllMocks();
+});
+
+test("buildCommentLikeSet returns empty set when user is not provided", async () => {
+    const liked = await commentService.buildCommentLikeSet(["c1"], null);
+
+    expect(liked).toBeInstanceOf(Set);
+    expect(liked.size).toBe(0);
+    expect(Like.find).not.toHaveBeenCalled();
+});
+
+test("buildCommentLikeSet returns liked comment IDs from like model", async () => {
+    Like.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue(["c1", "c3"])
+    });
+
+    const liked = await commentService.buildCommentLikeSet(["c1", "c2", "c3"], "user-1");
+
+    expect(Array.from(liked)).toEqual(["c1", "c3"]);
+});
+
+test("attachCommentEngagement annotates top-level and reply like flags", () => {
+    const comment = {
+        _id: "c1",
+        replies: [
+            { _id: "r1", content: "A" },
+            { _id: "r2", content: "B" }
+        ]
+    };
+
+    const result = commentService.attachCommentEngagement(comment, new Set(["c1", "r2"]));
+
+    expect(result.userEngagement.hasLiked).toBe(true);
+    expect(result.replies[0].userEngagement.hasLiked).toBe(false);
+    expect(result.replies[1].userEngagement.hasLiked).toBe(true);
+});
+
+test("createComment rejects when comments are disabled on target post", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.publishDueScheduledPosts.mockResolvedValue(undefined);
+    Post.findById.mockReturnValue(selectSession({
+        _id: "post-1",
+        author: "author-1",
+        status: "active",
+        visibility: "public",
+        settings: { commentsDisabled: true }
+    }));
+    postService.assertCanAccessPost.mockResolvedValue(undefined);
+
+    await expect(commentService.createComment("user-1", "post-1", "Hello"))
+        .rejects
+        .toMatchObject({
+            message: "Comments are disabled on this post",
+            statusCode: 403
+        });
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("createComment creates comment and returns serialized engagement payload", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.publishDueScheduledPosts.mockResolvedValue(undefined);
+
+    Post.findById.mockReturnValue(selectSession({
+        _id: "post-1",
+        author: "user-1",
+        status: "active",
+        visibility: "public",
+        settings: { commentsDisabled: false }
+    }));
+    postService.assertCanAccessPost.mockResolvedValue(undefined);
+    resolveMentionUsersFromText.mockResolvedValue([]);
+
+    const commentDoc = {
+        _id: "comment-1",
+        populate: jest.fn().mockResolvedValue(undefined),
+        toObject: jest.fn().mockReturnValue({
+            _id: "comment-1",
+            content: "Hello",
+            mentions: []
+        })
+    };
+    Comment.create.mockResolvedValue([commentDoc]);
+
+    const result = await commentService.createComment("user-1", "post-1", "Hello");
+
+    expect(Comment.create).toHaveBeenCalledWith([
+        expect.objectContaining({
+            post: "post-1",
+            author: "user-1",
+            content: "Hello"
+        })
+    ], { session });
+    expect(notifyMentionedUsers).not.toHaveBeenCalled();
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+        _id: "comment-1",
+        content: "Hello",
+        mentions: [],
+        userEngagement: { hasLiked: false },
+        replies: [],
+        hasMoreReplies: false
+    });
+});
+
+test("getCommentReplies throws 404 for missing parent comment", async () => {
+    Comment.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(commentService.getCommentReplies("comment-1", "user-1"))
+        .rejects
+        .toMatchObject({
+            message: "Comment not found",
+            statusCode: 404
+        });
+});
+
+test("getCommentReplies returns replies with like engagement flags", async () => {
+    Comment.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "comment-1",
+            post: "post-1",
+            status: "active"
+        })
+    });
+    postService.assertCanAccessPostById.mockResolvedValue(undefined);
+    Comment.find.mockReturnValue(makeCommentFindQuery([
+        { _id: "reply-1", content: "A" },
+        { _id: "reply-2", content: "B" }
+    ]));
+    Comment.countDocuments.mockResolvedValue(2);
+    Like.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue(["reply-1"])
+    });
+
+    const result = await commentService.getCommentReplies("comment-1", "user-1", 1, 20);
+
+    expect(result.replies).toEqual([
+        expect.objectContaining({
+            _id: "reply-1",
+            userEngagement: expect.objectContaining({ hasLiked: true })
+        }),
+        expect.objectContaining({
+            _id: "reply-2",
+            userEngagement: expect.objectContaining({ hasLiked: false })
+        })
+    ]);
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 2,
+        pages: 1,
+        hasMore: false
+    });
+});
