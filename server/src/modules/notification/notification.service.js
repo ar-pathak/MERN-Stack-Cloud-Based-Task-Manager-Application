@@ -6,6 +6,12 @@ const Task = require("../../models/tasks");
 const Subtask = require("../../models/subtasks");
 const { getIO } = require("../utils/socketStore");
 
+const createError = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    return error;
+};
+
 const withSession = (query, session) => (session ? query.session(session) : query);
 
 const normalizeId = (id) => {
@@ -593,7 +599,7 @@ const markAsRead = async (userId, notificationId) => {
         .lean();
 
     if (!notification) {
-        throw new Error("Notification not found");
+        throw createError("Notification not found", 404);
     }
 
     emitToUser(String(userId), "notification:updated", { notification });
@@ -612,7 +618,7 @@ const markAsUnread = async (userId, notificationId) => {
         .lean();
 
     if (!notification) {
-        throw new Error("Notification not found");
+        throw createError("Notification not found", 404);
     }
 
     emitToUser(String(userId), "notification:updated", { notification });
@@ -654,7 +660,7 @@ const deleteNotification = async (userId, notificationId) => {
     }).lean();
 
     if (!deleted) {
-        throw new Error("Notification not found");
+        throw createError("Notification not found", 404);
     }
 
     emitToUser(String(userId), "notification:deleted", { notificationId });

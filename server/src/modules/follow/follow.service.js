@@ -224,11 +224,11 @@ class FollowService {
      */
     async unfollowUser(currentUserId, targetUserId) {
         if (!currentUserId || !targetUserId) {
-            throw new Error("User IDs are required");
+            throw createError("User IDs are required", 400);
         }
 
         if (currentUserId.toString() === targetUserId.toString()) {
-            throw new Error("Invalid operation");
+            throw createError("Invalid operation", 400);
         }
 
         const session = await mongoose.startSession();
@@ -242,7 +242,7 @@ class FollowService {
             }).session(session);
 
             if (!followRelation) {
-                throw new Error("You are not following this user");
+                throw createError("You are not following this user", 404);
             }
 
             // Delete the follow relationship
@@ -648,7 +648,7 @@ class FollowService {
             }).session(session);
 
             if (!followRelation) {
-                throw new Error("This user is not following you");
+                throw createError("This user is not following you", 404);
             }
 
             await Follow.findByIdAndDelete(followRelation._id).session(session);
@@ -859,7 +859,7 @@ class FollowService {
         });
 
         if (!followRequest) {
-            throw new Error("Follow request not found");
+            throw createError("Follow request not found", 404);
         }
 
         await Follow.findByIdAndDelete(requestId);
