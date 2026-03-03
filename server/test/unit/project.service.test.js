@@ -8,7 +8,9 @@ jest.mock("../../src/models/project", () => ({
     findOne: jest.fn(),
     countDocuments: jest.fn(),
     create: jest.fn(),
-    findByIdAndUpdate: jest.fn()
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn(),
+    findOneAndUpdate: jest.fn()
 }));
 
 jest.mock("../../src/models/workspace", () => ({
@@ -26,22 +28,28 @@ jest.mock("../../src/models/team", () => ({
 
 jest.mock("../../src/models/tasks", () => ({
     updateMany: jest.fn(),
-    find: jest.fn()
+    find: jest.fn(),
+    deleteMany: jest.fn()
 }));
 
 jest.mock("../../src/models/subtasks", () => ({
-    updateMany: jest.fn()
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
 }));
 
 jest.mock("../../src/models/chat", () => ({
     create: jest.fn(),
-    findByIdAndUpdate: jest.fn()
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn()
 }));
 
-jest.mock("../../src/models/message", () => ({}));
+jest.mock("../../src/models/message", () => ({
+    deleteMany: jest.fn()
+}));
 jest.mock("../../src/models/projectStatusChangeRequest", () => ({
     findOne: jest.fn(),
-    create: jest.fn()
+    create: jest.fn(),
+    deleteMany: jest.fn()
 }));
 
 jest.mock("../../src/modules/notification/notification.service", () => ({
@@ -74,9 +82,15 @@ const Workspace = require("../../src/models/workspace");
 const WorkspaceMember = require("../../src/models/workspaceMember");
 const Team = require("../../src/models/team");
 const Chat = require("../../src/models/chat");
+const Task = require("../../src/models/tasks");
+const Subtask = require("../../src/models/subtasks");
+const Message = require("../../src/models/message");
+const ProjectStatusChangeRequest = require("../../src/models/projectStatusChangeRequest");
+const mongoose = require("mongoose");
 const { toPaginationMeta } = require("../../src/helpers/paginationHelper");
 const { touchWorkspace } = require("../../src/modules/utils/updateParent");
-const { logActivity, getUserLabel } = require("../../src/modules/utils/activityLogger");
+const { logActivity, getUserLabel, getUserLabels, formatUserList } = require("../../src/modules/utils/activityLogger");
+const notificationService = require("../../src/modules/notification/notification.service");
 const { syncProjectChatMembers } = require("../../src/modules/utils/chatMembershipSync");
 const projectService = require("../../src/modules/projects/project.service");
 
@@ -95,6 +109,13 @@ const makeQuery = (value) => {
     query.catch = (onRejected) => Promise.resolve(value).catch(onRejected);
     return query;
 };
+
+const makeSession = () => ({
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn().mockResolvedValue(undefined),
+    abortTransaction: jest.fn().mockResolvedValue(undefined),
+    endSession: jest.fn()
+});
 
 beforeEach(() => {
     jest.clearAllMocks();
@@ -279,4 +300,203 @@ test("updateProject enforces admin approval for status change", async () => {
         message: "Project status changes require project admin approval. Submit a status change request.",
         statusCode: 403
     });
+});
+
+test("requestProjectStatusChange creates a pending request and notifies project admins", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [
+            { user: "u1", role: "member" },
+            { user: "admin-2", role: "admin" }
+        ],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+    ProjectStatusChangeRequest.findOne.mockReturnValue(makeQuery(null));
+    ProjectStatusChangeRequest.create.mockResolvedValue({
+        _id: "req-1",
+        note: "Need archival",
+        requestedBy: "u1"
+    });
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValue("Alice");
+
+    const result = await projectService.requestProjectStatusChange({
+        workspaceId: "w1",
+        projectId: "p1",
+        requestedStatus: "archived",
+        note: "Need archival",
+        userId: "u1"
+    });
+
+    expect(result).toEqual({
+        _id: "req-1",
+        note: "Need archival",
+        requestedBy: "u1"
+    });
+    expect(ProjectStatusChangeRequest.create).toHaveBeenCalledWith(expect.objectContaining({
+        workspace: "w1",
+        project: "p1",
+        requestedBy: "u1",
+        requestedStatus: "archived",
+        previousStatus: "active",
+        note: "Need archival"
+    }));
+    expect(notificationService.createNotifications).toHaveBeenCalledWith(expect.objectContaining({
+        recipientIds: expect.arrayContaining(["owner-1", "admin-2"]),
+        entityType: "project",
+        entityId: "p1"
+    }));
+    expect(logActivity).toHaveBeenCalledTimes(1);
+});
+
+test("respondProjectStatusChangeRequest approves request and updates project status", async () => {
+    const project = {
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        chatId: "chat-p1",
+        owner: "owner-1",
+        status: "active",
+        members: [{ user: "u1", role: "admin" }],
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    const request = {
+        _id: "req-1",
+        requestedBy: "u2",
+        requestedStatus: "completed",
+        status: "pending",
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+
+    Project.findById.mockReturnValue(makeQuery(project));
+    ProjectStatusChangeRequest.findOne.mockResolvedValue(request);
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValueOnce("Admin").mockResolvedValueOnce("Requester");
+
+    const result = await projectService.respondProjectStatusChangeRequest({
+        workspaceId: "w1",
+        projectId: "p1",
+        requestId: "req-1",
+        action: "approve",
+        userId: "u1"
+    });
+
+    expect(request.save).toHaveBeenCalledTimes(1);
+    expect(project.save).toHaveBeenCalledTimes(1);
+    expect(result.projectStatus).toBe("completed");
+    expect(notificationService.setProjectStatusRequestNotificationState).toHaveBeenCalledWith({
+        requestId: "req-1",
+        requestState: "approved",
+        recipientUserIds: expect.arrayContaining(["owner-1", "u1"]),
+        read: true
+    });
+    expect(touchWorkspace).toHaveBeenCalledWith("w1");
+});
+
+test("deleteProject removes related resources in a transaction", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        chatId: "chat-p1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }]
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Workspace.findById.mockReturnValue(makeQuery({ name: "Workspace A", chatId: "chat-w1" }));
+    Task.find.mockReturnValue(makeQuery([{ _id: "t1" }]));
+    getUserLabel.mockResolvedValue("Admin");
+    Project.findByIdAndDelete.mockResolvedValue({ _id: "p1" });
+
+    const result = await projectService.deleteProject("p1", "u1");
+
+    expect(result).toEqual({
+        message: "Project deleted successfully",
+        projectId: "p1"
+    });
+    expect(Subtask.deleteMany).toHaveBeenCalledWith({ task: { $in: ["t1"] } }, { session });
+    expect(Task.deleteMany).toHaveBeenCalledWith({ project: "p1" }, { session });
+    expect(ProjectStatusChangeRequest.deleteMany).toHaveBeenCalledWith({ project: "p1" }, { session });
+    expect(Message.deleteMany).toHaveBeenCalledWith({ chatId: "chat-p1" }, { session });
+    expect(Chat.findByIdAndDelete).toHaveBeenCalledWith("chat-p1", { session });
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(session.abortTransaction).not.toHaveBeenCalled();
+    expect(touchWorkspace).toHaveBeenCalledWith("w1");
+});
+
+test("addProjectMembers adds only new members and logs activity", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        chatId: "chat-p1",
+        members: [{ user: "u1", role: "admin" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    WorkspaceMember.find.mockReturnValue(makeQuery([{ user: "u2" }]));
+    Project.findByIdAndUpdate.mockResolvedValue({ _id: "p1" });
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValue("Admin");
+    getUserLabels.mockResolvedValue(["Bob"]);
+    formatUserList.mockReturnValue("Bob");
+
+    const result = await projectService.addProjectMembers(
+        "p1",
+        {
+            members: [
+                { user: "u1", role: "admin" },
+                { user: "u2", role: "member" }
+            ]
+        },
+        "u1"
+    );
+
+    expect(result).toEqual({ message: "1 new member(s) added successfully" });
+    expect(Project.findByIdAndUpdate).toHaveBeenCalledWith(
+        "p1",
+        { $push: { members: { $each: [{ user: "u2", role: "member" }] } } },
+        { new: true }
+    );
+    expect(syncProjectChatMembers).toHaveBeenCalledWith("p1");
+});
+
+test("updateProjectMemberRole updates target member role", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        chatId: "chat-p1",
+        members: [{ user: "u1", role: "admin" }, { user: "u2", role: "member" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findOneAndUpdate.mockResolvedValue({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        chatId: "chat-p1"
+    });
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValueOnce("Admin").mockResolvedValueOnce("Bob");
+
+    const result = await projectService.updateProjectMemberRole("p1", "u2", "viewer", "u1");
+
+    expect(result).toEqual({ message: "Member role updated successfully" });
+    expect(Project.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: "p1", "members.user": "u2" },
+        { $set: { "members.$.role": "viewer" } },
+        { new: true }
+    );
+    expect(syncProjectChatMembers).toHaveBeenCalledWith("p1");
 });

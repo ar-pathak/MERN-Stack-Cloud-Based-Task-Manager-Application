@@ -147,6 +147,21 @@ test("logIn rejects social-login-only account in password auth", async () => {
     });
 });
 
+test("logIn rejects inactive user account", async () => {
+    User.findOne.mockReturnValue(mockSelectResolved({
+        accountStatus: "suspended",
+        passwordHash: "hash"
+    }));
+
+    await expect(AuthService.logIn({
+        email: "inactive@example.com",
+        password: "x"
+    })).rejects.toMatchObject({
+        message: "Account is not active",
+        statusCode: 403
+    });
+});
+
 test("logIn rejects locked account with 423", async () => {
     User.findOne.mockReturnValue(mockSelectResolved({
         accountStatus: "active",
@@ -230,6 +245,16 @@ test("getOAuthAuthorizationUrl builds Google auth URL", () => {
     expect(parsed.searchParams.get("state")).toBe("state-123");
 });
 
+test("getOAuthAuthorizationUrl builds GitHub auth URL", () => {
+    const url = AuthService.getOAuthAuthorizationUrl("github", "state-456");
+    const parsed = new URL(url);
+
+    expect(parsed.origin).toBe("https://github.com");
+    expect(parsed.pathname).toBe("/login/oauth/authorize");
+    expect(parsed.searchParams.get("client_id")).toBe(process.env.GITHUB_CLIENT_ID);
+    expect(parsed.searchParams.get("state")).toBe("state-456");
+});
+
 test("getOAuthAuthorizationUrl rejects missing state", () => {
     expect(() => AuthService.getOAuthAuthorizationUrl("google", ""))
         .toThrow("Missing OAuth state");
@@ -269,6 +294,23 @@ test("exchangeOAuthCodeForProfile returns Google profile details", async () => {
         avatar: "avatar.png"
     });
     expect(global.fetch).toHaveBeenCalledTimes(2);
+});
+
+test("exchangeOAuthCodeForProfile rejects unverified Google email", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ access_token: "google-token" }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse({
+            sub: "google-sub-2",
+            email: "google@example.com",
+            email_verified: false
+        }, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google account email is not verified",
+            statusCode: 403
+        });
 });
 
 test("exchangeOAuthCodeForProfile rejects GitHub response without usable email", async () => {
@@ -366,6 +408,57 @@ test("refresh rejects when refresh token is not stored", async () => {
             message: "Refresh token not found or already used",
             statusCode: 403
         });
+});
+
+test("refresh rejects invalid JWT signatures", async () => {
+    jwt.verify.mockImplementation(() => {
+        throw new Error("jwt malformed");
+    });
+
+    await expect(AuthService.refresh("bad-token"))
+        .rejects
+        .toMatchObject({
+            message: "Invalid refresh token",
+            statusCode: 403
+        });
+});
+
+test("refresh rejects expired stored token and removes it", async () => {
+    jwt.verify.mockReturnValue({ id: "u1" });
+    RefreshToken.findOne.mockResolvedValue({
+        _id: "stored-expired",
+        user: "u1",
+        expiresAt: new Date(Date.now() - 1000)
+    });
+    RefreshToken.deleteOne.mockResolvedValue({});
+
+    await expect(AuthService.refresh("raw-token"))
+        .rejects
+        .toMatchObject({
+            message: "Refresh token expired. Please login again.",
+            statusCode: 403
+        });
+
+    expect(RefreshToken.deleteOne).toHaveBeenCalledWith({ _id: "stored-expired" });
+});
+
+test("refresh rejects mismatched token owner and removes token", async () => {
+    jwt.verify.mockReturnValue({ id: "u1" });
+    RefreshToken.findOne.mockResolvedValue({
+        _id: "stored-2",
+        user: "u2",
+        expiresAt: new Date(Date.now() + 1000)
+    });
+    RefreshToken.deleteOne.mockResolvedValue({});
+
+    await expect(AuthService.refresh("raw-token"))
+        .rejects
+        .toMatchObject({
+            message: "Invalid refresh token",
+            statusCode: 403
+        });
+
+    expect(RefreshToken.deleteOne).toHaveBeenCalledWith({ _id: "stored-2" });
 });
 
 test("refresh rotates token when stored token is valid", async () => {
@@ -483,6 +576,55 @@ test("sendVerificationEmail returns already verified message", async () => {
     expect(sendEmail).not.toHaveBeenCalled();
 });
 
+test("sendVerificationEmail rejects when user is not found", async () => {
+    User.findById.mockReturnValue(mockSelectResolved(null));
+
+    await expect(AuthService.sendVerificationEmail("missing-user"))
+        .rejects
+        .toMatchObject({
+            message: "User not found",
+            statusCode: 404
+        });
+});
+
+test("sendVerificationEmail rejects when account is inactive", async () => {
+    User.findById.mockReturnValue(mockSelectResolved({
+        _id: "u1",
+        emailVerified: false,
+        accountStatus: "suspended"
+    }));
+
+    await expect(AuthService.sendVerificationEmail("u1"))
+        .rejects
+        .toMatchObject({
+            message: "Account is not active",
+            statusCode: 403
+        });
+});
+
+test("sendVerificationEmail sends verification mail for active unverified user", async () => {
+    const userDoc = {
+        _id: "u1",
+        email: "user@example.com",
+        emailVerified: false,
+        accountStatus: "active",
+        save: jest.fn().mockResolvedValue({})
+    };
+    User.findById.mockReturnValue(mockSelectResolved(userDoc));
+    sendEmail.mockResolvedValue({});
+
+    const result = await AuthService.sendVerificationEmail("u1");
+
+    expect(userDoc.save).toHaveBeenCalledWith({ validateBeforeSave: false });
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+        to: "user@example.com",
+        type: "email-verification"
+    }));
+    expect(result).toEqual({
+        message: "Verification email sent successfully."
+    });
+});
+
 test("sendVerificationEmail clears fields when email send fails", async () => {
     const userDoc = {
         _id: "u1",
@@ -534,4 +676,400 @@ test("verifyEmail marks user as verified and clears token", async () => {
     expect(userDoc.emailVerificationExpires).toBeUndefined();
     expect(userDoc.save).toHaveBeenCalledWith({ validateBeforeSave: false });
     expect(result).toEqual({ message: "Email verified successfully." });
+});
+
+test("getOAuthAuthorizationUrl rejects when provider config is incomplete", () => {
+    const previousSecret = process.env.GOOGLE_CLIENT_SECRET;
+    process.env.GOOGLE_CLIENT_SECRET = "   ";
+
+    try {
+        expect(() => AuthService.getOAuthAuthorizationUrl("google", "state-1"))
+            .toThrow("Google OAuth is not configured");
+    } finally {
+        process.env.GOOGLE_CLIENT_SECRET = previousSecret;
+    }
+});
+
+test("exchangeOAuthCodeForProfile rejects when fetch API is unavailable", async () => {
+    const previousFetch = global.fetch;
+    global.fetch = undefined;
+
+    try {
+        await expect(AuthService.exchangeOAuthCodeForProfile("google", "code-1"))
+            .rejects
+            .toMatchObject({
+                message: "Global fetch API is unavailable in this Node.js runtime",
+                statusCode: 500
+            });
+    } finally {
+        global.fetch = previousFetch;
+    }
+});
+
+test("exchangeOAuthCodeForProfile handles non-json OAuth error responses", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockRejectedValue(new Error("invalid json"))
+    });
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google OAuth request failed",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile includes provider error_description in failure", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(
+        makeOAuthHttpResponse({ error_description: "invalid_grant" }, false)
+    );
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google OAuth request failed: invalid_grant",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects Google token payload without access token", async () => {
+    global.fetch = jest.fn().mockResolvedValueOnce(makeOAuthHttpResponse({}, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google OAuth token exchange failed",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects Google profile without provider id", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ access_token: "google-token" }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse({
+            email: "google@example.com",
+            email_verified: true
+        }, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google account ID is missing in OAuth response",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects Google profile without email", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ access_token: "google-token" }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse({
+            sub: "google-sub-3",
+            email_verified: true
+        }, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("google", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "Google account did not return an email address",
+            statusCode: 400
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects GitHub payload with oauth error", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ error: "bad_verification_code" }, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("github", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "GitHub OAuth authorization failed",
+            statusCode: 400
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects GitHub token payload without access token", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({}, true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("github", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "GitHub OAuth token exchange failed",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile rejects GitHub profile without id", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ access_token: "github-token" }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse({
+            login: "octocat",
+            email: "fallback@example.com"
+        }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse([], true));
+
+    await expect(AuthService.exchangeOAuthCodeForProfile("github", "auth-code"))
+        .rejects
+        .toMatchObject({
+            message: "GitHub account ID is missing in OAuth response",
+            statusCode: 502
+        });
+});
+
+test("exchangeOAuthCodeForProfile returns GitHub profile using verified email fallback", async () => {
+    global.fetch = jest.fn()
+        .mockResolvedValueOnce(makeOAuthHttpResponse({ access_token: "github-token" }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse({
+            id: 55,
+            login: "octocat",
+            avatar_url: ""
+        }, true))
+        .mockResolvedValueOnce(makeOAuthHttpResponse([
+            { email: "nope@example.com", primary: false, verified: false },
+            { email: "verified@example.com", primary: false, verified: true }
+        ], true));
+
+    const profile = await AuthService.exchangeOAuthCodeForProfile("github", "auth-code");
+
+    expect(profile).toEqual({
+        providerId: "55",
+        email: "verified@example.com",
+        name: "octocat",
+        avatar: ""
+    });
+});
+
+test("logIn resets stale lock fields before successful authentication", async () => {
+    const userDoc = {
+        _id: "u-lock-expired",
+        name: "User",
+        email: "user@example.com",
+        username: "user_name",
+        accountStatus: "active",
+        passwordHash: "hash",
+        loginAttempts: 4,
+        lockUntil: new Date(Date.now() - 60_000),
+        isLocked: false,
+        resetLoginAttempts: jest.fn().mockResolvedValue({})
+    };
+
+    User.findOne.mockReturnValue(mockSelectResolved(userDoc));
+    bcrypt.compare.mockResolvedValue(true);
+    generateAccessToken.mockReturnValue("access-token");
+    generateRefreshToken.mockReturnValue("refresh-token");
+    RefreshToken.deleteMany.mockResolvedValue({});
+    RefreshToken.create.mockResolvedValue({});
+
+    const result = await AuthService.logIn({
+        email: "user@example.com",
+        password: "Str0ng@Pass1"
+    });
+
+    expect(userDoc.resetLoginAttempts).toHaveBeenCalledTimes(1);
+    expect(userDoc.loginAttempts).toBe(0);
+    expect(userDoc.lockUntil).toBeUndefined();
+    expect(result.accessToken).toBe("access-token");
+});
+
+test("logIn locked account message uses singular minute label", async () => {
+    User.findOne.mockReturnValue(mockSelectResolved({
+        accountStatus: "active",
+        passwordHash: "hash",
+        isLocked: true,
+        lockUntil: new Date(Date.now() + 15_000)
+    }));
+
+    await expect(AuthService.logIn({
+        email: "locked@example.com",
+        password: "x"
+    })).rejects.toMatchObject({
+        message: "Account is temporarily locked. Try again in 1 minute.",
+        statusCode: 423
+    });
+});
+
+test("logInWithOAuth links existing email account with provider details", async () => {
+    const existingUser = {
+        _id: "u-link",
+        name: "",
+        email: "link@example.com",
+        username: "linked_user",
+        avatar: "",
+        emailVerified: false,
+        accountStatus: "active",
+        save: jest.fn().mockResolvedValue({})
+    };
+
+    User.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(existingUser);
+    generateAccessToken.mockReturnValue("linked-access");
+    generateRefreshToken.mockReturnValue("linked-refresh");
+    RefreshToken.deleteMany.mockResolvedValue({});
+    RefreshToken.create.mockResolvedValue({});
+
+    const result = await AuthService.logInWithOAuth({
+        provider: "google",
+        profile: {
+            providerId: "google-sub-99",
+            email: "link@example.com",
+            name: " Linked Name ",
+            avatar: "https://cdn.example.com/avatar.png"
+        }
+    });
+
+    expect(existingUser.googleId).toBe("google-sub-99");
+    expect(existingUser.emailVerified).toBe(true);
+    expect(existingUser.name).toBe("Linked Name");
+    expect(existingUser.avatar).toBe("https://cdn.example.com/avatar.png");
+    expect(existingUser.save).toHaveBeenCalledWith({ validateBeforeSave: false });
+    expect(result.user).toEqual({
+        _id: "u-link",
+        name: "Linked Name",
+        email: "link@example.com",
+        username: "linked_user"
+    });
+});
+
+test("logInWithOAuth creates a new user and derives fallback name from email", async () => {
+    const previousImplementation = User.getMockImplementation();
+    User.mockImplementation(function UserCtor(doc = {}) {
+        Object.assign(this, { accountStatus: "active" }, doc);
+        if (!this._id) {
+            this._id = "new-oauth-user";
+        }
+        if (typeof this.save !== "function") {
+            this.save = jest.fn().mockResolvedValue(this);
+        }
+    });
+
+    try {
+        User.findOne
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce(null);
+        generateUniqueUsername.mockResolvedValue("new_oauth_user");
+        generateAccessToken.mockReturnValue("oauth-access");
+        generateRefreshToken.mockReturnValue("oauth-refresh");
+        RefreshToken.deleteMany.mockResolvedValue({});
+        RefreshToken.create.mockResolvedValue({});
+
+        const result = await AuthService.logInWithOAuth({
+            provider: "github",
+            profile: {
+                providerId: "gh-123",
+                email: "new.user@example.com",
+                name: " ",
+                avatar: " "
+            }
+        });
+
+        expect(generateUniqueUsername).toHaveBeenCalledWith("new.user@example.com");
+        expect(result.user).toEqual({
+            _id: "new-oauth-user",
+            name: "new.user",
+            email: "new.user@example.com",
+            username: "new_oauth_user"
+        });
+    } finally {
+        User.mockImplementation(previousImplementation);
+    }
+});
+
+test("logInWithOAuth rejects unsupported provider", async () => {
+    await expect(AuthService.logInWithOAuth({
+        provider: "discord",
+        profile: {
+            providerId: "provider-id",
+            email: "user@example.com"
+        }
+    })).rejects.toMatchObject({
+        message: "Unsupported OAuth provider",
+        statusCode: 400
+    });
+});
+
+test("logInWithOAuth rejects missing provider account id", async () => {
+    await expect(AuthService.logInWithOAuth({
+        provider: "google",
+        profile: {
+            providerId: " ",
+            email: "user@example.com"
+        }
+    })).rejects.toMatchObject({
+        message: "Google did not return a valid account ID",
+        statusCode: 400
+    });
+});
+
+test("logInWithOAuth rejects missing email in profile", async () => {
+    await expect(AuthService.logInWithOAuth({
+        provider: "github",
+        profile: {
+            providerId: "gh-1",
+            email: " "
+        }
+    })).rejects.toMatchObject({
+        message: "GitHub account did not return an email address",
+        statusCode: 400
+    });
+});
+
+test("logInWithOAuth rejects inactive resolved user account", async () => {
+    User.findOne.mockResolvedValueOnce({
+        _id: "inactive-oauth",
+        accountStatus: "suspended"
+    });
+
+    await expect(AuthService.logInWithOAuth({
+        provider: "google",
+        profile: {
+            providerId: "google-sub-1",
+            email: "user@example.com"
+        }
+    })).rejects.toMatchObject({
+        message: "Account is not active",
+        statusCode: 403
+    });
+});
+
+test("logOut deletes all user refresh tokens when userId is provided", async () => {
+    RefreshToken.deleteMany.mockResolvedValue({});
+
+    const result = await AuthService.logOut("", "logout-user");
+
+    expect(RefreshToken.deleteMany).toHaveBeenCalledWith({ user: "logout-user" });
+    expect(result).toEqual({ message: "Logged out successfully" });
+});
+
+test("refresh rejects inactive or missing user and clears all sessions", async () => {
+    jwt.verify.mockReturnValue({ id: "u-refresh" });
+    RefreshToken.findOne.mockResolvedValue({
+        _id: "stored-valid",
+        user: "u-refresh",
+        expiresAt: new Date(Date.now() + 30_000)
+    });
+    User.findById.mockReturnValue(mockSelectResolved(null));
+    RefreshToken.deleteMany.mockResolvedValue({});
+
+    await expect(AuthService.refresh("refresh-token"))
+        .rejects
+        .toMatchObject({
+            message: "User account is not active",
+            statusCode: 403
+        });
+
+    expect(RefreshToken.deleteMany).toHaveBeenCalledWith({ user: "u-refresh" });
+});
+
+test("refresh wraps non-error failures in a standard auth error", async () => {
+    jwt.verify.mockReturnValue({ id: "u-refresh" });
+    RefreshToken.findOne.mockRejectedValue("db offline");
+
+    await expect(AuthService.refresh("refresh-token"))
+        .rejects
+        .toMatchObject({
+            message: "Token refresh failed",
+            statusCode: 403
+        });
 });

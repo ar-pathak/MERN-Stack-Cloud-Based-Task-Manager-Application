@@ -229,3 +229,77 @@ test("controller delegates service errors to handleError", async () => {
         message: "forbidden"
     });
 });
+
+test.each([
+    ["getMyProfile", "getUserInfo"],
+    ["updateProfile", "updateProfile"],
+    ["getUserById", "getPublicProfile"],
+    ["searchUsers", "searchUsers"],
+    ["searchMentions", "searchMentionCandidates"],
+    ["updatePreferences", "updatePreferences"],
+    ["getBlockedUsers", "getBlockedUsers"],
+    ["blockUser", "blockUser"],
+    ["unblockUser", "unblockUser"],
+    ["checkUsername", "checkUsernameAvailability"],
+    ["getUserStats", "getUserStats"],
+    ["updateActivity", "updateActivity"],
+    ["deactivateAccount", "deactivateAccount"],
+    ["getPopularUsers", "getPopularUsers"]
+])("%s delegates thrown errors to handleError", async (handlerName, serviceMethod) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error("service failed");
+    error.statusCode = 418;
+    userService[serviceMethod].mockRejectedValue(error);
+
+    await controller[handlerName](req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(418);
+    expect(res.body).toEqual({
+        success: false,
+        message: "service failed"
+    });
+});
+
+test("searchUsers and getBlockedUsers use default pagination values", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.query = { query: "bob" };
+    userService.searchUsers.mockResolvedValue({ users: [] });
+    userService.getBlockedUsers.mockResolvedValue({ users: [] });
+
+    await controller.searchUsers(req, res);
+    await controller.getBlockedUsers(req, res);
+
+    expect(userService.searchUsers).toHaveBeenCalledWith("bob", 1, 10, "user-1");
+    expect(userService.getBlockedUsers).toHaveBeenCalledWith("user-1", 1, 20);
+});
+
+test("getUserById supports anonymous caller and updateActivity defaults to online", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.user = undefined;
+    userService.getPublicProfile.mockResolvedValue({ _id: "user-2" });
+    userService.updateActivity.mockResolvedValue(undefined);
+
+    await controller.getUserById(req, res);
+
+    expect(userService.getPublicProfile).toHaveBeenCalledWith("user-2", undefined);
+
+    const activityReq = baseReq();
+    activityReq.body = {};
+    await controller.updateActivity(activityReq, res);
+    expect(userService.updateActivity).toHaveBeenCalledWith("user-1", true);
+});
+
+test("getPopularUsers uses default limit when not provided", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.query = {};
+    userService.getPopularUsers.mockResolvedValue([]);
+
+    await controller.getPopularUsers(req, res);
+
+    expect(userService.getPopularUsers).toHaveBeenCalledWith(10);
+});

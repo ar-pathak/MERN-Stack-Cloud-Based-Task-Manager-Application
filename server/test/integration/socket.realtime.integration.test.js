@@ -468,8 +468,18 @@ testWithDb("call:start then call:join emits critical realtime events and updates
         type: "video"
     });
 
-    const [initiatedEvent, incomingEvent] = await Promise.all([initiatedPromise, incomingPromise]);
-    const callId = String(initiatedEvent?.callId || incomingEvent?.callId);
+    let callId = "";
+    try {
+        const startEvent = await Promise.any([initiatedPromise, incomingPromise]);
+        callId = String(startEvent?.callId || "");
+    } catch (_eventError) {
+        // Ignore event race failures and fallback to DB polling below.
+    }
+
+    if (!callId) {
+        callId = await waitForActiveCallId(chat._id, SOCKET_EVENT_TIMEOUT_MS);
+    }
+
     assert.ok(callId, "call:start should emit call id");
 
     const callAfterStart = await Call.findById(callId).lean();

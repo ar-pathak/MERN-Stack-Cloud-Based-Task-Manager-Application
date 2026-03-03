@@ -343,3 +343,84 @@ test("controller delegates service errors to handleError", async () => {
         message: "access denied"
     });
 });
+
+test.each([
+    ["createPost", "postService", "createPost"],
+    ["getPost", "postService", "getPostById"],
+    ["updatePost", "postService", "updatePost"],
+    ["deletePost", "postService", "deletePost"],
+    ["getFeed", "postService", "getUserFeed"],
+    ["getExploreFeed", "postService", "getPublicFeed"],
+    ["getTrending", "postService", "getTrendingPosts"],
+    ["getUserPosts", "postService", "getUserPosts"],
+    ["searchPosts", "postService", "searchPosts"],
+    ["getHashtagPosts", "postService", "getPostsByHashtag"],
+    ["likePost", "likeService", "likePost"],
+    ["unlikePost", "likeService", "unlikePost"],
+    ["getPostLikes", "likeService", "getPostLikes"],
+    ["getLikedPosts", "likeService", "getUserLikedPosts"],
+    ["savePost", "postService", "savePost"],
+    ["unsavePost", "postService", "unsavePost"],
+    ["getBookmarkedPosts", "postService", "getBookmarkedPosts"],
+    ["sharePost", "postService", "sharePost"],
+    ["repostPost", "postService", "repostPost"],
+    ["addComment", "commentService", "createComment"],
+    ["getComments", "commentService", "getPostComments"],
+    ["updateComment", "commentService", "updateComment"],
+    ["deleteComment", "commentService", "deleteComment"],
+    ["getCommentReplies", "commentService", "getCommentReplies"],
+    ["likeComment", "likeService", "likeComment"],
+    ["unlikeComment", "likeService", "unlikeComment"]
+])("%s delegates failures to handleError", async (handlerName, serviceName, methodName) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error("failed");
+    error.statusCode = 422;
+
+    services[serviceName][methodName].mockRejectedValue(error);
+
+    await controller[handlerName](req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+        success: false,
+        message: "failed"
+    });
+});
+
+test("like/unlike comment and post handlers use fallback success messages", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.body = {};
+    likeService.likePost.mockResolvedValue({ liked: true });
+    likeService.unlikePost.mockResolvedValue({ liked: false });
+    likeService.likeComment.mockResolvedValue({ liked: true });
+    likeService.unlikeComment.mockResolvedValue({ liked: false });
+
+    await controller.likePost(req, res);
+    await controller.unlikePost(req, res);
+    await controller.likeComment(req, res);
+    await controller.unlikeComment(req, res);
+
+    expect(likeService.likePost).toHaveBeenCalledWith("user-1", "post-1", "like");
+    expect(sendSuccess).toHaveBeenCalledWith(res, { liked: true }, "Post liked successfully");
+    expect(sendSuccess).toHaveBeenCalledWith(res, { liked: false }, "Post unliked successfully");
+    expect(sendSuccess).toHaveBeenCalledWith(res, { liked: true }, "Comment liked successfully");
+    expect(sendSuccess).toHaveBeenCalledWith(res, { liked: false }, "Comment unliked successfully");
+});
+
+test("explore and trending feeds support anonymous users with default query values", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.user = undefined;
+    req.query = {};
+    postService.getPublicFeed.mockResolvedValue({ posts: [] });
+    postService.getTrendingPosts.mockResolvedValue({ posts: [] });
+
+    await controller.getExploreFeed(req, res);
+    await controller.getTrending(req, res);
+
+    expect(postService.getPublicFeed).toHaveBeenCalledWith(undefined, 1, 20);
+    expect(postService.getTrendingPosts).toHaveBeenCalledWith(1, 20, "day", undefined);
+});
