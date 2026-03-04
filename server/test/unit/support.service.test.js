@@ -293,6 +293,15 @@ test("listTickets validates requester id and returns normalized summaries", asyn
     ]));
 });
 
+test("listTickets rejects invalid requester id", async () => {
+    await expect(SupportService.listTickets("invalid-user-id", {}))
+        .rejects
+        .toMatchObject({
+            statusCode: 400,
+            message: "Invalid user"
+        });
+});
+
 test("getTicketById returns only requester-visible comments in chronological order", async () => {
     SupportTicket.findOne.mockReturnValue({
         populate: jest.fn().mockReturnThis(),
@@ -324,6 +333,38 @@ test("getTicketById returns only requester-visible comments in chronological ord
     expect(result.comments.map((entry) => entry._id)).toEqual(["early", "late"]);
 });
 
+test("getTicketById rejects invalid requester id", async () => {
+    await expect(SupportService.getTicketById("invalid-user-id", TICKET_ID))
+        .rejects
+        .toMatchObject({
+            statusCode: 400,
+            message: "Invalid user"
+        });
+});
+
+test("getTicketById throws 404 when ticket is not found", async () => {
+    SupportTicket.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(SupportService.getTicketById(USER_ID, TICKET_ID))
+        .rejects
+        .toMatchObject({
+            statusCode: 404,
+            message: "Support ticket not found"
+        });
+});
+
+test("updateTicketStatus rejects invalid requester id", async () => {
+    await expect(SupportService.updateTicketStatus("invalid-user-id", TICKET_ID, "closed"))
+        .rejects
+        .toMatchObject({
+            statusCode: 400,
+            message: "Invalid user"
+        });
+});
+
 test("updateTicketStatus throws 404 when user does not own ticket", async () => {
     SupportTicket.findOneAndUpdate.mockReturnValue({
         lean: jest.fn().mockResolvedValue(null)
@@ -335,6 +376,46 @@ test("updateTicketStatus throws 404 when user does not own ticket", async () => 
             statusCode: 404,
             message: "Support ticket not found"
         });
+});
+
+test("updateTicketStatus updates and returns ticket", async () => {
+    SupportTicket.findOneAndUpdate.mockReturnValue({
+        lean: jest.fn().mockResolvedValue({
+            _id: TICKET_ID,
+            requester: USER_ID,
+            status: "resolved"
+        })
+    });
+
+    const result = await SupportService.updateTicketStatus(USER_ID, TICKET_ID, "resolved");
+
+    expect(result).toEqual({
+        _id: TICKET_ID,
+        requester: USER_ID,
+        status: "resolved"
+    });
+});
+
+test("addTicketComment rejects invalid user payload", async () => {
+    await expect(
+        SupportService.addTicketComment({ _id: "bad-id" }, TICKET_ID, { body: "Reply" })
+    ).rejects.toMatchObject({
+        statusCode: 400,
+        message: "Invalid user"
+    });
+});
+
+test("addTicketComment throws when ticket is not found", async () => {
+    SupportTicket.findOne.mockResolvedValue(null);
+
+    await expect(SupportService.addTicketComment(
+        { _id: USER_ID, name: "Alice" },
+        TICKET_ID,
+        { body: "Reply" }
+    )).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Support ticket not found"
+    });
 });
 
 test("addTicketComment rejects invalid parent comment id", async () => {
@@ -478,6 +559,21 @@ test("submitFeedback validates requester id and returns saved feedback", async (
     });
 });
 
+test("submitFeedback rejects invalid requester id", async () => {
+    await expect(
+        SupportService.submitFeedback({ _id: "invalid-id" }, {
+            type: "bug_report",
+            category: "security",
+            title: "Issue",
+            message: "Issue details",
+            rating: 4
+        })
+    ).rejects.toMatchObject({
+        statusCode: 400,
+        message: "Invalid user"
+    });
+});
+
 test("listMyFeedback returns rounded summary and pagination", async () => {
     SupportFeedback.find.mockReturnValue(makeListQuery([
         {
@@ -507,4 +603,13 @@ test("listMyFeedback returns rounded summary and pagination", async () => {
         totalPages: 1,
         hasMore: false
     });
+});
+
+test("listMyFeedback rejects invalid requester id", async () => {
+    await expect(SupportService.listMyFeedback("invalid-user-id", { page: 1, limit: 10 }))
+        .rejects
+        .toMatchObject({
+            statusCode: 400,
+            message: "Invalid user"
+        });
 });

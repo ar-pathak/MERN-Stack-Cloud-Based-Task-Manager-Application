@@ -1042,6 +1042,22 @@ test("logOut deletes all user refresh tokens when userId is provided", async () 
     expect(result).toEqual({ message: "Logged out successfully" });
 });
 
+test("logOut deletes specific refresh token hash when token is provided", async () => {
+    RefreshToken.deleteMany.mockResolvedValue({});
+
+    const result = await AuthService.logOut("raw-refresh-token", "");
+
+    expect(RefreshToken.deleteMany).toHaveBeenCalledWith({
+        token: {
+            $in: expect.arrayContaining([
+                "raw-refresh-token",
+                expect.any(String)
+            ])
+        }
+    });
+    expect(result).toEqual({ message: "Logged out successfully" });
+});
+
 test("refresh rejects inactive or missing user and clears all sessions", async () => {
     jwt.verify.mockReturnValue({ id: "u-refresh" });
     RefreshToken.findOne.mockResolvedValue({
@@ -1072,4 +1088,48 @@ test("refresh wraps non-error failures in a standard auth error", async () => {
             message: "Token refresh failed",
             statusCode: 403
         });
+});
+
+test("refresh preserves custom message from non-Error failures", async () => {
+    jwt.verify.mockReturnValue({ id: "u-refresh" });
+    RefreshToken.findOne.mockRejectedValue({ message: "read failed" });
+
+    await expect(AuthService.refresh("refresh-token"))
+        .rejects
+        .toMatchObject({
+            message: "read failed",
+            statusCode: 403
+        });
+});
+
+test("forgotPassword returns generic success for inactive account", async () => {
+    User.findOne.mockResolvedValue({
+        _id: "u1",
+        accountStatus: "suspended"
+    });
+
+    const result = await AuthService.forgotPassword({ email: "inactive@example.com" });
+
+    expect(result).toEqual({
+        message: "If that email exists, we've sent a password reset link."
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+});
+
+test("verifyEmail succeeds even when user is already verified", async () => {
+    const userDoc = {
+        _id: "u1",
+        emailVerified: true,
+        emailVerificationToken: "token",
+        emailVerificationExpires: Date.now() + 1000,
+        save: jest.fn().mockResolvedValue({})
+    };
+    User.findOne.mockReturnValue(mockSelectResolved(userDoc));
+
+    const result = await AuthService.verifyEmail("e".repeat(64));
+
+    expect(userDoc.emailVerified).toBe(true);
+    expect(userDoc.emailVerificationToken).toBeUndefined();
+    expect(userDoc.emailVerificationExpires).toBeUndefined();
+    expect(result).toEqual({ message: "Email verified successfully." });
 });

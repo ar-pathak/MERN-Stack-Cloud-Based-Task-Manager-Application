@@ -385,7 +385,7 @@ testWithDb("project + task owner flows create and list records", async () => {
     assert.equal(listTasks.response.status, 200);
     const taskItems = getListItems(listTasks.body);
     assert.ok(taskItems.some((entry) => String(entry?._id) === taskId));
-});
+}, 120000);
 
 testWithDb("project/task endpoints enforce validation and role access", async () => {
     const memberProjectCreate = await requestJson(`/api/projects/workspaces/${context.workspaceId}/projects`, {

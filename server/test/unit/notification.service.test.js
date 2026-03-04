@@ -500,3 +500,171 @@ test("createActivityNotifications creates notifications using resolved scope", a
     expect(emit).toHaveBeenCalledWith("notification:new", expect.any(Object));
 });
 
+test("createNotifications returns empty list when payload is incomplete", async () => {
+    const noTitle = await notificationService.createNotifications({
+        recipientIds: [USER_ID],
+        message: "Body only"
+    });
+    const noMessage = await notificationService.createNotifications({
+        recipientIds: [USER_ID],
+        title: "Title only"
+    });
+
+    expect(noTitle).toEqual([]);
+    expect(noMessage).toEqual([]);
+    expect(Notification.insertMany).not.toHaveBeenCalled();
+});
+
+test("createNotifications returns empty when actor is the only recipient", async () => {
+    const created = await notificationService.createNotifications({
+        recipientIds: [ACTOR_ID],
+        actorId: ACTOR_ID,
+        title: "Title",
+        message: "Message"
+    });
+
+    expect(created).toEqual([]);
+    expect(Notification.insertMany).not.toHaveBeenCalled();
+});
+
+test("setWorkspaceInviteNotificationState returns null for invalid params", async () => {
+    const result = await notificationService.setWorkspaceInviteNotificationState({
+        recipientUserId: USER_ID,
+        inviteId: null,
+        requestState: "approved"
+    });
+
+    expect(result).toBeNull();
+    expect(Notification.findOneAndUpdate).not.toHaveBeenCalled();
+});
+
+test("setWorkspaceInviteNotificationState updates notification without marking read", async () => {
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+    Notification.findOneAndUpdate.mockReturnValue(makeChainQuery({
+        _id: NOTIFICATION_ID,
+        user: USER_ID,
+        read: false
+    }));
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 5 }
+    ]);
+
+    const updated = await notificationService.setWorkspaceInviteNotificationState({
+        recipientUserId: USER_ID,
+        inviteId: REQUEST_ID,
+        requestState: "rejected",
+        read: false
+    });
+
+    expect(updated).toEqual(expect.objectContaining({
+        _id: NOTIFICATION_ID,
+        user: USER_ID
+    }));
+    expect(Notification.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+            user: expect.any(mongoose.Types.ObjectId),
+            "metadata.kind": "workspace_invite_request",
+            "metadata.inviteId": REQUEST_ID
+        }),
+        { $set: { "metadata.requestState": "rejected" } },
+        { new: true }
+    );
+    expect(emit).toHaveBeenCalledWith("notification:updated", {
+        notification: expect.objectContaining({ _id: NOTIFICATION_ID })
+    });
+    expect(emit).toHaveBeenCalledWith("notification:unread_count", { count: 5 });
+});
+
+test("setWorkspaceInviteNotificationState returns null when notification is missing", async () => {
+    Notification.findOneAndUpdate.mockReturnValue(makeChainQuery(null));
+
+    const updated = await notificationService.setWorkspaceInviteNotificationState({
+        recipientUserId: USER_ID,
+        inviteId: REQUEST_ID,
+        requestState: "approved"
+    });
+
+    expect(updated).toBeNull();
+});
+
+test("setTaskAssigneeRequestNotificationState returns [] for invalid params", async () => {
+    const updated = await notificationService.setTaskAssigneeRequestNotificationState({
+        requestId: null,
+        requestState: "approved"
+    });
+
+    expect(updated).toEqual([]);
+    expect(Notification.updateMany).not.toHaveBeenCalled();
+});
+
+test("setTaskAssigneeRequestNotificationState updates notifications without recipient filter", async () => {
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+    Notification.updateMany.mockResolvedValue({ matchedCount: 2, modifiedCount: 2 });
+    Notification.find.mockReturnValue(makeChainQuery([
+        { _id: "n1", user: USER_ID },
+        { _id: "n2", user: USER_ID_2 }
+    ]));
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 1 },
+        { _id: new mongoose.Types.ObjectId(USER_ID_2), count: 0 }
+    ]);
+
+    const updated = await notificationService.setTaskAssigneeRequestNotificationState({
+        requestId: REQUEST_ID,
+        requestState: "approved",
+        recipientUserIds: [],
+        read: true
+    });
+
+    expect(updated).toHaveLength(2);
+    expect(Notification.updateMany).toHaveBeenCalledWith(
+        {
+            "metadata.kind": "global_task_assignee_request",
+            "metadata.requestId": REQUEST_ID
+        },
+        { $set: expect.objectContaining({ "metadata.requestState": "approved", read: true }) }
+    );
+    expect(emit).toHaveBeenCalledWith("notification:updated", expect.any(Object));
+});
+
+test("bulkAction returns default counters for unsupported action", async () => {
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 2 }
+    ]);
+
+    const result = await notificationService.bulkAction(USER_ID, {
+        action: "noop",
+        notificationIds: [NOTIFICATION_ID]
+    });
+
+    expect(result).toEqual({
+        matchedCount: 0,
+        modifiedCount: 0,
+        deletedCount: 0
+    });
+    expect(Notification.updateMany).not.toHaveBeenCalled();
+    expect(Notification.deleteMany).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith("notification:bulk", expect.objectContaining({
+        action: "noop",
+        matchedCount: 0
+    }));
+});
+
+test("createActivityNotifications returns [] when no recipients are resolved", async () => {
+    WorkspaceMember.find.mockReturnValue(makeChainQuery([]));
+
+    const created = await notificationService.createActivityNotifications({
+        actorId: ACTOR_ID,
+        action: "workspace.updated",
+        message: "No one to notify",
+        level: "workspace",
+        workspaceId: WORKSPACE_ID
+    });
+
+    expect(created).toEqual([]);
+    expect(Notification.insertMany).not.toHaveBeenCalled();
+});

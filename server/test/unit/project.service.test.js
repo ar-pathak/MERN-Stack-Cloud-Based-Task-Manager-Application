@@ -500,3 +500,387 @@ test("updateProjectMemberRole updates target member role", async () => {
     );
     expect(syncProjectChatMembers).toHaveBeenCalledWith("p1");
 });
+
+test("updateProject merges settings when requester can manage settings", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: {
+            statusChangeAdminApprovalEnabled: true,
+            budgetVisibility: "private",
+            toObject: () => ({
+                statusChangeAdminApprovalEnabled: true,
+                budgetVisibility: "private"
+            })
+        },
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findByIdAndUpdate.mockReturnValue(makeQuery({
+        _id: "p1",
+        workspace: "w1",
+        name: "Project X",
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1", name: "Workspace A" }));
+    getUserLabel.mockResolvedValue("Admin");
+
+    await projectService.updateProject({
+        projectId: "p1",
+        updateData: {
+            settings: {
+                statusChangeAdminApprovalEnabled: false
+            }
+        },
+        userId: "u1"
+    });
+
+    expect(Project.findByIdAndUpdate).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+            settings: {
+                statusChangeAdminApprovalEnabled: false,
+                budgetVisibility: "private"
+            }
+        }),
+        { new: true, runValidators: true }
+    );
+});
+
+test("updateProject rejects duplicate project name in workspace", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findOne.mockReturnValue(makeQuery({ _id: "duplicate" }));
+
+    await expect(
+        projectService.updateProject({
+            projectId: "p1",
+            updateData: { name: "Project Y" },
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project with the same name already exists in this workspace",
+        statusCode: 409
+    });
+});
+
+test("requestProjectStatusChange rejects when approval workflow is disabled", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Status approval workflow is disabled for this project",
+        statusCode: 400
+    });
+});
+
+test("requestProjectStatusChange rejects workspace viewers", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "viewer" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Workspace viewers cannot request project status changes",
+        statusCode: 403
+    });
+});
+
+test("requestProjectStatusChange rejects project viewers", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "viewer" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project viewers cannot request status changes",
+        statusCode: 403
+    });
+});
+
+test("requestProjectStatusChange rejects project admins (direct change allowed)", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project admins can change project status directly",
+        statusCode: 400
+    });
+});
+
+test("requestProjectStatusChange rejects duplicate pending request", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+    ProjectStatusChangeRequest.findOne.mockReturnValue(makeQuery({ _id: "pending-1" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "You already have a pending request for this status",
+        statusCode: 409
+    });
+});
+
+test("respondProjectStatusChangeRequest rejects non-admin reviewer", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u2", role: "member" }],
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.respondProjectStatusChangeRequest({
+            projectId: "p1",
+            requestId: "req-1",
+            action: "approve",
+            userId: "u2"
+        })
+    ).rejects.toMatchObject({
+        message: "Only project admins can review status change requests",
+        statusCode: 403
+    });
+});
+
+test("respondProjectStatusChangeRequest rejects when request is missing", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        status: "active"
+    }));
+    ProjectStatusChangeRequest.findOne.mockResolvedValue(null);
+
+    await expect(
+        projectService.respondProjectStatusChangeRequest({
+            projectId: "p1",
+            requestId: "req-404",
+            action: "approve",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project status change request not found or already processed",
+        statusCode: 404
+    });
+});
+
+test("respondProjectStatusChangeRequest handles rejection without changing status", async () => {
+    const project = {
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        chatId: "chat-p1",
+        owner: "owner-1",
+        status: "active",
+        members: [{ user: "u1", role: "admin" }],
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    const request = {
+        _id: "req-1",
+        requestedBy: "u2",
+        requestedStatus: "completed",
+        status: "pending",
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    Project.findById.mockReturnValue(makeQuery(project));
+    ProjectStatusChangeRequest.findOne.mockResolvedValue(request);
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValueOnce("Admin").mockResolvedValueOnce("Requester");
+
+    const result = await projectService.respondProjectStatusChangeRequest({
+        projectId: "p1",
+        requestId: "req-1",
+        action: "reject",
+        userId: "u1"
+    });
+
+    expect(project.save).not.toHaveBeenCalled();
+    expect(request.status).toBe("rejected");
+    expect(result.projectStatus).toBe("active");
+    expect(notificationService.setProjectStatusRequestNotificationState).toHaveBeenCalledWith({
+        requestId: "req-1",
+        requestState: "rejected",
+        recipientUserIds: expect.arrayContaining(["owner-1", "u1"]),
+        read: true
+    });
+});
+
+test("addProjectMembers returns no-op message when all members already exist", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        chatId: "chat-p1",
+        members: [{ user: "u1", role: "admin" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+
+    const result = await projectService.addProjectMembers(
+        "p1",
+        {
+            members: [{ user: "u1", role: "admin" }]
+        },
+        "u1"
+    );
+
+    expect(result).toEqual({
+        message: "All selected members are already in the project"
+    });
+    expect(Project.findByIdAndUpdate).not.toHaveBeenCalled();
+});
+
+test("removeProjectMembers rejects when trying to remove project owner", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "owner-1", role: "admin" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+
+    await expect(
+        projectService.removeProjectMembers("p1", { users: ["owner-1"] }, "u1")
+    ).rejects.toThrow("Project owner cannot be removed from members");
+});
+
+test("leaveProject rejects project owner", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        owner: "u1",
+        members: [{ user: "u2" }]
+    }));
+
+    await expect(projectService.leaveProject("p1", "u1"))
+        .rejects
+        .toThrow("Project owner cannot leave the project. Transfer ownership or delete the project first.");
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("leaveProject rejects when requester is not a project member", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        owner: "owner-1",
+        members: [{ user: "u2" }]
+    }));
+
+    await expect(projectService.leaveProject("p1", "u3"))
+        .rejects
+        .toThrow("You are not a member of this project");
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("leaveProject removes member and syncs project chat", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: { toString: () => "u2" } }],
+        name: "Project X",
+        chatId: "chat-p1"
+    }));
+    Workspace.findById.mockReturnValue(makeQuery({ name: "Workspace", chatId: "chat-w1" }));
+    Task.updateMany.mockResolvedValue({});
+    Task.find.mockReturnValue(makeQuery([]));
+    Project.findByIdAndUpdate.mockResolvedValue({ _id: "p1" });
+    getUserLabel.mockResolvedValue("Bob");
+
+    const result = await projectService.leaveProject("p1", "u2");
+
+    expect(result).toEqual({
+        message: "You have left the project successfully"
+    });
+    expect(syncProjectChatMembers).toHaveBeenCalledWith("p1", { session });
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});

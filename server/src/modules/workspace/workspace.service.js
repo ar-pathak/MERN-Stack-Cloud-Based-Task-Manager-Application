@@ -461,15 +461,15 @@ const workspaceService = {
             { new: true, runValidators: true }
         );
 
+        if (!updatedWorkspace) {
+            throw new Error('Workspace not found or update failed');
+        }
+
         // If name is updated, update the Chat name as well (UPDATED)
         if (data.name && updatedWorkspace.chatId) {
             await Chat.findByIdAndUpdate(updatedWorkspace.chatId, {
                 name: data.name
             });
-        }
-
-        if (!updatedWorkspace) {
-            throw new Error('Workspace not found or update failed');
         }
 
         const actorLabel = await getUserLabel(userId);

@@ -341,6 +341,22 @@ test("startGitHubOAuth uses github provider when requesting auth url", async () 
     expect(res.redirectedTo).toContain("https://github.com");
 });
 
+test("startGoogleOAuth sanitizes unsafe redirect path to /main", async () => {
+    AuthService.getOAuthAuthorizationUrl.mockReturnValue("https://accounts.google.com/o/oauth2/v2/auth?state=state");
+    const req = {
+        query: {
+            redirect: "https://malicious.example.com"
+        }
+    };
+    const res = createResponse();
+
+    await AuthController.startGoogleOAuth(req, res);
+
+    const oauthCookie = res.cookies.find((cookie) => cookie.name === "oauthState");
+    const decoded = JSON.parse(Buffer.from(oauthCookie.value, "base64url").toString("utf8"));
+    expect(decoded.redirectPath).toBe("/main");
+});
+
 test("startOAuthFlow redirects to callback with error when auth url generation fails", async () => {
     AuthService.getOAuthAuthorizationUrl.mockImplementation(() => {
         throw new Error("Google OAuth is not configured");
@@ -424,6 +440,99 @@ test("googleOAuthCallback rejects mismatched state and redirects with error", as
     expect(res.redirectedTo).toContain("provider=google");
 });
 
+test("googleOAuthCallback rejects when state cookie is missing", async () => {
+    const req = {
+        query: {
+            state: "state-123",
+            code: "auth-code"
+        },
+        cookies: {}
+    };
+    const res = createResponse();
+
+    await AuthController.googleOAuthCallback(req, res);
+
+    expect(AuthService.exchangeOAuthCodeForProfile).not.toHaveBeenCalled();
+    expect(clearAuthCookies).toHaveBeenCalledWith(res);
+    expect(res.redirectedTo).toContain("status=error");
+    expect(res.redirectedTo).toContain("OAuth+session+expired");
+});
+
+test("googleOAuthCallback rejects provider mismatch from oauth state", async () => {
+    const stateCookie = encodeOAuthState({
+        value: "state-123",
+        provider: "github",
+        redirectPath: "/after-login",
+        createdAt: Date.now()
+    });
+    const req = {
+        query: {
+            state: "state-123",
+            code: "auth-code"
+        },
+        cookies: {
+            oauthState: stateCookie
+        }
+    };
+    const res = createResponse();
+
+    await AuthController.googleOAuthCallback(req, res);
+
+    expect(AuthService.exchangeOAuthCodeForProfile).not.toHaveBeenCalled();
+    expect(res.redirectedTo).toContain("status=error");
+    expect(res.redirectedTo).toContain("provider=google");
+    expect(res.redirectedTo).toContain("OAuth+provider+mismatch");
+});
+
+test("googleOAuthCallback rejects expired oauth session state", async () => {
+    const stateCookie = encodeOAuthState({
+        value: "state-123",
+        provider: "google",
+        redirectPath: "/after-login",
+        createdAt: Date.now() - (11 * 60 * 1000)
+    });
+    const req = {
+        query: {
+            state: "state-123",
+            code: "auth-code"
+        },
+        cookies: {
+            oauthState: stateCookie
+        }
+    };
+    const res = createResponse();
+
+    await AuthController.googleOAuthCallback(req, res);
+
+    expect(AuthService.exchangeOAuthCodeForProfile).not.toHaveBeenCalled();
+    expect(res.redirectedTo).toContain("status=error");
+    expect(res.redirectedTo).toContain("OAuth+session+expired");
+});
+
+test("googleOAuthCallback rejects when provider does not return code", async () => {
+    const stateCookie = encodeOAuthState({
+        value: "state-123",
+        provider: "google",
+        redirectPath: "/after-login",
+        createdAt: Date.now()
+    });
+    const req = {
+        query: {
+            state: "state-123"
+        },
+        cookies: {
+            oauthState: stateCookie
+        }
+    };
+    const res = createResponse();
+
+    await AuthController.googleOAuthCallback(req, res);
+
+    expect(AuthService.exchangeOAuthCodeForProfile).not.toHaveBeenCalled();
+    expect(res.redirectedTo).toContain("status=error");
+    expect(res.redirectedTo).toContain("authorization+code");
+});
+
 test("githubOAuthCallback handles provider-side error response and redirects failure", async () => {
     const stateCookie = encodeOAuthState({
         value: "github-state",
@@ -449,4 +558,22 @@ test("githubOAuthCallback handles provider-side error response and redirects fai
     expect(clearAuthCookies).toHaveBeenCalledWith(res);
     expect(res.redirectedTo).toContain("status=error");
     expect(res.redirectedTo).toContain("provider=github");
+});
+
+test("verifyEmail accepts token from route params", async () => {
+    verifyEmailSchema.parse.mockReturnValue({ token: "c".repeat(64) });
+    AuthService.verifyEmail.mockResolvedValue({
+        message: "Email verified successfully."
+    });
+    const req = {
+        params: { token: "c".repeat(64) },
+        body: {}
+    };
+    const res = createResponse();
+
+    await AuthController.verifyEmail(req, res);
+
+    expect(verifyEmailSchema.parse).toHaveBeenCalledWith({ token: "c".repeat(64) });
+    expect(AuthService.verifyEmail).toHaveBeenCalledWith("c".repeat(64));
+    expect(res.statusCode).toBe(200);
 });

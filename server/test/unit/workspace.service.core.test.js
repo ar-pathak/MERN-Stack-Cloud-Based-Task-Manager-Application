@@ -1,7 +1,8 @@
 jest.mock("../../src/models/workspace", () => ({
     create: jest.fn(),
     findById: jest.fn(),
-    findByIdAndUpdate: jest.fn()
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn()
 }));
 
 jest.mock("../../src/models/workspaceMember.js", () => ({
@@ -10,13 +11,16 @@ jest.mock("../../src/models/workspaceMember.js", () => ({
     findOne: jest.fn(),
     countDocuments: jest.fn(),
     findOneAndUpdate: jest.fn(),
+    findOneAndDelete: jest.fn(),
+    deleteMany: jest.fn(),
     startSession: jest.fn()
 }));
 
 jest.mock("../../src/models/workspaceInvite", () => ({
     findOne: jest.fn(),
     create: jest.fn(),
-    findById: jest.fn()
+    findById: jest.fn(),
+    deleteMany: jest.fn()
 }));
 
 jest.mock("../../src/models/user", () => ({
@@ -24,17 +28,33 @@ jest.mock("../../src/models/user", () => ({
     findOne: jest.fn()
 }));
 
-jest.mock("../../src/models/project", () => ({}));
-jest.mock("../../src/models/team", () => ({}));
-jest.mock("../../src/models/tasks", () => ({}));
-jest.mock("../../src/models/subtasks", () => ({}));
+jest.mock("../../src/models/project", () => ({
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
+}));
+jest.mock("../../src/models/team", () => ({
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
+}));
+jest.mock("../../src/models/tasks", () => ({
+    updateMany: jest.fn(),
+    find: jest.fn(),
+    deleteMany: jest.fn()
+}));
+jest.mock("../../src/models/subtasks", () => ({
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
+}));
 
 jest.mock("../../src/models/chat", () => ({
     create: jest.fn(),
-    findByIdAndUpdate: jest.fn()
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn()
 }));
 
-jest.mock("../../src/models/message", () => ({}));
+jest.mock("../../src/models/message", () => ({
+    deleteMany: jest.fn()
+}));
 jest.mock("../../src/helpers/sendEmail", () => jest.fn());
 jest.mock("../../src/modules/notification/notification.service", () => ({
     createNotifications: jest.fn(),
@@ -55,7 +75,12 @@ const Workspace = require("../../src/models/workspace");
 const WorkspaceMember = require("../../src/models/workspaceMember.js");
 const WorkspaceInvite = require("../../src/models/workspaceInvite");
 const User = require("../../src/models/user");
+const Project = require("../../src/models/project");
+const Team = require("../../src/models/team");
+const Task = require("../../src/models/tasks");
+const Subtask = require("../../src/models/subtasks");
 const Chat = require("../../src/models/chat");
+const Message = require("../../src/models/message");
 const sendMail = require("../../src/helpers/sendEmail");
 const notificationService = require("../../src/modules/notification/notification.service");
 const { syncWorkspaceChats } = require("../../src/modules/utils/chatMembershipSync");
@@ -602,4 +627,424 @@ test("respondInvite accepts direct request and joins workspace", async () => {
         status: "accepted",
         workspaceId: "workspace-1"
     }));
+});
+
+test("getAllWorkspaces returns filtered list when pagination is disabled", async () => {
+    WorkspaceMember.find.mockReturnValue(makeQuery([
+        {
+            workspace: { _id: "w1", name: "One" },
+            role: "owner",
+            joinedAt: "2025-01-01T00:00:00.000Z",
+            isStarred: true,
+            isMuted: false,
+            status: "active"
+        },
+        {
+            workspace: null,
+            role: "member",
+            joinedAt: "2025-01-02T00:00:00.000Z",
+            isStarred: false,
+            isMuted: true,
+            status: "archived"
+        }
+    ]));
+
+    const result = await workspaceService.getAllWorkspaces("user-1");
+
+    expect(result).toEqual([
+        {
+            _id: "w1",
+            name: "One",
+            userRole: "owner",
+            joinedAt: "2025-01-01T00:00:00.000Z",
+            isStarred: true,
+            isMuted: false,
+            membershipStatus: "active"
+        }
+    ]);
+});
+
+test("getWorkspaceById throws when workspace does not exist", async () => {
+    Workspace.findById.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.getWorkspaceById("workspace-404", "user-1")
+    ).rejects.toThrow("Workspace not found");
+});
+
+test("updateWorkspace throws when workspace update fails", async () => {
+    WorkspaceMember.findOne.mockResolvedValue({ role: "owner" });
+    Workspace.findById.mockReturnValue(makeQuery({ _id: "workspace-1", name: "Old", chatId: "chat-1" }));
+    Workspace.findByIdAndUpdate.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.updateWorkspace("workspace-1", { name: "New" }, "user-1")
+    ).rejects.toThrow("Workspace not found or update failed");
+});
+
+test("deleteWorkspace rejects non-owner requester", async () => {
+    WorkspaceMember.findOne.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.deleteWorkspace("workspace-1", "user-2")
+    ).rejects.toThrow("Only workspace owner can delete the workspace");
+});
+
+test("deleteWorkspace removes related records and chat in transaction", async () => {
+    const session = makeSession();
+    WorkspaceMember.startSession.mockResolvedValue(session);
+    WorkspaceMember.findOne.mockResolvedValue({ workspace: "workspace-1", user: "owner-1", role: "owner" });
+    Workspace.findById.mockResolvedValue({ _id: "workspace-1", chatId: "chat-1" });
+    Task.find.mockReturnValue(makeQuery([{ _id: "task-1" }]));
+    Workspace.findByIdAndDelete.mockResolvedValue({ _id: "workspace-1" });
+
+    await workspaceService.deleteWorkspace("workspace-1", "owner-1");
+
+    expect(Subtask.deleteMany).toHaveBeenCalledWith({ task: { $in: ["task-1"] } }, { session });
+    expect(Task.deleteMany).toHaveBeenCalledWith({ workspace: "workspace-1" }, { session });
+    expect(Project.deleteMany).toHaveBeenCalledWith({ workspace: "workspace-1" }, { session });
+    expect(Team.deleteMany).toHaveBeenCalledWith({ workspace: "workspace-1" }, { session });
+    expect(WorkspaceMember.deleteMany).toHaveBeenCalledWith({ workspace: "workspace-1" }, { session });
+    expect(WorkspaceInvite.deleteMany).toHaveBeenCalledWith({ workspace: "workspace-1" }, { session });
+    expect(Message.deleteMany).toHaveBeenCalledWith({ chatId: "chat-1" }, { session });
+    expect(Chat.findByIdAndDelete).toHaveBeenCalledWith("chat-1", { session });
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("addMember throws when target user does not exist", async () => {
+    User.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(
+        workspaceService.addMember({
+            workspaceId: "workspace-1",
+            userId: "user-404",
+            requesterId: "user-1"
+        })
+    ).rejects.toMatchObject({
+        message: "User not found",
+        statusCode: 404
+    });
+});
+
+test("addMember throws when workspace does not exist", async () => {
+    User.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "user-2",
+            email: "user2@example.com",
+            preferences: { workspace: { autoApproveWorkspaceInvites: true } }
+        })
+    });
+    Workspace.findById.mockReturnValue(makeQuery(null));
+
+    await expect(
+        workspaceService.addMember({
+            workspaceId: "workspace-404",
+            userId: "user-2",
+            requesterId: "user-1"
+        })
+    ).rejects.toMatchObject({
+        message: "Workspace not found",
+        statusCode: 404
+    });
+});
+
+test("addMember throws when user is already in workspace", async () => {
+    User.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "user-2",
+            email: "user2@example.com",
+            preferences: { workspace: { autoApproveWorkspaceInvites: true } }
+        })
+    });
+    Workspace.findById.mockReturnValue(makeQuery({
+        _id: "workspace-1",
+        name: "Workspace A",
+        chatId: "chat-1"
+    }));
+    WorkspaceMember.findOne.mockResolvedValue({ _id: "member-1" });
+
+    await expect(
+        workspaceService.addMember({
+            workspaceId: "workspace-1",
+            userId: "user-2",
+            requesterId: "user-1"
+        })
+    ).rejects.toMatchObject({
+        message: "User is already a member of this workspace",
+        statusCode: 409
+    });
+});
+
+test("sendInvite throws when no valid emails are provided", async () => {
+    Workspace.findById.mockReturnValue(makeQuery({
+        _id: "workspace-1",
+        name: "Workspace A"
+    }));
+    User.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "user-1",
+            name: "Alice",
+            username: "alice"
+        })
+    });
+
+    await expect(
+        workspaceService.sendInvite({
+            workspaceId: "workspace-1",
+            invitedBy: "user-1",
+            csvBuffer: Buffer.from("email\nnot-an-email", "utf8")
+        })
+    ).rejects.toMatchObject({
+        message: "No valid email addresses found",
+        statusCode: 400
+    });
+});
+
+test("sendInvite returns bulk result and keeps per-email failures", async () => {
+    Workspace.findById.mockReturnValue(makeQuery({
+        _id: "workspace-1",
+        name: "Workspace A"
+    }));
+    User.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "user-1",
+            name: "Alice",
+            username: "alice"
+        })
+    });
+    User.findOne.mockResolvedValue(null);
+    WorkspaceInvite.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ _id: "existing-invite" });
+    WorkspaceInvite.create.mockResolvedValue({
+        _id: "invite-1",
+        email: "good@example.com",
+        status: "pending",
+        token: "hashed-token",
+        toObject: () => ({
+            _id: "invite-1",
+            email: "good@example.com",
+            status: "pending",
+            token: "hashed-token"
+        })
+    });
+
+    const result = await workspaceService.sendInvite({
+        workspaceId: "workspace-1",
+        invitedBy: "user-1",
+        csvBuffer: Buffer.from("email\ngood@example.com\ndup@example.com", "utf8")
+    });
+
+    expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual(expect.objectContaining({
+        mode: "bulk_csv",
+        sent: 1,
+        failed: 1
+    }));
+    expect(result.errors[0].email).toBe("dup@example.com");
+});
+
+test("acceptInvite rejects expired invite token", async () => {
+    WorkspaceInvite.findOne.mockResolvedValue({
+        _id: "invite-1",
+        status: "pending",
+        inviteType: "email",
+        email: "user@example.com",
+        expiresAt: new Date(Date.now() - 60_000),
+        save: jest.fn().mockResolvedValue(undefined)
+    });
+
+    await expect(
+        workspaceService.acceptInvite("plain-token", "user-1")
+    ).rejects.toMatchObject({
+        message: "Invite has expired",
+        statusCode: 400
+    });
+});
+
+test("acceptInvite rejects when invite email does not match logged-in user", async () => {
+    WorkspaceInvite.findOne.mockResolvedValue({
+        _id: "invite-1",
+        workspace: "workspace-1",
+        status: "pending",
+        inviteType: "email",
+        email: "invitee@example.com",
+        expiresAt: new Date(Date.now() + 60_000),
+        save: jest.fn().mockResolvedValue(undefined)
+    });
+    User.findById.mockResolvedValue({
+        _id: "user-1",
+        email: "other@example.com"
+    });
+
+    await expect(
+        workspaceService.acceptInvite("plain-token", "user-1")
+    ).rejects.toMatchObject({
+        message: "This invite was sent to a different email address",
+        statusCode: 403
+    });
+});
+
+test("respondInvite marks expired invite and throws", async () => {
+    const inviteDoc = {
+        _id: "invite-1",
+        workspace: "workspace-1",
+        invitedUser: "user-2",
+        inviteType: "direct_request",
+        status: "pending",
+        expiresAt: new Date(Date.now() - 60_000),
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    WorkspaceInvite.findById.mockResolvedValue(inviteDoc);
+
+    await expect(
+        workspaceService.respondInvite({
+            inviteId: "invite-1",
+            userId: "user-2",
+            action: "accept"
+        })
+    ).rejects.toMatchObject({
+        message: "Invite has expired",
+        statusCode: 400
+    });
+
+    expect(inviteDoc.status).toBe("expired");
+    expect(notificationService.setWorkspaceInviteNotificationState).toHaveBeenCalledWith({
+        recipientUserId: "user-2",
+        inviteId: "invite-1",
+        requestState: "expired",
+        read: true
+    });
+});
+
+test("removeMember removes user resources and syncs workspace chats", async () => {
+    const session = makeSession();
+    WorkspaceMember.startSession.mockResolvedValue(session);
+    WorkspaceMember.findOne
+        .mockResolvedValueOnce({ workspace: "workspace-1", user: "user-2", role: "member" })
+        .mockResolvedValueOnce({ workspace: "workspace-1", user: "owner-1", role: "owner" });
+    Workspace.findById
+        .mockReturnValueOnce(makeQuery({
+            _id: "workspace-1",
+            name: "Workspace A",
+            chatId: "chat-1"
+        }))
+        .mockReturnValueOnce(makeQuery({
+            _id: "workspace-1",
+            chatId: "chat-1"
+        }));
+    Task.find.mockReturnValue(makeQuery([{ _id: "task-1" }]));
+    getUserLabel.mockResolvedValueOnce("Owner").mockResolvedValueOnce("Bob");
+
+    await workspaceService.removeMember({
+        workspaceId: "workspace-1",
+        memberId: "user-2",
+        requesterId: "owner-1"
+    });
+
+    expect(Project.updateMany).toHaveBeenCalledTimes(1);
+    expect(Team.updateMany).toHaveBeenCalledTimes(1);
+    expect(Task.updateMany).toHaveBeenCalledTimes(1);
+    expect(Subtask.updateMany).toHaveBeenCalledTimes(1);
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith(
+        "chat-1",
+        { $pull: { members: "user-2" } },
+        { session }
+    );
+    expect(WorkspaceMember.findOneAndDelete).toHaveBeenCalledWith(
+        { workspace: "workspace-1", user: "user-2" },
+        { session }
+    );
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(syncWorkspaceChats).toHaveBeenCalledWith("workspace-1");
+});
+
+test("updateMemberRole delegates owner assignment to transferOwnership", async () => {
+    WorkspaceMember.findOne.mockReset();
+    WorkspaceMember.findOne.mockResolvedValue({
+        workspace: "workspace-1",
+        user: "user-2",
+        role: "member"
+    });
+    const transferSpy = jest.spyOn(workspaceService, "transferOwnership").mockResolvedValue({
+        message: "ok"
+    });
+
+    const result = await workspaceService.updateMemberRole({
+        workspaceId: "workspace-1",
+        memberId: "user-2",
+        role: "owner",
+        requesterId: "owner-1"
+    });
+
+    expect(transferSpy).toHaveBeenCalledWith({
+        workspaceId: "workspace-1",
+        newOwnerId: "user-2",
+        currentOwnerId: "owner-1"
+    });
+    expect(result).toEqual({ message: "ok" });
+    transferSpy.mockRestore();
+});
+
+test("transferOwnership rejects when current owner check fails", async () => {
+    WorkspaceMember.findOne.mockReset();
+    Workspace.findById.mockReset();
+    const session = makeSession();
+    WorkspaceMember.startSession.mockResolvedValue(session);
+    Workspace.findById.mockReturnValue(makeQuery({
+        _id: "workspace-1",
+        name: "Workspace A",
+        chatId: "chat-1"
+    }));
+    WorkspaceMember.findOne.mockReturnValueOnce(makeQuery(null));
+
+    await expect(
+        workspaceService.transferOwnership({
+            workspaceId: "workspace-1",
+            newOwnerId: "user-2",
+            currentOwnerId: "user-1"
+        })
+    ).rejects.toThrow("Only current owner can transfer ownership");
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("leaveWorkspace removes member and cleans up resources", async () => {
+    WorkspaceMember.findOne.mockReset();
+    Workspace.findById.mockReset();
+    Task.find.mockReset();
+    const session = makeSession();
+    WorkspaceMember.startSession.mockResolvedValue(session);
+    WorkspaceMember.findOne.mockResolvedValue({
+        workspace: "workspace-1",
+        user: "user-2",
+        role: "member"
+    });
+    Workspace.findById
+        .mockReturnValueOnce(makeQuery({
+            _id: "workspace-1",
+            name: "Workspace A",
+            chatId: "chat-1"
+        }))
+        .mockReturnValueOnce(makeQuery({
+            _id: "workspace-1",
+            chatId: "chat-1"
+        }));
+    Task.find.mockReturnValue(makeQuery([{ _id: "task-1" }]));
+    getUserLabel.mockResolvedValue("Bob");
+
+    await workspaceService.leaveWorkspace({
+        workspaceId: "workspace-1",
+        userId: "user-2"
+    });
+
+    expect(WorkspaceMember.findOneAndDelete).toHaveBeenCalledWith(
+        { workspace: "workspace-1", user: "user-2" },
+        { session }
+    );
+    expect(Project.updateMany).toHaveBeenCalledTimes(1);
+    expect(Subtask.updateMany).toHaveBeenCalledTimes(1);
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(syncWorkspaceChats).toHaveBeenCalledWith("workspace-1");
 });

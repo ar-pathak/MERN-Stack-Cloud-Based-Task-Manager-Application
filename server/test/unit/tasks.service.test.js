@@ -13,7 +13,8 @@ jest.mock("../../src/models/tasks", () => ({
     findByIdAndUpdate: jest.fn(),
     updateOne: jest.fn(),
     create: jest.fn(),
-    countDocuments: jest.fn()
+    countDocuments: jest.fn(),
+    deleteOne: jest.fn()
 }));
 jest.mock("../../src/models/team", () => ({
     find: jest.fn(),
@@ -23,7 +24,8 @@ jest.mock("../../src/models/user", () => ({
     find: jest.fn()
 }));
 jest.mock("../../src/models/subtasks", () => ({
-    updateMany: jest.fn()
+    updateMany: jest.fn(),
+    deleteMany: jest.fn()
 }));
 jest.mock("../../src/models/taskAssigneeRequest", () => ({
     findOne: jest.fn(),
@@ -42,9 +44,12 @@ jest.mock("../../src/models/workspaceMember", () => ({
 }));
 jest.mock("../../src/models/chat", () => ({
     create: jest.fn(),
-    findByIdAndUpdate: jest.fn()
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn()
 }));
-jest.mock("../../src/models/message", () => ({}));
+jest.mock("../../src/models/message", () => ({
+    deleteMany: jest.fn()
+}));
 jest.mock("../../src/modules/notification/notification.service", () => ({
     createNotifications: jest.fn(),
     setTaskAssigneeRequestNotificationState: jest.fn()
@@ -78,6 +83,7 @@ const Project = require("../../src/models/project");
 const Workspace = require("../../src/models/workspace");
 const WorkspaceMember = require("../../src/models/workspaceMember");
 const Chat = require("../../src/models/chat");
+const Message = require("../../src/models/message");
 const notificationService = require("../../src/modules/notification/notification.service");
 const { touchParents } = require("../../src/modules/utils/updateParent");
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require("../../src/modules/utils/activityLogger");
@@ -788,5 +794,379 @@ test("leaveTask removes direct assignee from task and subtasks", async () => {
     expect(session.commitTransaction).toHaveBeenCalledTimes(1);
     expect(result).toEqual({
         message: "You have left the task and its subtasks successfully"
+    });
+});
+
+test("createTask rejects project scope when project is missing", async () => {
+    Project.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(
+        taskService.createTask("user-1", { title: "Task A" }, { projectId: "project-404" })
+    ).rejects.toThrow("Project not found");
+});
+
+test("createTask rejects project/workspace mismatch", async () => {
+    Project.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "project-1",
+            workspace: "workspace-1"
+        })
+    });
+
+    await expect(
+        taskService.createTask(
+            "user-1",
+            { title: "Task A" },
+            { projectId: "project-1", workspaceId: "workspace-2" }
+        )
+    ).rejects.toThrow("Project does not belong to workspace");
+});
+
+test("createTask enforces create permission for project scope", async () => {
+    Project.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "project-1",
+            workspace: "workspace-1",
+            members: [{ user: "user-1" }],
+            owner: "owner-1",
+            teams: [],
+            name: "Project A"
+        })
+    });
+    Workspace.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ _id: "workspace-1" })
+    });
+    canCreateTask.mockResolvedValue(false);
+
+    await expect(
+        taskService.createTask(
+            "user-1",
+            { title: "Task A", assignees: ["user-1"] },
+            { projectId: "project-1" }
+        )
+    ).rejects.toThrow(
+        "Only workspace owners/admins, project admins, or assigned team leads can create tasks in this project"
+    );
+});
+
+test("addTaskAssignees rejects requester without permission", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        createdBy: "owner-1",
+        assigneesTeams: [],
+        workspace: "workspace-1",
+        project: null
+    });
+    canCreateTask.mockResolvedValue(false);
+
+    await expect(
+        taskService.addTaskAssignees("user-2", "task-1", {
+            assignees: ["user-3"]
+        })
+    ).rejects.toThrow("Permission denied");
+});
+
+test("addTaskAssignees rejects unknown usernames when no other targets exist", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        createdBy: "user-1",
+        assignees: [],
+        assigneesTeams: [],
+        workspace: "workspace-1",
+        project: null
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockResolvedValue([])
+    });
+
+    await expect(
+        taskService.addTaskAssignees("user-1", "task-1", {
+            usernames: ["missing-user"]
+        })
+    ).rejects.toThrow("No valid users found with provided usernames");
+});
+
+test("addTaskAssignees global flow rejects when selected users are missing", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        assignees: ["user-1"],
+        assigneesTeams: [],
+        workspace: null,
+        project: null,
+        chatId: "chat-1"
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([])
+        })
+    });
+
+    await expect(
+        taskService.addTaskAssignees("user-1", "task-1", {
+            assignees: ["user-404"]
+        })
+    ).rejects.toMatchObject({
+        message: "Some selected users were not found",
+        statusCode: 404
+    });
+});
+
+test("addTaskAssignees rejects when pending request already exists", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        assignees: ["user-1"],
+        assigneesTeams: [],
+        workspace: null,
+        project: null,
+        chatId: "chat-1"
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([{
+                _id: "user-2",
+                preferences: { workspace: { autoApproveWorkspaceInvites: false } }
+            }])
+        })
+    });
+    TaskAssigneeRequest.find.mockReturnValue({
+        select: jest.fn().mockResolvedValue([{ requestedUser: "user-2" }])
+    });
+
+    await expect(
+        taskService.addTaskAssignees("user-1", "task-1", {
+            assignees: ["user-2"]
+        })
+    ).rejects.toMatchObject({
+        message: "A pending task assignment request already exists for one or more users",
+        statusCode: 409
+    });
+});
+
+test("addTaskAssignees supports mixed direct assignment and invite requests", async () => {
+    Task.findById
+        .mockResolvedValueOnce({
+            _id: "task-1",
+            title: "Task A",
+            createdBy: "user-1",
+            assignees: ["user-1"],
+            assigneesTeams: [],
+            workspace: null,
+            project: null,
+            chatId: "chat-1"
+        })
+        .mockReturnValueOnce(makePopulateResolved({ _id: "task-1", title: "Task A" }));
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([
+                {
+                    _id: "user-2",
+                    preferences: { workspace: { autoApproveWorkspaceInvites: true } }
+                },
+                {
+                    _id: "user-3",
+                    preferences: { workspace: { autoApproveWorkspaceInvites: false } }
+                }
+            ])
+        })
+    });
+    TaskAssigneeRequest.find.mockReturnValue({
+        select: jest.fn().mockResolvedValue([])
+    });
+    TaskAssigneeRequest.create.mockResolvedValue([{
+        _id: "req-1",
+        requestedUser: "user-3"
+    }]);
+    getUserLabel.mockResolvedValue("Alice");
+    getUserLabels.mockResolvedValue(["Bob"]);
+    formatUserList.mockReturnValue("Bob");
+
+    const result = await taskService.addTaskAssignees("user-1", "task-1", {
+        assignees: ["user-2", "user-3"]
+    });
+
+    expect(Task.updateOne).toHaveBeenCalledWith(
+        { _id: "task-1" },
+        {
+            $addToSet: {
+                assignees: { $each: ["user-2"] }
+            }
+        }
+    );
+    expect(result.message).toBe("Added assignees and sent task assignment requests");
+    expect(result.task.assignmentMode).toBe("mixed");
+    expect(result.task.assignmentSummary.addedAssigneeIds).toEqual(["user-2"]);
+    expect(result.task.assignmentSummary.requestedAssigneeIds).toEqual(["user-3"]);
+});
+
+test("respondTaskAssigneeRequest expires stale request and returns 410", async () => {
+    const requestDoc = {
+        _id: "req-1",
+        requestedBy: "owner-1",
+        status: "pending",
+        expiresAt: new Date(Date.now() - 1000),
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    TaskAssigneeRequest.findOne.mockResolvedValue(requestDoc);
+
+    await expect(
+        taskService.respondTaskAssigneeRequest({
+            userId: "user-2",
+            taskId: "task-1",
+            requestId: "req-1",
+            action: "approve"
+        })
+    ).rejects.toMatchObject({
+        message: "Task assignment request has expired",
+        statusCode: 410
+    });
+
+    expect(requestDoc.status).toBe("expired");
+    expect(notificationService.setTaskAssigneeRequestNotificationState).toHaveBeenCalledWith({
+        requestId: "req-1",
+        requestState: "expired",
+        recipientUserIds: ["user-2"],
+        read: true
+    });
+});
+
+test("respondTaskAssigneeRequest marks request expired when task is deleted", async () => {
+    const requestDoc = {
+        _id: "req-1",
+        requestedBy: "owner-1",
+        status: "pending",
+        expiresAt: new Date(Date.now() + 3600_000),
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    TaskAssigneeRequest.findOne.mockResolvedValue(requestDoc);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        status: "deleted"
+    });
+
+    await expect(
+        taskService.respondTaskAssigneeRequest({
+            userId: "user-2",
+            taskId: "task-1",
+            requestId: "req-1",
+            action: "approve"
+        })
+    ).rejects.toMatchObject({
+        message: "Task not found",
+        statusCode: 404
+    });
+    expect(requestDoc.status).toBe("expired");
+});
+
+test("respondTaskAssigneeRequest handles rejection flow", async () => {
+    const requestDoc = {
+        _id: "req-1",
+        requestedBy: "owner-1",
+        requestedStatus: "pending",
+        status: "pending",
+        expiresAt: new Date(Date.now() + 3600_000),
+        save: jest.fn().mockResolvedValue(undefined),
+        toObject: jest.fn().mockReturnValue({ _id: "req-1", status: "rejected" })
+    };
+    TaskAssigneeRequest.findOne.mockResolvedValue(requestDoc);
+    Task.findById
+        .mockResolvedValueOnce({
+            _id: "task-1",
+            title: "Task A",
+            workspace: null,
+            project: null,
+            chatId: "chat-1",
+            status: "active"
+        })
+        .mockReturnValueOnce(makePopulateResolved({ _id: "task-1", title: "Task A" }));
+    getUserLabel.mockResolvedValueOnce("Bob").mockResolvedValueOnce("Owner");
+
+    const result = await taskService.respondTaskAssigneeRequest({
+        userId: "user-2",
+        taskId: "task-1",
+        requestId: "req-1",
+        action: "reject"
+    });
+
+    expect(Task.updateOne).not.toHaveBeenCalledWith(
+        { _id: "task-1" },
+        { $addToSet: { assignees: "user-2" } }
+    );
+    expect(result.task.assignmentMode).toBe("invite_request");
+    expect(result.task.assignmentSummary.addedAssigneeIds).toEqual([]);
+});
+
+test("removeTaskAssignees rejects requester without permission", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        createdBy: "owner-1",
+        assigneesTeams: [],
+        workspace: "workspace-1",
+        project: null
+    });
+    canCreateTask.mockResolvedValue(false);
+
+    await expect(
+        taskService.removeTaskAssignees("user-2", "task-1", {
+            assignees: ["user-3"]
+        })
+    ).rejects.toThrow("Permission denied");
+});
+
+test("removeTaskAssignees prevents removing task owner", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        createdBy: "user-1",
+        assigneesTeams: [],
+        workspace: null,
+        project: null
+    });
+
+    await expect(
+        taskService.removeTaskAssignees("user-1", "task-1", {
+            assignees: ["user-1"]
+        })
+    ).rejects.toThrow("Task owner cannot be removed");
+});
+
+test("permanentDeleteTask enforces creator authorization", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        createdBy: "owner-1"
+    });
+
+    await expect(
+        taskService.permanentDeleteTask("user-2", "task-1")
+    ).rejects.toThrow("You are not allowed to permanently delete this task");
+});
+
+test("permanentDeleteTask cascades task-related records in transaction", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        chatId: "chat-1",
+        workspace: null,
+        project: null
+    });
+    getUserLabel.mockResolvedValue("Alice");
+    Task.deleteOne.mockResolvedValue({});
+
+    const result = await taskService.permanentDeleteTask("user-1", "task-1");
+
+    expect(Subtask.deleteMany).toHaveBeenCalledWith({ task: "task-1" }, { session });
+    expect(Message.deleteMany).toHaveBeenCalledWith({ chatId: "chat-1" }, { session });
+    expect(Chat.findByIdAndDelete).toHaveBeenCalledWith("chat-1", { session });
+    expect(Task.deleteOne).toHaveBeenCalledWith({ _id: "task-1" }, { session });
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+        message: "Task and its subtasks permanently deleted"
     });
 });
