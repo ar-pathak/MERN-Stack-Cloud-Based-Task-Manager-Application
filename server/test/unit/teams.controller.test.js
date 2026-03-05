@@ -361,3 +361,56 @@ test("leaveTeam returns 400 for invalid team id", async () => {
     });
     expect(teamsService.leaveTeam).not.toHaveBeenCalled();
 });
+
+test("workspace-scoped handlers return 400 for invalid workspace id", async () => {
+    const handlers = [
+        ["getTeamsByWorkspace", teamsService.getTeamsByWorkspace],
+        ["getTeamById", teamsService.getTeamById],
+        ["updateTeam", teamsService.updateTeam],
+        ["deleteTeam", teamsService.deleteTeam],
+        ["addTeamMember", teamsService.addTeamMember],
+        ["getTeamMembers", teamsService.getTeamMembers],
+        ["removeTeamMember", teamsService.removeTeamMember],
+        ["updateTeamMemberRole", teamsService.updateTeamMemberRole]
+    ];
+
+    for (const [handlerName, serviceSpy] of handlers) {
+        const req = baseReq();
+        req.params.workspaceId = "invalid-workspace-id";
+        const res = createResponse();
+
+        await controller[handlerName](req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+            success: false,
+            message: "Invalid workspace ID"
+        });
+        expect(serviceSpy).not.toHaveBeenCalled();
+    }
+});
+
+test("team-scoped handlers return 400 for invalid team id", async () => {
+    const handlers = [
+        ["updateTeam", teamsService.updateTeam],
+        ["deleteTeam", teamsService.deleteTeam],
+        ["addTeamMember", teamsService.addTeamMember],
+        ["getTeamMembers", teamsService.getTeamMembers],
+        ["removeTeamMember", teamsService.removeTeamMember]
+    ];
+
+    for (const [handlerName, serviceSpy] of handlers) {
+        const req = baseReq();
+        req.params.teamId = "invalid-team-id";
+        const res = createResponse();
+
+        await controller[handlerName](req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body).toEqual({
+            success: false,
+            message: "Invalid team ID"
+        });
+        expect(serviceSpy).not.toHaveBeenCalled();
+    }
+});

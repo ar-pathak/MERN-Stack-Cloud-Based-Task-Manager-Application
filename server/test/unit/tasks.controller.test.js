@@ -372,6 +372,121 @@ test("getAllGlobalLevelTasks returns 400 for invalid user id", async () => {
     expect(taskService.getAllGlobalLevelTasks).not.toHaveBeenCalled();
 });
 
+test("mutating handlers reject invalid ids before hitting services", async () => {
+    const invalidTaskIdHandlers = [
+        ["updateTask", taskService.updateTask],
+        ["addTaskAssignees", taskService.addTaskAssignees],
+        ["removeTaskAssignees", taskService.removeTaskAssignees],
+        ["changeTaskStatus", taskService.changeTaskStatus],
+        ["toggleTaskCompletion", taskService.toggleTaskCompletion],
+        ["deleteTask", taskService.deleteTask],
+        ["restoreTask", taskService.restoreTask],
+        ["permanentDeleteTask", taskService.permanentDeleteTask],
+        ["leaveTask", taskService.leaveTask]
+    ];
+
+    for (const [handlerName, serviceSpy] of invalidTaskIdHandlers) {
+        const req = baseReq();
+        req.params.taskId = "invalid-task-id";
+        const res = createResponse();
+
+        await controller[handlerName](req, res);
+
+        expect(serviceSpy).not.toHaveBeenCalled();
+        expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), res);
+        expect(res.statusCode).toBe(500);
+        expect(res.body).toEqual({
+            success: false,
+            message: "Invalid task ID"
+        });
+    }
+});
+
+test("create task handlers reject invalid workspace/project ids", async () => {
+    const workspaceReq = baseReq();
+    workspaceReq.params.workspaceId = "invalid-workspace-id";
+    const workspaceRes = createResponse();
+
+    await controller.createTaskAtWorkspaceLevel(workspaceReq, workspaceRes);
+
+    expect(taskService.createTask).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), workspaceRes);
+    expect(workspaceRes.statusCode).toBe(500);
+    expect(workspaceRes.body).toEqual({
+        success: false,
+        message: "Invalid workspace ID"
+    });
+
+    const projectWorkspaceReq = baseReq();
+    projectWorkspaceReq.params.workspaceId = "invalid-workspace-id";
+    const projectWorkspaceRes = createResponse();
+
+    await controller.createTaskAtProjectLevel(projectWorkspaceReq, projectWorkspaceRes);
+
+    expect(taskService.createTask).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), projectWorkspaceRes);
+    expect(projectWorkspaceRes.body).toEqual({
+        success: false,
+        message: "Invalid workspace ID"
+    });
+
+    const projectReq = baseReq();
+    projectReq.params.projectId = "invalid-project-id";
+    const projectRes = createResponse();
+
+    await controller.createTaskAtProjectLevel(projectReq, projectRes);
+
+    expect(taskService.createTask).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), projectRes);
+    expect(projectRes.body).toEqual({
+        success: false,
+        message: "Invalid project ID"
+    });
+});
+
+test("respondTaskAssigneeRequest rejects invalid ids", async () => {
+    const invalidTaskReq = baseReq();
+    invalidTaskReq.params.taskId = "invalid-task-id";
+    const invalidTaskRes = createResponse();
+
+    await controller.respondTaskAssigneeRequest(invalidTaskReq, invalidTaskRes);
+
+    expect(taskService.respondTaskAssigneeRequest).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), invalidTaskRes);
+    expect(invalidTaskRes.body).toEqual({
+        success: false,
+        message: "Invalid task ID"
+    });
+
+    const invalidRequestReq = baseReq();
+    invalidRequestReq.params.requestId = "invalid-request-id";
+    const invalidRequestRes = createResponse();
+
+    await controller.respondTaskAssigneeRequest(invalidRequestReq, invalidRequestRes);
+
+    expect(taskService.respondTaskAssigneeRequest).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), invalidRequestRes);
+    expect(invalidRequestRes.body).toEqual({
+        success: false,
+        message: "Invalid request ID"
+    });
+});
+
+test("getTasksByProject returns 400 for invalid workspace id", async () => {
+    const req = baseReq();
+    req.params.workspaceId = "invalid-workspace-id";
+    const res = createResponse();
+
+    await controller.getTasksByProject(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+        success: false,
+        message: "Invalid workspace ID"
+    });
+    expect(taskService.getTasksByProject).not.toHaveBeenCalled();
+});
+
 test("controller delegates thrown errors to handleError", async () => {
     const req = baseReq();
     const res = createResponse();

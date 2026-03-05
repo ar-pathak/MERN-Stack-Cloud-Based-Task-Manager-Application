@@ -1340,3 +1340,98 @@ test("getUserPosts uses public visibility filter for non-followers", async () =>
         visibility: "public"
     });
 });
+
+test("getPostById supports anonymous callers and skips engagement enrichment", async () => {
+    jest.spyOn(postService, "publishDueScheduledPosts").mockResolvedValue(0);
+    Post.findById.mockReturnValue(makeFindByIdPopulateQuery({
+        _id: "post-1",
+        author: { _id: "author-1" },
+        status: "active",
+        visibility: "public"
+    }));
+    jest.spyOn(postService, "assertCanAccessPost").mockResolvedValue({
+        authorAccess: {
+            isOwner: false,
+            isPrivate: false,
+            isApprovedFollower: false,
+            isBlockedContext: false
+        }
+    });
+    Post.findByIdAndUpdate.mockReturnValue({ exec: jest.fn().mockResolvedValue({}) });
+
+    const result = await postService.getPostById("post-1");
+
+    expect(Like.checkUserLiked).not.toHaveBeenCalled();
+    expect(result).toEqual({
+        _id: "post-1",
+        author: { _id: "author-1" },
+        status: "active",
+        visibility: "public"
+    });
+});
+
+test("resolveAuthorAccess tolerates blocked list entries without toString", async () => {
+    const noProtoObject = Object.create(null);
+    User.findById
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "author-1",
+            accountStatus: "active",
+            isPrivate: false,
+            blockedUsers: [noProtoObject]
+        }))
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "viewer-1",
+            accountStatus: "active",
+            blockedUsers: []
+        }));
+    Follow.checkRelationship.mockResolvedValue({ isFollowing: false, isApproved: false });
+
+    const access = await postService.resolveAuthorAccess("author-1", "viewer-1");
+
+    expect(access).toEqual({
+        isOwner: false,
+        isPrivate: false,
+        isApprovedFollower: false,
+        isBlockedContext: false
+    });
+});
+
+test("addUserEngagementData ignores malformed follow/repost rows", async () => {
+    const posts = [{ _id: "p1", author: { _id: "a1" } }];
+    Like.checkMultipleLikes.mockResolvedValue({ p1: false });
+    PostSave.checkMultipleSaved.mockResolvedValue({ p1: false });
+    Post.find
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnThis(),
+            lean: jest.fn().mockResolvedValue([
+                {},
+                { originalPost: "p1" }
+            ])
+        });
+    Follow.find
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnThis(),
+            lean: jest.fn().mockResolvedValue([
+                {},
+                { following: "a1", isApproved: false }
+            ])
+        })
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnThis(),
+            lean: jest.fn().mockResolvedValue([
+                {},
+                { follower: "a1" }
+            ])
+        });
+
+    const result = await postService.addUserEngagementData(posts, "viewer-1");
+
+    expect(result[0].userEngagement).toEqual({
+        hasLiked: false,
+        hasSaved: false,
+        hasReposted: true,
+        isFollowingAuthor: false,
+        isFollowRequestPending: true,
+        isFollowedByAuthor: true
+    });
+});

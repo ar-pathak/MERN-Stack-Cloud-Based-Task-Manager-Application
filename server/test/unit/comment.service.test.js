@@ -46,6 +46,7 @@ const Comment = require("../../src/models/comment");
 const Post = require("../../src/models/post");
 const Like = require("../../src/models/like");
 const User = require("../../src/models/user");
+const notificationService = require("../../src/modules/notification/notification.service");
 const {
     resolveMentionUsersFromText,
     notifyMentionedUsers
@@ -471,6 +472,35 @@ test("getPostComments returns top-level comments with replies and engagement", a
     });
 });
 
+test("getPostComments applies default pagination/sort values", async () => {
+    postService.assertCanAccessPostById.mockResolvedValue(undefined);
+    Comment.find.mockReset();
+    Comment.find
+        .mockReturnValueOnce(makeCommentFindQuery([
+            { _id: "comment-1", repliesCount: 0, content: "Top comment" }
+        ]))
+        .mockReturnValueOnce(makeCommentFindQuery([]));
+    Comment.countDocuments.mockResolvedValue(1);
+    Like.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue([])
+    });
+
+    const result = await commentService.getPostComments("post-1", "user-1");
+
+    expect(Comment.find).toHaveBeenNthCalledWith(1, {
+        post: "post-1",
+        parentComment: null,
+        status: "active"
+    });
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 1,
+        pages: 1,
+        hasMore: false
+    });
+});
+
 test("getUserComments returns paginated comments with post references", async () => {
     Comment.find.mockReturnValue(makeCommentFindQuery([
         {
@@ -495,4 +525,214 @@ test("getUserComments returns paginated comments with post references", async ()
         pages: 1,
         hasMore: false
     });
+});
+
+test("createComment rejects when post is missing or inactive", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.publishDueScheduledPosts.mockResolvedValue(undefined);
+    Post.findById.mockReturnValue(selectSession(null));
+
+    await expect(commentService.createComment("user-1", "post-1", "Hello"))
+        .rejects
+        .toMatchObject({
+            message: "Post not found",
+            statusCode: 404
+        });
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("createComment validates parent comment existence and post ownership", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.publishDueScheduledPosts.mockResolvedValue(undefined);
+    Post.findById.mockReturnValue(selectSession({
+        _id: "post-1",
+        author: "author-1",
+        status: "active",
+        visibility: "public",
+        settings: { commentsDisabled: false }
+    }));
+    postService.assertCanAccessPost.mockResolvedValue(undefined);
+
+    Comment.findById.mockReturnValueOnce({
+        session: jest.fn().mockResolvedValue(null)
+    });
+
+    await expect(commentService.createComment("user-1", "post-1", "Hello", "parent-1"))
+        .rejects
+        .toMatchObject({
+            message: "Parent comment not found",
+            statusCode: 404
+        });
+
+    Comment.findById.mockReturnValueOnce({
+        session: jest.fn().mockResolvedValue({
+            _id: "parent-1",
+            post: "other-post",
+            status: "active"
+        })
+    });
+
+    await expect(commentService.createComment("user-1", "post-1", "Hello", "parent-1"))
+        .rejects
+        .toMatchObject({
+            message: "Parent comment does not belong to this post",
+            statusCode: 400
+        });
+});
+
+test("createComment sends social + mention notifications and tolerates notification errors", async () => {
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.publishDueScheduledPosts.mockResolvedValue(undefined);
+    Post.findById.mockReturnValue(selectSession({
+        _id: "post-1",
+        author: "post-author",
+        status: "active",
+        visibility: "public",
+        settings: { commentsDisabled: false }
+    }));
+    postService.assertCanAccessPost.mockResolvedValue(undefined);
+    Comment.findById.mockReturnValue({
+        session: jest.fn().mockResolvedValue({
+            _id: "parent-1",
+            post: "post-1",
+            author: "parent-author",
+            status: "active"
+        })
+    });
+    resolveMentionUsersFromText.mockResolvedValue([
+        { _id: "mention-1", username: "mention1" }
+    ]);
+    const commentDoc = {
+        _id: "comment-1",
+        populate: jest.fn().mockResolvedValue(undefined),
+        toObject: jest.fn().mockReturnValue({
+            _id: "comment-1",
+            content: "Hello @mention1"
+        }),
+        author: { name: "Alice", username: "alice" }
+    };
+    Comment.create.mockResolvedValue([commentDoc]);
+    User.findById
+        .mockReturnValueOnce({
+            select: jest.fn(() => ({
+                session: jest.fn(() => ({
+                    lean: jest.fn().mockResolvedValue({
+                        preferences: { notifications: { comments: true } }
+                    })
+                }))
+            }))
+        })
+        .mockReturnValueOnce({
+            select: jest.fn(() => ({
+                session: jest.fn(() => ({
+                    lean: jest.fn().mockResolvedValue({
+                        preferences: { notifications: { comments: true } }
+                    })
+                }))
+            }))
+        });
+    notificationService.createNotifications
+        .mockRejectedValueOnce(new Error("notify-failed"))
+        .mockResolvedValueOnce([]);
+
+    const result = await commentService.createComment(
+        "user-1",
+        "post-1",
+        "Hello @mention1",
+        "parent-1"
+    );
+
+    expect(notificationService.createNotifications).toHaveBeenCalledTimes(2);
+    expect(notifyMentionedUsers).toHaveBeenCalledWith(expect.objectContaining({
+        actorId: "user-1",
+        metadata: expect.objectContaining({
+            source: "comment.create",
+            commentId: "comment-1",
+            postId: "post-1"
+        })
+    }));
+    expect(consoleSpy).toHaveBeenCalled();
+    expect(result).toEqual(expect.objectContaining({
+        _id: "comment-1",
+        userEngagement: { hasLiked: false }
+    }));
+    consoleSpy.mockRestore();
+});
+
+test("updateComment rejects when comment is not active", async () => {
+    Comment.findById.mockResolvedValue({
+        author: "user-1",
+        status: "deleted"
+    });
+
+    await expect(commentService.updateComment("comment-1", "user-1", "Updated"))
+        .rejects
+        .toThrow("Cannot edit a deleted or hidden comment");
+});
+
+test("updateComment skips mention notification when no new mentions are added", async () => {
+    const commentDoc = {
+        _id: "comment-1",
+        post: "post-1",
+        author: "user-1",
+        status: "active",
+        mentions: ["existing-1"],
+        save: jest.fn().mockResolvedValue(undefined),
+        populate: jest.fn().mockResolvedValue(undefined)
+    };
+    Comment.findById.mockResolvedValue(commentDoc);
+    resolveMentionUsersFromText.mockResolvedValue([{ _id: "existing-1", username: "old" }]);
+
+    const result = await commentService.updateComment("comment-1", "user-1", "No new mentions");
+
+    expect(result).toBe(commentDoc);
+    expect(notifyMentionedUsers).not.toHaveBeenCalled();
+});
+
+test("deleteComment validates missing comment/post and aborts transaction", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => ({
+            session: jest.fn().mockResolvedValue(null)
+        }))
+    });
+
+    await expect(commentService.deleteComment("comment-404", "user-1"))
+        .rejects
+        .toMatchObject({
+            message: "Comment not found",
+            statusCode: 404
+        });
+
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => ({
+            session: jest.fn().mockResolvedValue({
+                _id: "comment-1",
+                post: "post-1",
+                author: "user-1",
+                parentComment: null,
+                status: "active"
+            })
+        }))
+    });
+    Post.findById.mockReturnValue({
+        select: jest.fn(() => ({
+            session: jest.fn().mockResolvedValue(null)
+        }))
+    });
+
+    await expect(commentService.deleteComment("comment-1", "user-1"))
+        .rejects
+        .toMatchObject({
+            message: "Post not found",
+            statusCode: 404
+        });
+
+    expect(session.abortTransaction).toHaveBeenCalled();
 });

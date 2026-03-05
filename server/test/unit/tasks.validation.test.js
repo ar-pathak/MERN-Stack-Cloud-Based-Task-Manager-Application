@@ -77,3 +77,25 @@ test("changeTaskStatusSchema and respondTaskAssigneeRequestSchema enforce enums"
     expect(() => changeTaskStatusSchema.parse({ status: "done" })).toThrow();
     expect(() => respondTaskAssigneeRequestSchema.parse({ action: "hold" })).toThrow();
 });
+
+test("addTaskAssigneesSchema accepts unique ids and usernames", () => {
+    const parsed = addTaskAssigneesSchema.parse({
+        assigneesTeams: [ID_1],
+        assignees: [ID_2],
+        usernames: ["alice"]
+    });
+
+    expect(parsed).toEqual({
+        assigneesTeams: [ID_1],
+        assignees: [ID_2],
+        usernames: ["alice"]
+    });
+});
+
+test("removeTaskAssigneesSchema accepts unique assignees", () => {
+    const parsed = removeTaskAssigneesSchema.parse({
+        assignees: [ID_1, ID_2]
+    });
+
+    expect(parsed.assignees).toEqual([ID_1, ID_2]);
+});

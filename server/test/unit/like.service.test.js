@@ -362,6 +362,7 @@ test("likePost does not send notification when post author disabled like notific
 });
 
 test("likePost swallows notification failures after successful commit", async () => {
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     const session = createSession();
     mongoose.startSession.mockResolvedValue(session);
     postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
@@ -383,6 +384,11 @@ test("likePost swallows notification failures after successful commit", async ()
         liked: true
     });
     expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(consoleSpy).toHaveBeenCalledWith(
+        "post like notification error",
+        expect.any(Error)
+    );
+    consoleSpy.mockRestore();
 });
 
 test("likePost duplicate race updates reaction when existing like differs", async () => {
@@ -593,5 +599,50 @@ test("unlikeComment returns already-unliked when no like exists", async () => {
         success: true,
         message: "Comment already unliked",
         liked: false
+    });
+});
+
+test("getPostLikes uses default pagination when page/limit are omitted", async () => {
+    postService.assertCanAccessPostById.mockResolvedValue({ _id: "post-1" });
+    Like.find.mockReturnValue(makeFindQuery([
+        {
+            user: { _id: "u2", username: "bob" },
+            createdAt: "2026-01-01T00:00:00.000Z",
+            reactionType: "like"
+        }
+    ]));
+    Like.countDocuments.mockResolvedValue(1);
+
+    const result = await likeService.getPostLikes("post-1", "viewer-1");
+
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 1,
+        pages: 1,
+        hasMore: false
+    });
+});
+
+test("getUserLikedPosts uses default pagination when page/limit are omitted", async () => {
+    Like.find.mockReturnValue(makeFindQuery([
+        {
+            post: { _id: "post-1", status: "active", content: "Post A" },
+            createdAt: "2026-01-01T00:00:00.000Z"
+        }
+    ]));
+    Like.countDocuments.mockResolvedValue(1);
+    postService.filterAccessiblePosts.mockResolvedValue([
+        { _id: "post-1", status: "active", content: "Post A", likedAt: "2026-01-01T00:00:00.000Z" }
+    ]);
+
+    const result = await likeService.getUserLikedPosts("user-1");
+
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 1,
+        pages: 1,
+        hasMore: false
     });
 });

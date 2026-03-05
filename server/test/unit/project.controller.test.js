@@ -349,3 +349,94 @@ test("controller delegates service errors to handleError", async () => {
     expect(res.statusCode).toBe(403);
     expect(res.body).toEqual({ success: false, message: "access denied" });
 });
+
+test("workspace-scoped handlers reject invalid workspace id", async () => {
+    const handlers = [
+        ["createProject", projectService.createProject],
+        ["getProjectsByWorkspace", projectService.getProjectsByWorkspace],
+        ["requestProjectStatusChange", projectService.requestProjectStatusChange],
+        ["respondProjectStatusChangeRequest", projectService.respondProjectStatusChangeRequest]
+    ];
+
+    for (const [handlerName, serviceSpy] of handlers) {
+        const req = baseReq();
+        req.params.workspaceId = "invalid-workspace-id";
+        const res = createResponse();
+
+        await controller[handlerName](req, res);
+
+        expect(serviceSpy).not.toHaveBeenCalled();
+        expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), res);
+        expect(res.statusCode).toBe(500);
+    }
+});
+
+test("project-scoped handlers reject invalid project id", async () => {
+    const handlers = [
+        ["getProjectById", projectService.getProjectById],
+        ["updateProject", projectService.updateProject],
+        ["deleteProject", projectService.deleteProject],
+        ["getProjectTeams", projectService.getProjectTeams],
+        ["addProjectTeams", projectService.addProjectTeams],
+        ["removeProjectTeams", projectService.removeProjectTeams],
+        ["getProjectMembers", projectService.getProjectMembers],
+        ["addProjectMembers", projectService.addProjectMembers],
+        ["removeProjectMembers", projectService.removeProjectMembers],
+        ["leaveProject", projectService.leaveProject]
+    ];
+
+    for (const [handlerName, serviceSpy] of handlers) {
+        const req = baseReq();
+        req.params.projectId = "invalid-project-id";
+        const res = createResponse();
+
+        await controller[handlerName](req, res);
+
+        expect(serviceSpy).not.toHaveBeenCalled();
+        expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), res);
+        expect(res.statusCode).toBe(500);
+    }
+});
+
+test("updateProjectMemberRole validates project/member ids", async () => {
+    const badProjectReq = baseReq();
+    badProjectReq.params.projectId = "bad-project";
+    const badProjectRes = createResponse();
+
+    await controller.updateProjectMemberRole(badProjectReq, badProjectRes);
+
+    expect(projectService.updateProjectMemberRole).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), badProjectRes);
+    expect(badProjectRes.body).toEqual({
+        success: false,
+        message: "Invalid project ID or member ID"
+    });
+
+    const badMemberReq = baseReq();
+    badMemberReq.params.memberId = "bad-member";
+    const badMemberRes = createResponse();
+
+    await controller.updateProjectMemberRole(badMemberReq, badMemberRes);
+
+    expect(projectService.updateProjectMemberRole).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), badMemberRes);
+    expect(badMemberRes.body).toEqual({
+        success: false,
+        message: "Invalid project ID or member ID"
+    });
+});
+
+test("respondProjectStatusChangeRequest validates request id", async () => {
+    const req = baseReq();
+    req.params.requestId = "bad-request-id";
+    const res = createResponse();
+
+    await controller.respondProjectStatusChangeRequest(req, res);
+
+    expect(projectService.respondProjectStatusChangeRequest).not.toHaveBeenCalled();
+    expect(handleError).toHaveBeenLastCalledWith(expect.any(Error), res);
+    expect(res.body).toEqual({
+        success: false,
+        message: "Invalid workspace ID, project ID, or request ID"
+    });
+});

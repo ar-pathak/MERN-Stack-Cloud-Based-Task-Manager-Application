@@ -91,7 +91,7 @@ const { toPaginationMeta } = require("../../src/helpers/paginationHelper");
 const { touchWorkspace } = require("../../src/modules/utils/updateParent");
 const { logActivity, getUserLabel, getUserLabels, formatUserList } = require("../../src/modules/utils/activityLogger");
 const notificationService = require("../../src/modules/notification/notification.service");
-const { syncProjectChatMembers } = require("../../src/modules/utils/chatMembershipSync");
+const { syncProjectChatMembers, syncTaskAndSubtaskChatMembers } = require("../../src/modules/utils/chatMembershipSync");
 const projectService = require("../../src/modules/projects/project.service");
 
 const makeQuery = (value) => {
@@ -883,4 +883,485 @@ test("leaveProject removes member and syncs project chat", async () => {
     });
     expect(syncProjectChatMembers).toHaveBeenCalledWith("p1", { session });
     expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("getProjectsByWorkspace returns non-paginated list when pagination disabled", async () => {
+    Workspace.findById.mockReturnValue(makeQuery({ _id: "w1", name: "Workspace" }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+    Project.find.mockReturnValue(makeQuery([{ _id: "p1" }]));
+
+    const result = await projectService.getProjectsByWorkspace("w1", "u1", { enabled: false });
+
+    expect(result).toEqual([{ _id: "p1" }]);
+});
+
+test("updateProject rejects requester without edit permissions", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "viewer" }));
+
+    await expect(
+        projectService.updateProject({
+            projectId: "p1",
+            updateData: { description: "new" },
+            userId: "u1"
+        })
+    ).rejects.toThrow("You are not allowed to update this project");
+});
+
+test("updateProject validates teams in workspace and rejects foreign teams", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Team.find.mockReturnValue(makeQuery([]));
+
+    await expect(
+        projectService.updateProject({
+            projectId: "p1",
+            updateData: { teams: ["t1"] },
+            userId: "u1"
+        })
+    ).rejects.toThrow("Some selected teams do not belong to this workspace");
+});
+
+test("updateProject throws when project cannot be loaded after update", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findByIdAndUpdate.mockReturnValue(makeQuery(null));
+
+    await expect(
+        projectService.updateProject({
+            projectId: "p1",
+            updateData: { description: "changed" },
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project not found",
+        statusCode: 404
+    });
+});
+
+test("updateProject renames project and syncs project chat title", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findOne.mockReturnValue(makeQuery(null));
+    Project.findByIdAndUpdate.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project Renamed",
+        workspace: "w1",
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1", name: "Workspace A" }));
+    getUserLabel.mockResolvedValue("Admin");
+
+    const result = await projectService.updateProject({
+        projectId: "p1",
+        updateData: { name: "Project Renamed" },
+        userId: "u1"
+    });
+
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith("chat-p1", { name: "Project Renamed" });
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "project.renamed"
+    }));
+    expect(result.name).toBe("Project Renamed");
+});
+
+test("updateProject logs status-change activity when status changes", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Project.findByIdAndUpdate.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        status: "completed",
+        chatId: "chat-p1"
+    }));
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValue("Admin");
+
+    await projectService.updateProject({
+        projectId: "p1",
+        updateData: { status: "completed" },
+        userId: "u1"
+    });
+
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "project.status_changed"
+    }));
+});
+
+test("requestProjectStatusChange validates workspace ownership mapping", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            workspaceId: "w2",
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project does not belong to this workspace",
+        statusCode: 400
+    });
+});
+
+test("requestProjectStatusChange rejects non-member requesters and unknown workspace roles", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u2"
+        })
+    ).rejects.toMatchObject({
+        message: "Only project members can request project status changes",
+        statusCode: 403
+    });
+
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "guest" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "archived",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "You are not allowed to request project status changes",
+        statusCode: 403
+    });
+});
+
+test("requestProjectStatusChange rejects same-status requests", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "member" }],
+        settings: { statusChangeAdminApprovalEnabled: true },
+        status: "active"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "member" }));
+
+    await expect(
+        projectService.requestProjectStatusChange({
+            projectId: "p1",
+            requestedStatus: "active",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project already has this status",
+        statusCode: 400
+    });
+});
+
+test("respondProjectStatusChangeRequest validates workspace mapping", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        status: "active"
+    }));
+
+    await expect(
+        projectService.respondProjectStatusChangeRequest({
+            workspaceId: "w2",
+            projectId: "p1",
+            requestId: "req-1",
+            action: "approve",
+            userId: "u1"
+        })
+    ).rejects.toMatchObject({
+        message: "Project does not belong to this workspace",
+        statusCode: 400
+    });
+});
+
+test("deleteProject throws when project is missing or user is unauthorized", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery(null));
+
+    await expect(projectService.deleteProject("p404", "u1"))
+        .rejects
+        .toThrow("Project not found");
+
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [],
+        name: "Project X"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "viewer" }));
+
+    await expect(projectService.deleteProject("p1", "u2"))
+        .rejects
+        .toThrow("Only workspace owners/admins or project owner can delete this project");
+});
+
+test("deleteProject aborts transaction when cascading operations fail", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        chatId: null,
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }]
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Workspace.findById.mockReturnValue(makeQuery({ name: "Workspace A", chatId: "chat-w1" }));
+    Task.find.mockReturnValue(makeQuery([]));
+    getUserLabel.mockResolvedValue("Admin");
+    Task.deleteMany.mockRejectedValue(new Error("delete-failed"));
+
+    await expect(projectService.deleteProject("p1", "u1"))
+        .rejects
+        .toThrow("delete-failed");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("project team/member helper methods return expected payloads", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        chatId: "chat-p1",
+        members: [{ user: "u1", role: "admin" }],
+        teams: [{ _id: "t1" }]
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Team.find.mockReturnValue(makeQuery([{ _id: "t1" }, { _id: "t2" }]));
+    Project.findByIdAndUpdate.mockResolvedValue({ _id: "p1" });
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValue("Admin");
+
+    const teams = await projectService.getProjectTeams("p1", "u1");
+    const addTeams = await projectService.addProjectTeams("p1", { teams: ["t1", "t2"] }, "u1");
+    const removeTeams = await projectService.removeProjectTeams("p1", { teams: ["t2"] }, "u1");
+    const members = await projectService.getProjectMembers("p1", "u1");
+
+    expect(teams).toEqual([{ _id: "t1" }]);
+    expect(addTeams).toEqual({ message: "Teams added to project" });
+    expect(removeTeams).toEqual({ message: "Teams removed from project" });
+    expect(members).toEqual([{ user: "u1", role: "admin" }]);
+});
+
+test("removeProjectMembers removes users from members/tasks/subtasks", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        chatId: "chat-p1",
+        members: [{ user: "u1", role: "admin" }, { user: "u2", role: "member" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Task.find.mockReturnValue(makeQuery([{ _id: "task-1" }]));
+    Task.updateMany.mockResolvedValue({});
+    Subtask.updateMany.mockResolvedValue({});
+    syncTaskAndSubtaskChatMembers.mockResolvedValue({});
+    Project.findByIdAndUpdate.mockResolvedValue({ _id: "p1" });
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1" }));
+    getUserLabel.mockResolvedValue("Admin");
+    getUserLabels.mockResolvedValue(["Bob"]);
+    formatUserList.mockReturnValue("Bob");
+
+    const result = await projectService.removeProjectMembers("p1", { users: ["u2"] }, "u1");
+
+    expect(Task.updateMany).toHaveBeenCalledWith(
+        { project: "p1" },
+        { $pull: { assignees: { $in: ["u2"] } } },
+        { session }
+    );
+    expect(Subtask.updateMany).toHaveBeenCalledWith(
+        { task: { $in: ["task-1"] } },
+        { $pull: { assignedTo: { $in: ["u2"] } } },
+        { session }
+    );
+    expect(syncTaskAndSubtaskChatMembers).toHaveBeenCalledWith("task-1", { session });
+    expect(result).toEqual({
+        message: "Members removed from project and unassigned from tasks"
+    });
+});
+
+test("removeProjectMembers throws when project update returns null", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }, { user: "u2", role: "member" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    Task.find.mockReturnValue(makeQuery([]));
+    Task.updateMany.mockResolvedValue({});
+    Project.findByIdAndUpdate.mockResolvedValue(null);
+
+    await expect(
+        projectService.removeProjectMembers("p1", { users: ["u2"] }, "u1")
+    ).rejects.toThrow("Project not found");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("updateProjectMemberRole validates owner and target member existence", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        teams: []
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+
+    await expect(
+        projectService.updateProjectMemberRole("p1", "owner-1", "member", "u1")
+    ).rejects.toThrow("Project owner role cannot be changed");
+
+    Project.findOneAndUpdate.mockResolvedValue(null);
+    await expect(
+        projectService.updateProjectMemberRole("p1", "u2", "viewer", "u1")
+    ).rejects.toThrow("Project not found or user is not a member of this project");
+});
+
+test("leaveProject throws when project is not found", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Project.findById.mockReturnValue(makeQuery(null));
+
+    await expect(projectService.leaveProject("p404", "u1"))
+        .rejects
+        .toThrow("Project not found");
+});
+
+test("updateProject normalizes member payload and defaults missing roles to viewer", async () => {
+    Project.findById.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        owner: "owner-1",
+        members: [{ user: "u1", role: "admin" }],
+        settings: { statusChangeAdminApprovalEnabled: false },
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    WorkspaceMember.findOne.mockReturnValue(makeQuery({ role: "admin" }));
+    WorkspaceMember.find.mockReturnValue(makeQuery([{ user: "u2" }, { user: "owner-1" }]));
+    Project.findByIdAndUpdate.mockReturnValue(makeQuery({
+        _id: "p1",
+        name: "Project X",
+        workspace: "w1",
+        status: "active",
+        chatId: "chat-p1"
+    }));
+    Workspace.findById.mockReturnValue(makeQuery({ chatId: "chat-w1", name: "Workspace A" }));
+    getUserLabel.mockResolvedValue("Admin");
+
+    await projectService.updateProject({
+        projectId: "p1",
+        updateData: {
+            members: [
+                null,
+                { user: "u2" }
+            ]
+        },
+        userId: "u1"
+    });
+
+    expect(Project.findByIdAndUpdate).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({
+            members: expect.arrayContaining([
+                { user: "u2", role: "viewer" },
+                { user: "owner-1", role: "admin" }
+            ])
+        }),
+        { new: true, runValidators: true }
+    );
 });

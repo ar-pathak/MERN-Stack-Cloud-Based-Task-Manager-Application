@@ -143,7 +143,8 @@ const makeSession = () => ({
 });
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
 });
 
 test("getAllGlobalLevelTasks returns non-paginated task list", async () => {
@@ -465,6 +466,7 @@ test("toggleTaskCompletion delegates to changeTaskStatus with computed status", 
 
     expect(changeSpy).toHaveBeenCalledWith("user-1", "task-1", "active");
     expect(result).toEqual({ message: "Task status updated successfully" });
+    changeSpy.mockRestore();
 });
 
 test("deleteTask enforces deletion guards", async () => {
@@ -1169,4 +1171,409 @@ test("permanentDeleteTask cascades task-related records in transaction", async (
     expect(result).toEqual({
         message: "Task and its subtasks permanently deleted"
     });
+});
+
+test("getTaskById allows read access when user is workspace member", async () => {
+    Task.findById
+        .mockReturnValueOnce(makeSelectResolved({
+            _id: "task-1",
+            createdBy: "owner-1",
+            assignees: [],
+            assigneesTeams: [],
+            workspace: "workspace-1",
+            project: null
+        }))
+        .mockReturnValueOnce(makePopulateQuery({ _id: "task-1", title: "Workspace task" }));
+    isUserTaskAssignee.mockResolvedValue(false);
+    WorkspaceMember.exists.mockResolvedValue(true);
+
+    const result = await taskService.getTaskById("task-1", "user-2");
+
+    expect(WorkspaceMember.exists).toHaveBeenCalledWith({
+        workspace: "workspace-1",
+        user: "user-2"
+    });
+    expect(result).toEqual({ _id: "task-1", title: "Workspace task" });
+});
+
+test("getTaskById allows read access when user is project owner", async () => {
+    Task.findById
+        .mockReturnValueOnce(makeSelectResolved({
+            _id: "task-1",
+            createdBy: "owner-1",
+            assignees: [],
+            assigneesTeams: [],
+            workspace: null,
+            project: "project-1"
+        }))
+        .mockReturnValueOnce(makePopulateQuery({ _id: "task-1", title: "Project task" }));
+    isUserTaskAssignee.mockResolvedValue(false);
+    Project.findById.mockReturnValue(makeSelectLeanResolved({
+        owner: "user-1",
+        members: []
+    }));
+
+    const result = await taskService.getTaskById("task-1", "user-1");
+
+    expect(result).toEqual({ _id: "task-1", title: "Project task" });
+});
+
+test("getTaskById allows read access when user is project member", async () => {
+    Task.findById
+        .mockReturnValueOnce(makeSelectResolved({
+            _id: "task-1",
+            createdBy: "owner-1",
+            assignees: [],
+            assigneesTeams: [],
+            workspace: null,
+            project: "project-1"
+        }))
+        .mockReturnValueOnce(makePopulateQuery({ _id: "task-1", title: "Project task" }));
+    isUserTaskAssignee.mockResolvedValue(false);
+    Project.findById.mockReturnValue(makeSelectLeanResolved({
+        owner: "owner-1",
+        members: [{ user: "user-9" }, { user: "user-1" }]
+    }));
+
+    const result = await taskService.getTaskById("task-1", "user-1");
+
+    expect(result).toEqual({ _id: "task-1", title: "Project task" });
+});
+
+test("updateTask updates title, chat name, and activity details", async () => {
+    Task.findById
+        .mockResolvedValueOnce({
+            _id: "task-1",
+            title: "Old title",
+            createdBy: "user-1",
+            workspace: null,
+            project: "project-1",
+            chatId: "chat-1"
+        })
+        .mockReturnValueOnce(makePopulateResolved({ _id: "task-1", title: "New title" }));
+    Task.findOne.mockReturnValue({
+        lean: jest.fn().mockResolvedValue(null)
+    });
+    Project.findById.mockReturnValue(makeSelectLeanResolved({
+        _id: "project-1",
+        name: "Roadmap",
+        workspace: "workspace-1",
+        chatId: "project-chat-1"
+    }));
+    Workspace.findById.mockReturnValue(makeSelectLeanResolved({
+        _id: "workspace-1",
+        name: "Alpha",
+        chatId: "workspace-chat-1"
+    }));
+    getUserLabel.mockResolvedValue("Alice");
+
+    const result = await taskService.updateTask("user-1", "task-1", { title: "New title" });
+
+    expect(Task.updateOne).toHaveBeenCalledWith(
+        { _id: "task-1" },
+        { $set: { title: "New title" } }
+    );
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith("chat-1", { name: "New title" });
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "task.renamed",
+        projectId: "project-1"
+    }));
+    expect(result).toEqual({
+        message: "Task updated successfully",
+        task: { _id: "task-1", title: "New title" }
+    });
+});
+
+test("updateTask handles non-title updates without chat rename", async () => {
+    Task.findById
+        .mockResolvedValueOnce({
+            _id: "task-1",
+            title: "Task title",
+            createdBy: "user-1",
+            workspace: "workspace-1",
+            project: null,
+            chatId: "chat-1"
+        })
+        .mockReturnValueOnce(makePopulateResolved({ _id: "task-1", title: "Task title" }));
+    Workspace.findById.mockReturnValue(makeSelectLeanResolved({
+        _id: "workspace-1",
+        name: "Alpha",
+        chatId: "workspace-chat-1"
+    }));
+    getUserLabel.mockResolvedValue("Alice");
+
+    const result = await taskService.updateTask("user-1", "task-1", { description: "Updated description" });
+
+    expect(Task.findOne).not.toHaveBeenCalled();
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "task.updated"
+    }));
+    expect(result.message).toBe("Task updated successfully");
+});
+
+test("createTask rejects workspace-scope teams from other workspace", async () => {
+    Workspace.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ _id: "workspace-1" })
+    });
+    canCreateTask.mockResolvedValue(true);
+    Task.findOne.mockResolvedValue(null);
+    Team.find.mockReturnValue(makeSelectLeanQuery([
+        { _id: "team-1", workspace: "workspace-2" }
+    ]));
+
+    await expect(
+        taskService.createTask(
+            "user-1",
+            { title: "Task A", assigneesTeams: ["team-1"] },
+            { workspaceId: "workspace-1" }
+        )
+    ).rejects.toThrow("Some selected teams do not belong to this workspace");
+});
+
+test("createTask rejects project-scope teams not linked to project", async () => {
+    Project.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({
+            _id: "project-1",
+            workspace: "workspace-1",
+            owner: "owner-1",
+            members: [{ user: "user-1" }],
+            teams: ["team-linked"],
+            name: "Project A",
+            chatId: "project-chat-1"
+        })
+    });
+    Workspace.findById.mockReturnValue({
+        select: jest.fn().mockResolvedValue({ _id: "workspace-1" })
+    });
+    canCreateTask.mockResolvedValue(true);
+    Task.findOne.mockResolvedValue(null);
+    Team.find.mockReturnValue(makeSelectLeanQuery([
+        { _id: "team-2", workspace: "workspace-1" }
+    ]));
+
+    await expect(
+        taskService.createTask(
+            "user-1",
+            { title: "Task A", assigneesTeams: ["team-2"] },
+            { projectId: "project-1" }
+        )
+    ).rejects.toThrow("Some selected teams are not linked to this project");
+});
+
+test("addTaskAssignees throws when all targets are already assigned", async () => {
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        assignees: ["user-1"],
+        assigneesTeams: [],
+        workspace: null,
+        project: null,
+        chatId: "chat-1"
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([
+                {
+                    _id: "user-1",
+                    preferences: { workspace: { autoApproveWorkspaceInvites: true } }
+                }
+            ])
+        })
+    });
+
+    await expect(
+        taskService.addTaskAssignees("user-1", "task-1", {
+            assignees: ["user-1", "user-1"]
+        })
+    ).rejects.toThrow("No valid assignees or teams provided");
+});
+
+test("respondTaskAssigneeRequest returns 404 when pending request is missing", async () => {
+    TaskAssigneeRequest.findOne.mockResolvedValue(null);
+
+    await expect(
+        taskService.respondTaskAssigneeRequest({
+            userId: "user-2",
+            taskId: "task-1",
+            requestId: "req-404",
+            action: "approve"
+        })
+    ).rejects.toMatchObject({
+        message: "Task assignment request not found or already processed",
+        statusCode: 404
+    });
+});
+
+test("removeTaskAssignees aborts transaction when update fails", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        assignees: ["user-1"],
+        assigneesTeams: [],
+        workspace: null,
+        project: null,
+        chatId: null
+    });
+    Task.updateOne.mockRejectedValue(new Error("db-write-failed"));
+
+    await expect(
+        taskService.removeTaskAssignees("user-1", "task-1", {})
+    ).rejects.toThrow("db-write-failed");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(session.endSession).toHaveBeenCalledTimes(1);
+});
+
+test("changeTaskStatus updates status and returns populated task", async () => {
+    Task.findById
+        .mockResolvedValueOnce({
+            _id: "task-1",
+            title: "Task A",
+            status: "active",
+            workspace: null,
+            project: "project-1",
+            chatId: "chat-1"
+        })
+        .mockReturnValueOnce(makePopulateResolved({
+            _id: "task-1",
+            title: "Task A",
+            status: "completed"
+        }));
+    isUserTaskAssignee.mockResolvedValue(true);
+    Project.findById.mockReturnValue(makeSelectLeanResolved({
+        _id: "project-1",
+        workspace: "workspace-1",
+        chatId: "project-chat-1",
+        name: "Roadmap"
+    }));
+    Workspace.findById.mockReturnValue(makeSelectLeanResolved({
+        _id: "workspace-1",
+        chatId: "workspace-chat-1",
+        name: "Alpha"
+    }));
+    getUserLabel.mockResolvedValue("Alice");
+
+    const result = await taskService.changeTaskStatus("user-1", "task-1", "completed");
+
+    expect(Task.updateOne).toHaveBeenCalledWith(
+        { _id: "task-1" },
+        { $set: { status: "completed" } }
+    );
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "task.status_changed"
+    }));
+    expect(result).toEqual({
+        message: "Task status updated successfully",
+        task: {
+            _id: "task-1",
+            title: "Task A",
+            status: "completed"
+        }
+    });
+});
+
+test("toggleTaskCompletion throws when task does not exist", async () => {
+    Task.findById.mockResolvedValue(null);
+
+    await expect(
+        taskService.toggleTaskCompletion("user-1", "task-404")
+    ).rejects.toThrow("Task not found");
+});
+
+test("restoreTask throws when task is missing", async () => {
+    Task.findById.mockResolvedValue(null);
+
+    await expect(
+        taskService.restoreTask("user-1", "task-404")
+    ).rejects.toThrow("Task not found");
+});
+
+test("permanentDeleteTask throws when task is missing", async () => {
+    Task.findById.mockResolvedValue(null);
+
+    await expect(
+        taskService.permanentDeleteTask("user-1", "task-404")
+    ).rejects.toThrow("Task not found");
+});
+
+test("permanentDeleteTask aborts transaction when cascade fails", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        chatId: "chat-1",
+        workspace: null,
+        project: null
+    });
+    getUserLabel.mockResolvedValue("Alice");
+    Subtask.deleteMany.mockRejectedValue(new Error("cascade-failed"));
+
+    await expect(
+        taskService.permanentDeleteTask("user-1", "task-1")
+    ).rejects.toThrow("cascade-failed");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(session.endSession).toHaveBeenCalledTimes(1);
+});
+
+test("permanentDeleteTask keeps success when touchParents fails after commit", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        createdBy: "user-1",
+        chatId: null,
+        workspace: null,
+        project: null
+    });
+    getUserLabel.mockResolvedValue("Alice");
+    Subtask.deleteMany.mockResolvedValue({});
+    Task.deleteOne.mockResolvedValue({});
+    touchParents.mockRejectedValue(new Error("touch-failed"));
+
+    const result = await taskService.permanentDeleteTask("user-1", "task-1");
+
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+        message: "Task and its subtasks permanently deleted"
+    });
+});
+
+test("getTasksByProject returns non-paginated list", async () => {
+    const query = makeTaskListQuery([{ _id: "task-1" }, { _id: "task-2" }]);
+    Task.find.mockReturnValue(query);
+
+    const result = await taskService.getTasksByProject("project-1");
+
+    expect(result).toEqual([{ _id: "task-1" }, { _id: "task-2" }]);
+});
+
+test("leaveTask aborts transaction when assignee removal fails", async () => {
+    const session = makeSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Task.findById.mockResolvedValue({
+        _id: "task-1",
+        title: "Task A",
+        assignees: ["user-1"],
+        workspace: null,
+        project: null,
+        chatId: "chat-1"
+    });
+    getUserLabel.mockResolvedValue("Alice");
+    Task.findByIdAndUpdate.mockRejectedValue(new Error("remove-failed"));
+
+    await expect(
+        taskService.leaveTask("task-1", "user-1")
+    ).rejects.toThrow("remove-failed");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(session.endSession).toHaveBeenCalledTimes(1);
 });

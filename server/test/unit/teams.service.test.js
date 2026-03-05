@@ -59,6 +59,14 @@ const mockSelectLean = (value) => ({
     })
 });
 
+const mockPopulateResult = (value) => {
+    const query = {};
+    query.populate = jest.fn().mockReturnValue(query);
+    query.then = (onFulfilled, onRejected) => Promise.resolve(value).then(onFulfilled, onRejected);
+    query.catch = (onRejected) => Promise.resolve(value).catch(onRejected);
+    return query;
+};
+
 const createSession = () => ({
     startTransaction: jest.fn(),
     commitTransaction: jest.fn(),
@@ -369,4 +377,260 @@ test("deleteTeam removes dependent references inside transaction", async () => {
     expect(Team.findByIdAndDelete).toHaveBeenCalledWith("team-1", { session });
     expect(session.commitTransaction).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ message: "Team and all its references deleted successfully" });
+});
+
+test("getTeamsByWorkspace throws when workspace is missing", async () => {
+    Workspace.findById.mockResolvedValue(null);
+
+    await expect(
+        teamsService.getTeamsByWorkspace("workspace-404")
+    ).rejects.toThrow("Workspace not found");
+});
+
+test("getTeamById throws when team is missing", async () => {
+    Team.findOne.mockReturnValue(mockPopulateResult(null));
+
+    await expect(
+        teamsService.getTeamById("team-404", "workspace-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("updateTeam throws when team is missing", async () => {
+    Team.findOneAndUpdate.mockResolvedValue(null);
+
+    await expect(
+        teamsService.updateTeam("team-404", "workspace-1", { name: "New name" })
+    ).rejects.toThrow("Team not found");
+});
+
+test("deleteTeam throws when team does not exist in workspace", async () => {
+    Team.findOne.mockResolvedValue(null);
+
+    await expect(
+        teamsService.deleteTeam("team-404", "workspace-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("deleteTeam aborts transaction when cascading update fails", async () => {
+    const session = createSession();
+    jest.spyOn(mongoose, "startSession").mockResolvedValue(session);
+    Team.findOne.mockResolvedValue({ _id: "team-1" });
+    Project.updateMany.mockRejectedValue(new Error("cascade-update-failed"));
+
+    await expect(
+        teamsService.deleteTeam("team-1", "workspace-1")
+    ).rejects.toThrow("cascade-update-failed");
+
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+    expect(session.endSession).toHaveBeenCalledTimes(1);
+});
+
+test("addTeamMember throws when team is missing", async () => {
+    Team.findOne.mockResolvedValue(null);
+
+    await expect(
+        teamsService.addTeamMember(
+            "team-1",
+            "workspace-1",
+            { memberId: "507f1f77bcf86cd799439011", role: "member" },
+            "actor-1"
+        )
+    ).rejects.toThrow("Team not found in this workspace");
+});
+
+test("addTeamMember rejects duplicate member entries", async () => {
+    Team.findOne.mockResolvedValue({
+        _id: "team-1",
+        workspace: "workspace-1",
+        createdBy: "creator-1",
+        members: [{ user: "507f1f77bcf86cd799439011", role: "lead" }]
+    });
+    WorkspaceMember.findOne.mockResolvedValue({ _id: "wm-1" });
+
+    await expect(
+        teamsService.addTeamMember(
+            "team-1",
+            "workspace-1",
+            { memberId: "507f1f77bcf86cd799439011", role: "member" },
+            "actor-1"
+        )
+    ).rejects.toThrow("User is already a member of this team");
+});
+
+test("addTeamMember defaults role and falls back actor to team creator", async () => {
+    const teamDoc = {
+        _id: "team-1",
+        workspace: "workspace-1",
+        name: "Platform",
+        createdBy: "creator-1",
+        members: [{ user: "lead-1", role: "lead" }],
+        save: jest.fn().mockResolvedValue({}),
+        populate: jest.fn().mockResolvedValue({})
+    };
+    Team.findOne.mockResolvedValue(teamDoc);
+    WorkspaceMember.findOne.mockResolvedValue({ _id: "wm-1" });
+    User.findById.mockReturnValue(mockSelectLean(null));
+    notificationService.createNotifications.mockResolvedValue([]);
+
+    const result = await teamsService.addTeamMember(
+        "team-1",
+        "workspace-1",
+        { memberId: "507f1f77bcf86cd799439011" }
+    );
+
+    expect(teamDoc.members).toEqual(expect.arrayContaining([
+        { user: "507f1f77bcf86cd799439011", role: "member" }
+    ]));
+    expect(notificationService.createNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({
+            actorId: "creator-1",
+            recipientIds: ["507f1f77bcf86cd799439011"]
+        })
+    );
+    expect(result).toEqual(teamDoc);
+});
+
+test("getTeamMembers throws when team is missing", async () => {
+    Team.findOne.mockReturnValue(mockPopulateResult(null));
+
+    await expect(
+        teamsService.getTeamMembers("team-404", "workspace-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("removeTeamMember throws when team is missing", async () => {
+    Team.findOne.mockResolvedValue(null);
+
+    await expect(
+        teamsService.removeTeamMember("team-404", "workspace-1", "member-1", "actor-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("removeTeamMember throws when target member is not in team", async () => {
+    Team.findOne.mockResolvedValue({
+        _id: "team-1",
+        members: [{ user: "lead-1", role: "lead" }]
+    });
+
+    await expect(
+        teamsService.removeTeamMember("team-1", "workspace-1", "member-404", "actor-1")
+    ).rejects.toThrow("Member not found in this team");
+});
+
+test("updateTeamMemberRole throws when team is missing", async () => {
+    Team.findOne.mockResolvedValue(null);
+
+    await expect(
+        teamsService.updateTeamMemberRole("team-404", "workspace-1", "member-1", "lead", "actor-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("updateTeamMemberRole throws when member is missing", async () => {
+    Team.findOne.mockResolvedValue({
+        _id: "team-1",
+        members: [{ user: "lead-1", role: "lead" }]
+    });
+
+    await expect(
+        teamsService.updateTeamMemberRole("team-1", "workspace-1", "member-404", "lead", "actor-1")
+    ).rejects.toThrow("Member not found in this team");
+});
+
+test("leaveTeam throws when team is not found", async () => {
+    Team.findById.mockResolvedValue(null);
+
+    await expect(
+        teamsService.leaveTeam("team-404", "user-1")
+    ).rejects.toThrow("Team not found");
+});
+
+test("leaveTeam skips notification creation when no recipients are resolved", async () => {
+    const teamDoc = {
+        _id: "team-1",
+        workspace: "workspace-1",
+        name: "Platform",
+        createdBy: "creator-1",
+        members: [
+            { user: "user-1", role: "member" },
+            { user: null, role: "lead" }
+        ],
+        save: jest.fn().mockResolvedValue({})
+    };
+    Team.findById.mockResolvedValue(teamDoc);
+    User.findById.mockReturnValue(mockSelectLean({ username: "user1" }));
+    WorkspaceMember.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([])
+        })
+    });
+
+    const result = await teamsService.leaveTeam("team-1", "user-1");
+
+    expect(notificationService.createNotifications).not.toHaveBeenCalled();
+    expect(result).toEqual({ message: "You have left the team successfully" });
+});
+
+test("getTeamById returns populated team when found", async () => {
+    const teamDoc = { _id: "team-1", name: "Platform" };
+    Team.findOne.mockReturnValue(mockPopulateResult(teamDoc));
+
+    const result = await teamsService.getTeamById("team-1", "workspace-1");
+
+    expect(result).toEqual(teamDoc);
+});
+
+test("updateTeam returns updated team document", async () => {
+    const updated = { _id: "team-1", name: "Platform Updated" };
+    Team.findOneAndUpdate.mockResolvedValue(updated);
+
+    const result = await teamsService.updateTeam("team-1", "workspace-1", { name: "Platform Updated" });
+
+    expect(Team.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: "team-1", workspace: "workspace-1" },
+        { name: "Platform Updated" },
+        { new: true, runValidators: true }
+    );
+    expect(result).toEqual(updated);
+});
+
+test("getTeamMembers returns members when team exists", async () => {
+    const members = [{ user: { _id: "user-1" }, role: "lead" }];
+    Team.findOne.mockReturnValue(mockPopulateResult({ members }));
+
+    const result = await teamsService.getTeamMembers("team-1", "workspace-1");
+
+    expect(result).toEqual(members);
+});
+
+test("updateTeamMemberRole falls back actor to team creator when actor is omitted", async () => {
+    const teamDoc = {
+        _id: "team-1",
+        workspace: "workspace-1",
+        name: "Platform",
+        createdBy: "creator-1",
+        members: [
+            { user: "lead-1", role: "lead" },
+            { user: "member-1", role: "member" }
+        ],
+        save: jest.fn().mockResolvedValue({}),
+        populate: jest.fn().mockResolvedValue({})
+    };
+    Team.findOne.mockResolvedValue(teamDoc);
+    User.findById.mockReturnValue(mockSelectLean({ username: "creator" }));
+    notificationService.createNotifications.mockResolvedValue([]);
+
+    const result = await teamsService.updateTeamMemberRole(
+        "team-1",
+        "workspace-1",
+        "member-1",
+        "lead"
+    );
+
+    expect(notificationService.createNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({
+            actorId: "creator-1",
+            recipientIds: ["member-1"]
+        })
+    );
+    expect(result).toEqual(teamDoc);
 });

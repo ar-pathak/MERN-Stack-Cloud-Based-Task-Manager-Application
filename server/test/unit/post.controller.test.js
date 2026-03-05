@@ -424,3 +424,43 @@ test("explore and trending feeds support anonymous users with default query valu
     expect(postService.getPublicFeed).toHaveBeenCalledWith(undefined, 1, 20);
     expect(postService.getTrendingPosts).toHaveBeenCalledWith(1, 20, "day", undefined);
 });
+
+test("controller applies default query/body values for feed/search/engagement handlers", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.query = {};
+    req.body = {};
+
+    postService.getUserFeed.mockResolvedValue({ posts: [] });
+    postService.getUserPosts.mockResolvedValue({ posts: [] });
+    postService.searchPosts.mockResolvedValue({ posts: [] });
+    postService.getPostsByHashtag.mockResolvedValue({ posts: [] });
+    likeService.getPostLikes.mockResolvedValue({ likes: [] });
+    likeService.getUserLikedPosts.mockResolvedValue({ posts: [] });
+    postService.getBookmarkedPosts.mockResolvedValue({ posts: [] });
+    postService.sharePost.mockResolvedValue({ shared: true });
+    commentService.getPostComments.mockResolvedValue({ comments: [] });
+    commentService.getCommentReplies.mockResolvedValue({ replies: [] });
+
+    await controller.getFeed(req, res);
+    await controller.getUserPosts(req, res);
+    await controller.searchPosts(req, res);
+    await controller.getHashtagPosts(req, res);
+    await controller.getPostLikes(req, res);
+    await controller.getLikedPosts(req, res);
+    await controller.getBookmarkedPosts(req, res);
+    await controller.sharePost(req, res);
+    await controller.getComments(req, res);
+    await controller.getCommentReplies(req, res);
+
+    expect(postService.getUserFeed).toHaveBeenCalledWith("user-1", 1, 20);
+    expect(postService.getUserPosts).toHaveBeenCalledWith("author-1", "user-1", 1, 20);
+    expect(postService.searchPosts).toHaveBeenCalledWith(undefined, 1, 20, "user-1");
+    expect(postService.getPostsByHashtag).toHaveBeenCalledWith("mern", 1, 20, "user-1");
+    expect(likeService.getPostLikes).toHaveBeenCalledWith("post-1", "user-1", 1, 20);
+    expect(likeService.getUserLikedPosts).toHaveBeenCalledWith("user-1", 1, 20);
+    expect(postService.getBookmarkedPosts).toHaveBeenCalledWith("user-1", 1, 20);
+    expect(postService.sharePost).toHaveBeenCalledWith("user-1", "post-1", "copy_link");
+    expect(commentService.getPostComments).toHaveBeenCalledWith("post-1", "user-1", 1, 20, "recent");
+    expect(commentService.getCommentReplies).toHaveBeenCalledWith("comment-1", "user-1", 1, 20);
+});
