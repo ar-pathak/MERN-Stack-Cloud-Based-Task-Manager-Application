@@ -31,7 +31,8 @@ test("updateMemberRoleSchema enforces allowed roles", () => {
     expect(updateMemberRoleSchema.parse({ role: "viewer" }))
         .toEqual({ role: "viewer" });
 
-    expect(() => updateMemberRoleSchema.parse({ role: "manager" })).toThrow();
+    expect(() => updateMemberRoleSchema.parse({ role: "manager" }))
+        .toThrow("Role must be one of: owner, admin, member, viewer");
 });
 
 test("addMemberSchema normalizes email and applies default role", () => {
@@ -56,6 +57,8 @@ test("sendInviteSchema defaults role and validates email", () => {
     expect(sendInviteSchema.parse({})).toEqual({ role: "member" });
 
     expect(() => sendInviteSchema.parse({ email: "not-an-email" })).toThrow("Invalid email address");
+    expect(() => sendInviteSchema.parse({ email: "ok@example.com", role: "boss" }))
+        .toThrow("Role must be one of: admin, member, viewer");
 });
 
 test("transferOwnershipSchema validates newOwnerId format", () => {
@@ -68,5 +71,11 @@ test("transferOwnershipSchema validates newOwnerId format", () => {
 test("respondInviteSchema accepts only accept or reject", () => {
     expect(respondInviteSchema.parse({ action: "accept" }))
         .toEqual({ action: "accept" });
-    expect(() => respondInviteSchema.parse({ action: "maybe" })).toThrow();
+    expect(() => respondInviteSchema.parse({ action: "maybe" }))
+        .toThrow("Action must be accept or reject");
+});
+
+test("addMemberSchema validates role enum using custom message", () => {
+    expect(() => addMemberSchema.parse({ email: "test@example.com", role: "boss" }))
+        .toThrow("Role must be one of: admin, member, viewer");
 });

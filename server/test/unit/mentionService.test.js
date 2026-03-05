@@ -134,3 +134,60 @@ test("notifyMentionedUsers forwards payload to notification service", async () =
     });
     expect(result).toEqual([{ _id: "n1" }]);
 });
+
+test("extractMentionUsernames and extractMentionUsernamesFromTexts handle default and single-string inputs", () => {
+    expect(extractMentionUsernames()).toEqual([]);
+    expect(extractMentionUsernamesFromTexts("Ping @alpha then @ALPHA")).toEqual(["alpha"]);
+});
+
+test("resolveMentionUsersFromText returns empty array when lookup has no matching users", async () => {
+    User.find.mockReturnValue(makeQuery([]));
+
+    const users = await resolveMentionUsersFromText("@alpha @beta", {
+        allowedUserIds: [],
+        excludeUserIds: []
+    });
+
+    expect(User.find).toHaveBeenCalledWith({
+        username: { $in: ["alpha", "beta"] },
+        accountStatus: "active",
+        "preferences.privacy.allowMentions": { $ne: false }
+    });
+    expect(users).toEqual([]);
+});
+
+test("resolveMentionUsersFromText applies session and excludes ids passed as objects", async () => {
+    const session = { id: "session-1" };
+    const query = makeQuery([
+        { _id: "u1", username: "alpha", name: "Alpha" },
+        { _id: "u2", username: "beta", name: "Beta" }
+    ]);
+    User.find.mockReturnValue(query);
+
+    const users = await resolveMentionUsersFromText("@alpha @beta", {
+        excludeUserIds: [{ _id: "u2" }],
+        session
+    });
+
+    expect(query.session).toHaveBeenCalledWith(session);
+    expect(users).toEqual([
+        { _id: "u1", username: "alpha", name: "Alpha" }
+    ]);
+});
+
+test("notifyMentionedUsers supports primitive recipient ids and missing usernames", async () => {
+    createNotifications.mockResolvedValue([{ _id: "n2" }]);
+
+    const result = await notifyMentionedUsers({
+        actorId: "actor-2",
+        mentionUsers: ["u1", { _id: "u2" }]
+    });
+
+    expect(createNotifications).toHaveBeenCalledWith(expect.objectContaining({
+        recipientIds: ["u1", "u2"],
+        metadata: {
+            mentionUsernames: []
+        }
+    }));
+    expect(result).toEqual([{ _id: "n2" }]);
+});

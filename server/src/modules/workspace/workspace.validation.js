@@ -27,7 +27,7 @@ const updateWorkspaceSchema = z.object({
 
 const updateMemberRoleSchema = z.object({
     role: z.enum(["owner", "admin", "member", "viewer"], {
-        errorMap: () => ({ message: "Role must be one of: owner, admin, member, viewer" })
+        error: "Role must be one of: owner, admin, member, viewer"
     })
 });
 
@@ -38,7 +38,7 @@ const addMemberSchema = z.object({
     email: z.string().email("Invalid email format").toLowerCase().optional(),
     username: z.string().min(1, "Username cannot be empty").optional(),
     role: z.enum(["admin", "member", "viewer"], {
-        errorMap: () => ({ message: "Role must be one of: admin, member, viewer" })
+        error: "Role must be one of: admin, member, viewer"
     }).default("member")
 }).refine(data => data.userId || data.email || data.username, {
     message: "Must provide either userId, email, or username to add a member"
@@ -51,13 +51,13 @@ const sendInviteSchema = z.object({
         .trim()
         .optional(),
     role: z.enum(["admin", "member", "viewer"], {
-        errorMap: () => ({ message: "Role must be one of: admin, member, viewer" })
+        error: "Role must be one of: admin, member, viewer"
     }).default("member")
 });
 
 const respondInviteSchema = z.object({
     action: z.enum(["accept", "reject"], {
-        errorMap: () => ({ message: "Action must be accept or reject" })
+        error: "Action must be accept or reject"
     })
 });
 

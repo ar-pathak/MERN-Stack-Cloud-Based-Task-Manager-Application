@@ -217,3 +217,204 @@ test("syncWorkspaceChats returns zero counts for empty workspace id", async () =
     expect(Project.find).not.toHaveBeenCalled();
     expect(Task.find).not.toHaveBeenCalled();
 });
+
+test("getTeamMemberIds returns empty list for empty team ids", async () => {
+    const ids = await getTeamMemberIds([]);
+    expect(ids).toEqual([]);
+    expect(Team.find).not.toHaveBeenCalled();
+});
+
+test("getWorkspaceAdminIds supports object ids via toHexString and session", async () => {
+    const session = { id: "session-1" };
+    const adminsQuery = makeQuery([{ user: "owner-1" }, { user: "admin-1" }]);
+    WorkspaceMember.find.mockReturnValue(adminsQuery);
+
+    const ids = await getWorkspaceAdminIds(
+        { toHexString: () => "workspace-hex-1" },
+        session
+    );
+
+    expect(WorkspaceMember.find).toHaveBeenCalledWith({
+        workspace: "workspace-hex-1",
+        role: { $in: ["owner", "admin"] },
+        status: { $ne: "archived" }
+    });
+    expect(adminsQuery.session).toHaveBeenCalledWith(session);
+    expect(ids.sort()).toEqual(["admin-1", "owner-1"]);
+});
+
+test("getProjectAdminIds returns empty for invalid object-style id and loads by id when needed", async () => {
+    const empty = await getProjectAdminIds({});
+    expect(empty).toEqual([]);
+    expect(Project.findById).not.toHaveBeenCalled();
+
+    const session = { id: "session-2" };
+    const projectQuery = makeQuery({
+        owner: "owner-1",
+        members: [{ user: "admin-1", role: "admin" }]
+    });
+    Project.findById.mockReturnValue(projectQuery);
+
+    const ids = await getProjectAdminIds("project-1", session);
+
+    expect(projectQuery.session).toHaveBeenCalledWith(session);
+    expect(ids.sort()).toEqual(["admin-1", "owner-1"]);
+});
+
+test("syncProjectChatMembers returns null for invalid id or missing project", async () => {
+    const invalidResult = await syncProjectChatMembers({});
+    expect(invalidResult).toBeNull();
+    expect(Project.findById).not.toHaveBeenCalled();
+
+    Project.findById.mockReturnValue(makeQuery(null));
+    const missingResult = await syncProjectChatMembers("project-404");
+    expect(missingResult).toBeNull();
+});
+
+test("syncTaskAndSubtaskChatMembers handles invalid/missing task and skips updates when no chats exist", async () => {
+    const invalidResult = await syncTaskAndSubtaskChatMembers({});
+    expect(invalidResult).toBeNull();
+    expect(Task.findById).not.toHaveBeenCalled();
+
+    Task.findById.mockReturnValueOnce(makeQuery(null));
+    const missingResult = await syncTaskAndSubtaskChatMembers("task-404");
+    expect(missingResult).toBeNull();
+
+    Task.findById.mockReturnValueOnce(makeQuery({
+        chatId: null,
+        createdBy: "owner-1",
+        assignees: [],
+        assigneesTeams: [],
+        workspace: "workspace-1",
+        project: null
+    }));
+    Team.find.mockReturnValue(makeQuery([]));
+    WorkspaceMember.find.mockReturnValue(makeQuery([]));
+    Subtask.find.mockReturnValue(makeQuery([{ chatId: null, createdBy: "owner-1", assignedTo: [] }]));
+
+    const result = await syncTaskAndSubtaskChatMembers("task-no-chat");
+
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(Chat.bulkWrite).not.toHaveBeenCalled();
+    expect(result).toEqual({
+        taskId: "task-no-chat",
+        chatId: "",
+        memberIds: ["owner-1"],
+        subtasksSynced: 0
+    });
+});
+
+test("syncTaskAndSubtaskChatMembers applies session to task chat and bulk subtask updates", async () => {
+    const session = { id: "session-3" };
+    Task.findById.mockReturnValue(makeQuery({
+        chatId: "task-chat-2",
+        createdBy: "owner-1",
+        assignees: ["assignee-1"],
+        assigneesTeams: ["team-1"],
+        workspace: "workspace-1",
+        project: null
+    }));
+    Team.find.mockReturnValue(makeQuery([{ members: [{ user: "team-user-1" }] }]));
+    WorkspaceMember.find.mockReturnValue(makeQuery([{ user: "workspace-admin" }]));
+    Subtask.find.mockReturnValue(makeQuery([
+        { chatId: "sub-chat-session", createdBy: "owner-1", assignedTo: ["assignee-1"] }
+    ]));
+    const taskChatUpdateQuery = {
+        session: jest.fn().mockResolvedValue({})
+    };
+    Chat.findByIdAndUpdate.mockReturnValue(taskChatUpdateQuery);
+    Chat.bulkWrite.mockResolvedValue({});
+
+    const result = await syncTaskAndSubtaskChatMembers("task-1", { session });
+
+    expect(taskChatUpdateQuery.session).toHaveBeenCalledWith(session);
+    expect(Chat.bulkWrite).toHaveBeenCalledWith(expect.any(Array), { session });
+    expect(result.subtasksSynced).toBe(1);
+});
+
+test("syncChatsForTeam returns zero counts for invalid team id", async () => {
+    const result = await syncChatsForTeam({});
+    expect(result).toEqual({ projectsSynced: 0, tasksSynced: 0 });
+});
+
+test("syncWorkspaceChats builds task filter without project clause when no projects exist", async () => {
+    Project.find.mockReturnValueOnce(makeQuery([]));
+    Task.find.mockReturnValueOnce(makeQuery([{ _id: "task-1" }]));
+
+    Task.findById.mockReturnValue(makeQuery({
+        chatId: null,
+        createdBy: "owner-1",
+        assignees: [],
+        assigneesTeams: [],
+        workspace: "workspace-1",
+        project: null
+    }));
+    Team.find.mockReturnValue(makeQuery([]));
+    WorkspaceMember.find.mockReturnValue(makeQuery([]));
+    Subtask.find.mockReturnValue(makeQuery([]));
+
+    const result = await syncWorkspaceChats("workspace-1");
+
+    expect(Task.find).toHaveBeenCalledWith({ $or: [{ workspace: "workspace-1" }] });
+    expect(result).toEqual({
+        projectsSynced: 0,
+        tasksSynced: 1
+    });
+});
+
+test("getTeamMemberIds defaults to empty array when input is omitted", async () => {
+    const ids = await getTeamMemberIds();
+    expect(ids).toEqual([]);
+    expect(Team.find).not.toHaveBeenCalled();
+});
+
+test("getWorkspaceAdminIds normalizes numeric and nested object identifiers", async () => {
+    WorkspaceMember.find.mockReturnValue(makeQuery([]));
+
+    await getWorkspaceAdminIds(101);
+    await getWorkspaceAdminIds({ _id: "workspace-2" });
+
+    expect(WorkspaceMember.find).toHaveBeenNthCalledWith(1, {
+        workspace: "101",
+        role: { $in: ["owner", "admin"] },
+        status: { $ne: "archived" }
+    });
+    expect(WorkspaceMember.find).toHaveBeenNthCalledWith(2, {
+        workspace: "workspace-2",
+        role: { $in: ["owner", "admin"] },
+        status: { $ne: "archived" }
+    });
+});
+
+test("getProjectAdminIds returns empty when project lookup by id does not exist", async () => {
+    Project.findById.mockReturnValue(makeQuery(null));
+
+    const ids = await getProjectAdminIds("project-missing");
+
+    expect(ids).toEqual([]);
+});
+
+test("syncWorkspaceChats adds project task filter when workspace has projects", async () => {
+    Project.find.mockReturnValueOnce(makeQuery([{ _id: "project-1" }]));
+    Task.find.mockReturnValueOnce(makeQuery([]));
+    Project.findById.mockReturnValue(makeQuery({
+        workspace: "workspace-1",
+        owner: "owner-1",
+        members: [],
+        teams: [],
+        chatId: null
+    }));
+
+    const result = await syncWorkspaceChats("workspace-1");
+
+    expect(Task.find).toHaveBeenCalledWith({
+        $or: [
+            { workspace: "workspace-1" },
+            { project: { $in: ["project-1"] } }
+        ]
+    });
+    expect(result).toEqual({
+        projectsSynced: 1,
+        tasksSynced: 0
+    });
+});

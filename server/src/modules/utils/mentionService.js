@@ -1,4 +1,4 @@
-const User = require("../../models/user");
+﻿const User = require("../../models/user");
 const { createNotifications } = require("../notification/notification.service");
 
 const mentionRegex = /(^|[\s([{\"'`.,!?;:\-])@([a-z0-9_]{3,20})/gi;
@@ -69,10 +69,9 @@ const resolveMentionUsersFromText = async (
     }
 
     const usersQuery = User.find(query)
-        .select("_id username name avatar")
-        .lean();
+        .select("_id username name avatar");
 
-    const users = await withSession(usersQuery, session);
+    const users = await withSession(usersQuery, session).lean();
     if (!users.length) return [];
 
     const excludeSet = new Set((excludeUserIds || []).map((id) => normalizeIdString(id)).filter(Boolean));
@@ -90,7 +89,7 @@ const getMentionSnippet = (text = "", maxLength = 140) => {
     const source = String(text || "").trim();
     if (!source) return "";
     if (source.length <= maxLength) return source;
-    return `${source.slice(0, maxLength - 1)}�`;
+    return `${source.slice(0, maxLength - 1)}…`;
 };
 
 const notifyMentionedUsers = async ({
@@ -152,3 +151,4 @@ module.exports = {
     notifyMentionedUsers,
     getMentionSnippet
 };
+

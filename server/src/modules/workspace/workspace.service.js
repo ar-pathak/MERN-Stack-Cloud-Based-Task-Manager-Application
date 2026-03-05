@@ -173,22 +173,12 @@ const cleanupUserResources = async (workspaceId, userId, session = null) => {
 
 const createWorkspaceMembership = async ({ workspaceId, userId, role = "member", session = null }) => {
     const createOptions = session ? { session } : undefined;
-    let member;
-
-    if (createOptions) {
-        const created = await WorkspaceMember.create([{
-            workspace: workspaceId,
-            user: userId,
-            role
-        }], createOptions);
-        member = created[0];
-    } else {
-        member = await WorkspaceMember.create({
-            workspace: workspaceId,
-            user: userId,
-            role
-        });
-    }
+    const created = await WorkspaceMember.create([{
+        workspace: workspaceId,
+        user: userId,
+        role
+    }], createOptions);
+    const member = Array.isArray(created) ? created[0] : created;
 
     const updateOptions = session ? { session } : undefined;
     const workspace = await Workspace.findById(workspaceId).select("name chatId");

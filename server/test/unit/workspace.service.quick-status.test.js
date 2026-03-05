@@ -63,6 +63,20 @@ test("getQuickStatus returns mapped quick status flags", async () => {
     });
 });
 
+test("getQuickStatus defaults missing quick flags to false", async () => {
+    WorkspaceMember.findOne.mockReturnValue(mockSelect({
+        status: "active"
+    }));
+
+    const status = await workspaceService.getQuickStatus("workspace-1", "user-1");
+
+    expect(status).toEqual({
+        isStarred: false,
+        isMuted: false,
+        isArchived: false
+    });
+});
+
 test("toggleStar flips star state and persists member", async () => {
     const member = {
         isStarred: false,
@@ -104,4 +118,28 @@ test("toggleArchive flips active status and persists member", async () => {
     await workspaceService.toggleArchive("workspace-1", "user-1");
     expect(member.status).toBe("active");
     expect(member.save).toHaveBeenCalledTimes(2);
+});
+
+test("toggleStar throws when user is not a workspace member", async () => {
+    WorkspaceMember.findOne.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.toggleStar("workspace-1", "user-1")
+    ).rejects.toThrow("You are not a member of this workspace");
+});
+
+test("toggleMute throws when user is not a workspace member", async () => {
+    WorkspaceMember.findOne.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.toggleMute("workspace-1", "user-1")
+    ).rejects.toThrow("You are not a member of this workspace");
+});
+
+test("toggleArchive throws when user is not a workspace member", async () => {
+    WorkspaceMember.findOne.mockResolvedValue(null);
+
+    await expect(
+        workspaceService.toggleArchive("workspace-1", "user-1")
+    ).rejects.toThrow("You are not a member of this workspace");
 });

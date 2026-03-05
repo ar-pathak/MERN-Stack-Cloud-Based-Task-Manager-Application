@@ -55,7 +55,9 @@ test("format helpers normalize ids and user lists", () => {
     expect(normalizeIdString({ _id: "user-1" })).toBe("user-1");
     expect(normalizeIdString(null)).toBeNull();
 
+    expect(uniqueIds()).toEqual([]);
     expect(uniqueIds(["u1", "u1", { _id: "u2" }]).sort()).toEqual(["u1", "u2"]);
+    expect(formatUserList()).toBe("user");
     expect(formatUserList([])).toBe("user");
     expect(formatUserList(["A"])).toBe("A");
     expect(formatUserList(["A", "B"])).toBe("A and B");
@@ -72,6 +74,28 @@ test("getUserLabel falls back when user is missing", async () => {
     expect(labelWithMissingUser).toBe("User");
 });
 
+test("getUserLabel supports session and username/email fallback ordering", async () => {
+    const session = { id: "session-1" };
+    const usernameQuery = makeQuery({
+        _id: "user-1",
+        username: "alpha"
+    });
+    const emailQuery = makeQuery({
+        _id: "user-2",
+        email: "user2@example.com"
+    });
+    User.findById
+        .mockReturnValueOnce(usernameQuery)
+        .mockReturnValueOnce(emailQuery);
+
+    const usernameLabel = await getUserLabel("user-1", session);
+    const emailLabel = await getUserLabel("user-2");
+
+    expect(usernameQuery.session).toHaveBeenCalledWith(session);
+    expect(usernameLabel).toBe("alpha");
+    expect(emailLabel).toBe("user2@example.com");
+});
+
 test("getUserLabels preserves order and applies fallback labels", async () => {
     User.find.mockReturnValue(makeQuery([
         { _id: "u1", name: "Alice" },
@@ -81,6 +105,12 @@ test("getUserLabels preserves order and applies fallback labels", async () => {
     const labels = await getUserLabels(["u1", "u2", "u3"]);
 
     expect(labels).toEqual(["Alice", "User", "u3@example.com"]);
+});
+
+test("getUserLabels returns empty list when no ids are provided", async () => {
+    const labels = await getUserLabels();
+    expect(labels).toEqual([]);
+    expect(User.find).not.toHaveBeenCalled();
 });
 
 test("logActivity returns null for incomplete payload", async () => {
@@ -147,4 +177,101 @@ test("logActivity writes activity, posts system chat messages, and emits notific
     expect(createActivityNotifications).toHaveBeenCalledTimes(1);
     expect(io.to).toHaveBeenCalled();
     expect(activity).toEqual({ _id: "activity-1" });
+});
+
+test("logActivity uses transactional create/session path and skips realtime emit", async () => {
+    const session = { id: "tx-1" };
+    const io = { to: jest.fn().mockReturnValue({ emit: jest.fn() }) };
+    getIO.mockReturnValue(io);
+
+    Activity.create.mockResolvedValue([{ _id: "activity-tx" }]);
+    Message.create.mockResolvedValue([{
+        _id: "message-tx",
+        chatId: "chat-tx",
+        content: "Scoped update"
+    }]);
+    Chat.findById.mockReturnValue(makeQuery({
+        _id: "chat-tx",
+        members: ["actor-1", "member-1"]
+    }));
+    const updateQuery = {
+        session: jest.fn().mockResolvedValue({})
+    };
+    Chat.findByIdAndUpdate.mockReturnValue(updateQuery);
+    createActivityNotifications.mockResolvedValue([]);
+
+    const result = await logActivity({
+        actorId: "actor-1",
+        action: "task.updated",
+        message: "Scoped update",
+        chatId: "chat-tx",
+        session
+    });
+
+    expect(Activity.create).toHaveBeenCalledWith([
+        expect.objectContaining({
+            user: "actor-1",
+            action: "task.updated"
+        })
+    ], { session });
+    expect(Message.create).toHaveBeenCalledWith([
+        expect.objectContaining({
+            chatId: "chat-tx",
+            senderId: "actor-1",
+            isSystem: true
+        })
+    ], { session });
+    expect(updateQuery.session).toHaveBeenCalledWith(session);
+    expect(getIO).not.toHaveBeenCalled();
+    expect(createActivityNotifications).toHaveBeenCalledWith(expect.objectContaining({ session }));
+    expect(result).toEqual({ _id: "activity-tx" });
+});
+
+test("logActivity skips chat message creation when chat cannot be found", async () => {
+    Activity.create.mockResolvedValue({ _id: "activity-no-chat" });
+    Chat.findById.mockReturnValue(makeQuery(null));
+    createActivityNotifications.mockResolvedValue([]);
+
+    const result = await logActivity({
+        actorId: "actor-1",
+        action: "task.updated",
+        message: "No chat found",
+        chatId: "chat-missing"
+    });
+
+    expect(Message.create).not.toHaveBeenCalled();
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(result).toEqual({ _id: "activity-no-chat" });
+});
+
+test("logActivity emits realtime using plain message object and ignores invalid member ids", async () => {
+    const emit = jest.fn();
+    const io = {
+        to: jest.fn().mockReturnValue({ emit })
+    };
+    getIO.mockReturnValue(io);
+
+    Activity.create.mockResolvedValue({ _id: "activity-plain" });
+    Message.create.mockResolvedValue({
+        _id: "message-plain",
+        chatId: "chat-plain",
+        content: "Plain payload"
+    });
+    Chat.findById.mockReturnValue(makeQuery({
+        _id: null,
+        members: [null, "actor-1", "member-2"]
+    }));
+    Chat.findByIdAndUpdate.mockResolvedValue({});
+    createActivityNotifications.mockResolvedValue([]);
+
+    await logActivity({
+        actorId: "actor-1",
+        action: "task.updated",
+        message: "Plain payload",
+        chatId: "chat-plain"
+    });
+
+    expect(io.to).toHaveBeenCalledWith("user:actor-1");
+    expect(io.to).toHaveBeenCalledWith("user:member-2");
+    expect(io.to).not.toHaveBeenCalledWith("user:null");
 });

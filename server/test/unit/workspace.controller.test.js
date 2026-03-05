@@ -449,3 +449,84 @@ test("controller delegates service exceptions to handleError", async () => {
         message: "access denied"
     });
 });
+
+test.each([
+    ["updateWorkspace", (req) => { req.params.id = "invalid"; }, "Invalid workspace ID"],
+    ["deleteWorkspace", (req) => { req.params.id = "invalid"; }, "Invalid workspace ID"],
+    ["addMember", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["removeMember", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["updateMemberRole", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["getMembers", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["sendInvite", (req) => { req.params.workspaceId = "invalid"; req.body = { email: "a@b.com" }; }, "Invalid workspace ID"],
+    ["leaveWorkspace", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["transferOwnership", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["getQuickStatus", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["toggleStar", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["toggleMute", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"],
+    ["toggleArchive", (req) => { req.params.workspaceId = "invalid"; }, "Invalid workspace ID"]
+])("%s returns 400 on invalid workspace id", async (handlerName, mutateReq, expectedMessage) => {
+    const req = baseReq();
+    const res = createResponse();
+    mutateReq(req);
+
+    await controller[handlerName](req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+        success: false,
+        message: expectedMessage
+    });
+});
+
+test("updateMemberRole returns 400 for invalid member id", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    req.params.memberId = "invalid";
+
+    await controller.updateMemberRole(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+        success: false,
+        message: "Invalid member ID"
+    });
+});
+
+test.each([
+    ["createWorkspace", (err) => { workspaceService.createWorkspace.mockRejectedValue(err); }],
+    ["getWorkspaceById", (err) => { workspaceService.getWorkspaceById.mockRejectedValue(err); }],
+    ["updateWorkspace", (err) => { workspaceService.updateWorkspace.mockRejectedValue(err); }],
+    ["deleteWorkspace", (err) => { workspaceService.deleteWorkspace.mockRejectedValue(err); }],
+    ["addMember", (err) => { workspaceService.addMember.mockRejectedValue(err); }],
+    ["removeMember", (err) => { workspaceService.removeMember.mockRejectedValue(err); }],
+    ["updateMemberRole", (err) => { workspaceService.updateMemberRole.mockRejectedValue(err); }],
+    ["getMembers", (err) => { workspaceService.getMembers.mockRejectedValue(err); }],
+    ["sendInvite", (err) => { workspaceService.sendInvite.mockRejectedValue(err); }],
+    ["acceptInvite", (err) => { workspaceService.acceptInvite.mockRejectedValue(err); }],
+    ["respondInvite", (err) => { workspaceService.respondInvite.mockRejectedValue(err); }],
+    ["leaveWorkspace", (err) => { workspaceService.leaveWorkspace.mockRejectedValue(err); }],
+    ["transferOwnership", (err) => { workspaceService.transferOwnership.mockRejectedValue(err); }],
+    ["getQuickStatus", (err) => { workspaceService.getQuickStatus.mockRejectedValue(err); }],
+    ["toggleStar", (err) => { workspaceService.toggleStar.mockRejectedValue(err); }],
+    ["toggleMute", (err) => { workspaceService.toggleMute.mockRejectedValue(err); }],
+    ["toggleArchive", (err) => { workspaceService.toggleArchive.mockRejectedValue(err); }]
+])("%s delegates thrown service error to handleError", async (handlerName, setupFailure) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error(`${handlerName} failed`);
+    error.statusCode = 422;
+
+    if (handlerName === "sendInvite") {
+        req.body = { email: "invitee@example.com", role: "member" };
+    }
+
+    setupFailure(error);
+    await controller[handlerName](req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+        success: false,
+        message: `${handlerName} failed`
+    });
+});
