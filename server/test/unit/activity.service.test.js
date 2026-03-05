@@ -105,7 +105,8 @@ const makeRefreshTokenQuery = (value) => ({
 });
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
 });
 
 test("listMyActivities applies filters and maps entity metadata", async () => {
@@ -334,5 +335,315 @@ test("getAdvancedDashboard returns dashboard payload with clamped range", async 
     expect(result.activity).toEqual(expect.objectContaining({
         rangeDays: 30,
         charts: expect.any(Object)
+    }));
+});
+
+test("listMyActivities maps multiple entity types and supports default filters", async () => {
+    Activity.find.mockReturnValue(makeListQuery([
+        {
+            _id: "act-1",
+            action: "subtask.updated",
+            createdAt: new Date("2026-02-01T00:00:00.000Z"),
+            subtask: { _id: "st-1", title: "Subtask A" }
+        },
+        {
+            _id: "act-2",
+            action: "project.updated",
+            createdAt: new Date("2026-02-02T00:00:00.000Z"),
+            project: { _id: "pr-1", name: "Project A" }
+        },
+        {
+            _id: "act-3",
+            action: "workspace.updated",
+            createdAt: new Date("2026-02-03T00:00:00.000Z"),
+            workspace: { _id: "ws-1", name: "Workspace A" }
+        },
+        {
+            _id: "act-4",
+            action: "chat.updated",
+            createdAt: new Date("2026-02-04T00:00:00.000Z"),
+            chatId: { _id: "chat-1", name: "General" }
+        },
+        {
+            _id: "act-5",
+            action: "other.action",
+            createdAt: new Date("2026-02-05T00:00:00.000Z")
+        }
+    ]));
+    Activity.countDocuments.mockResolvedValue(5);
+
+    const result = await activityService.listMyActivities("user-1", {
+        page: 1,
+        limit: 10,
+        level: "all",
+        action: "   ",
+        search: ""
+    });
+
+    expect(Activity.find).toHaveBeenCalledWith({ user: "user-1" });
+    expect(result.activities.map((entry) => entry.entity?.type || null)).toEqual([
+        "subtask",
+        "project",
+        "workspace",
+        "chat",
+        null
+    ]);
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 10,
+        total: 5,
+        totalPages: 1,
+        hasMore: false
+    });
+});
+
+test("getMyActivityDashboard handles inaccessible content and presence fallback", async () => {
+    const lastActive = new Date();
+    User.findById.mockReturnValue(makeSelectLeanQuery({
+        _id: "user-1",
+        name: "Alice",
+        username: "alice",
+        email: "alice@example.com",
+        createdAt: new Date("2026-02-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-02-01T00:00:30.000Z"),
+        lastSeen: null,
+        lastActive,
+        isOnline: false,
+        emailVerified: true,
+        accountStatus: "active"
+    }));
+
+    Like.find.mockReturnValue(makeListQuery([
+        {
+            _id: "like-1",
+            createdAt: new Date("2026-02-01T00:00:00.000Z"),
+            post: { _id: "post-1", status: "active", content: "A" }
+        }
+    ]));
+    Like.countDocuments.mockResolvedValue(1);
+    Comment.find.mockReturnValue(makeListQuery([
+        {
+            _id: "comment-1",
+            content: "Hidden",
+            createdAt: new Date("2026-02-01T01:00:00.000Z"),
+            post: { _id: "post-2", status: "active", content: "B" }
+        }
+    ]));
+    Comment.countDocuments.mockResolvedValue(1);
+    Post.find.mockReturnValueOnce(makeListQuery([
+        {
+            _id: "repost-1",
+            createdAt: new Date("2026-02-01T02:00:00.000Z"),
+            postType: "quote",
+            status: "active",
+            content: "Quoted",
+            originalPost: { _id: "orig-1", status: "active", content: "Original" }
+        }
+    ]));
+    Post.countDocuments.mockResolvedValue(1);
+
+    RefreshToken.findOne.mockReturnValue(makeRefreshTokenQuery(null));
+
+    Activity.aggregate
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+    Like.aggregate.mockResolvedValue([]);
+    Comment.aggregate.mockResolvedValue([]);
+    Post.aggregate.mockResolvedValue([]);
+
+    postService.filterAccessiblePosts
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+
+    const result = await activityService.getMyActivityDashboard("user-1", { limit: 5 });
+
+    expect(result.likes.items).toEqual([]);
+    expect(result.comments.items).toEqual([]);
+    expect(result.reposts.items).toHaveLength(1);
+    expect(result.timeSpent.dataSources).toContain("presence");
+    expect(result.accountHistory.summary.activeSessionStartedAt).toBeNull();
+    expect(result.analytics.kpis.topAction).toBeNull();
+});
+
+test("getAdvancedDashboard computes populated social, creator, and productivity insights", async () => {
+    const now = new Date();
+    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dayKey = dayStart.toISOString().slice(0, 10);
+
+    User.findById.mockReturnValue(makeSelectLeanQuery({
+        _id: "user-1",
+        name: "Alice",
+        username: "alice",
+        email: "alice@example.com",
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-02-01T00:00:00.000Z"),
+        lastSeen: new Date("2026-02-10T00:00:00.000Z"),
+        lastActive: new Date("2026-02-10T01:00:00.000Z"),
+        isOnline: true,
+        emailVerified: true,
+        accountStatus: "active",
+        followersCount: 20,
+        followingCount: 7
+    }));
+
+    Activity.aggregate
+        .mockResolvedValueOnce([
+            {
+                _id: dayKey,
+                firstAt: new Date(dayStart.getTime()),
+                lastAt: new Date(dayStart.getTime() + 60 * 60 * 1000),
+                actions: 4
+            }
+        ])
+        .mockResolvedValueOnce([{ _id: "task", count: 4 }])
+        .mockResolvedValueOnce([{ _id: "task_completed", count: 3 }, { _id: "comment_added", count: 1 }]);
+
+    Like.aggregate
+        .mockResolvedValueOnce([{ _id: dayKey, firstAt: dayStart, lastAt: dayStart, actions: 2 }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 6 }]);
+    Comment.aggregate
+        .mockResolvedValueOnce([{ _id: dayKey, firstAt: dayStart, lastAt: dayStart, actions: 1 }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 2 }]);
+
+    Post.aggregate
+        .mockResolvedValueOnce([{ _id: dayKey, firstAt: dayStart, lastAt: dayStart, actions: 1 }])
+        .mockResolvedValueOnce([{
+            _id: null,
+            posts: 5,
+            views: 500,
+            likes: 100,
+            comments: 25,
+            shares: 10,
+            reposts: 5
+        }])
+        .mockResolvedValueOnce([{ _id: "text", count: 3 }, { _id: "video", count: 2 }])
+        .mockResolvedValueOnce([{ _id: "public", count: 4 }, { _id: "followers", count: 1 }])
+        .mockResolvedValueOnce([{
+            _id: dayKey,
+            posts: 2,
+            views: 120,
+            likes: 40,
+            comments: 10,
+            shares: 4,
+            reposts: 2
+        }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 3 }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 2 }])
+        .mockResolvedValueOnce([{ _id: 14, posts: 3, likes: 30, comments: 9, shares: 3, reposts: 2 }]);
+
+    Like.countDocuments.mockResolvedValue(11);
+    Comment.countDocuments.mockResolvedValue(5);
+    Post.countDocuments.mockResolvedValueOnce(3).mockResolvedValueOnce(12);
+    Follow.countDocuments.mockResolvedValueOnce(20).mockResolvedValueOnce(7);
+
+    Post.find
+        .mockReturnValueOnce(makeListQuery([
+            {
+                _id: "post-top",
+                content: "Top content",
+                postType: "text",
+                visibility: "public",
+                createdAt: dayStart,
+                viewsCount: 200,
+                likesCount: 60,
+                commentsCount: 10,
+                sharesCount: 5,
+                repostsCount: 2
+            }
+        ]))
+        .mockReturnValueOnce(makeListQuery([
+            {
+                _id: "post-a",
+                content: "Active post",
+                createdAt: dayStart,
+                status: "active",
+                scheduledFor: null,
+                visibility: "public",
+                postType: "text",
+                viewsCount: 100,
+                likesCount: 30,
+                commentsCount: 5,
+                sharesCount: 2,
+                repostsCount: 1
+            },
+            {
+                _id: "post-b",
+                content: "Scheduled post",
+                createdAt: dayStart,
+                status: "scheduled",
+                scheduledFor: new Date(dayStart.getTime() + 2 * 24 * 60 * 60 * 1000),
+                visibility: "followers",
+                postType: "video",
+                viewsCount: 0,
+                likesCount: 0,
+                commentsCount: 0,
+                sharesCount: 0,
+                repostsCount: 0
+            }
+        ]));
+
+    Follow.aggregate
+        .mockResolvedValueOnce([{ _id: dayKey, count: 4 }])
+        .mockResolvedValueOnce([{ _id: "India", count: 8 }, { _id: null, count: 2 }]);
+
+    PostSave.aggregate
+        .mockResolvedValueOnce([{ total: 9 }])
+        .mockResolvedValueOnce([{ _id: "post-a", count: 5 }]);
+
+    WorkspaceMember.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue(["w1", "w2"])
+    });
+    Workspace.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue(["w2", "w3"])
+    });
+    Task.find.mockReturnValue({
+        distinct: jest.fn().mockResolvedValue(["t1", "t2"])
+    });
+
+    Project.aggregate.mockResolvedValue([{ _id: "active", count: 2 }, { _id: "completed", count: 1 }]);
+    Task.aggregate
+        .mockResolvedValueOnce([{ _id: "active", count: 4 }, { _id: "completed", count: 2 }])
+        .mockResolvedValueOnce([{
+            _id: null,
+            totalTasks: 6,
+            activeTasks: 4,
+            completedTasks: 2,
+            overdueTasks: 1,
+            dueSoonTasks: 1,
+            highPriorityTasks: 2
+        }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 2 }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 1 }]);
+    Subtask.aggregate
+        .mockResolvedValueOnce([{ _id: null, totalSubtasks: 10, completedSubtasks: 6 }])
+        .mockResolvedValueOnce([{ _id: dayKey, count: 3 }]);
+
+    const result = await activityService.getAdvancedDashboard("user-1", { days: 15 });
+
+    expect(result.rangeDays).toBe(15);
+    expect(result.social.totals).toEqual(expect.objectContaining({
+        posts: 5,
+        views: 500,
+        totalEngagement: 140
+    }));
+    expect(result.creator.totals).toEqual(expect.objectContaining({
+        posts: 12,
+        followers: 20,
+        saves: 9
+    }));
+    expect(result.creator.audience.activeTime.bestPostingHour).toEqual(expect.objectContaining({
+        hour: 14
+    }));
+    expect(result.productivity.totals).toEqual(expect.objectContaining({
+        workspaces: 3,
+        ownedWorkspaces: 2,
+        memberWorkspaces: 1,
+        tasks: 6
+    }));
+    expect(result.activity.kpis).toEqual(expect.objectContaining({
+        totalActions: expect.any(Number),
+        topAction: expect.objectContaining({ key: "task_completed" })
     }));
 });

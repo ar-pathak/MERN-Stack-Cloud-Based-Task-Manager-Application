@@ -44,6 +44,9 @@ const User = require("../../src/models/user");
 const Follow = require("../../src/models/follow");
 const Chat = require("../../src/models/chat");
 const WorkspaceMember = require("../../src/models/workspaceMember");
+const Project = require("../../src/models/project");
+const Task = require("../../src/models/tasks");
+const Subtask = require("../../src/models/subtasks");
 const mongoose = require("mongoose");
 const userService = require("../../src/modules/user/user.service");
 
@@ -462,4 +465,387 @@ test("unblockUser validates update result and returns success", async () => {
     User.updateOne.mockResolvedValueOnce({ matchedCount: 1, modifiedCount: 1 });
     const result = await userService.unblockUser("u1", "u2");
     expect(result).toEqual({ success: true });
+});
+
+test("autoApprovePendingFollowRequests returns zero when there are no pending requests", async () => {
+    Follow.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            session: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([])
+            })
+        })
+    });
+
+    const result = await userService.autoApprovePendingFollowRequests("u1", { id: "session" });
+
+    expect(result).toEqual({ autoApprovedFollowRequests: 0 });
+    expect(Follow.updateMany).not.toHaveBeenCalled();
+    expect(User.updateMany).not.toHaveBeenCalled();
+});
+
+test("getPublicProfile throws when target user does not exist", async () => {
+    User.findById.mockReturnValue(mockSelectResolved(null));
+
+    await expect(userService.getPublicProfile("u2", "u1"))
+        .rejects
+        .toThrow("User not found");
+});
+
+test("getPublicProfile throws when target account is inactive", async () => {
+    User.findById.mockReturnValue(mockSelectResolved({
+        _id: "u2",
+        accountStatus: "suspended"
+    }));
+
+    await expect(userService.getPublicProfile("u2", "u1"))
+        .rejects
+        .toThrow("User not found");
+});
+
+test("getPublicProfile returns self-view with email and online status", async () => {
+    User.findById.mockReturnValue(mockSelectResolved({
+        _id: "u1",
+        email: "self@example.com",
+        accountStatus: "active",
+        isPrivate: true,
+        isOnline: true,
+        lastSeen: new Date("2026-02-01T00:00:00.000Z"),
+        blockedUsers: [],
+        preferences: { privacy: { showEmail: false, showOnlineStatus: false } },
+        toPublicJSON: () => ({
+            _id: "u1",
+            bio: "my bio",
+            headline: "headline",
+            location: "location",
+            website: "https://example.com",
+            coverImage: "cover.png",
+            followersCount: 5,
+            followingCount: 2,
+            postsCount: 7
+        })
+    }));
+
+    const result = await userService.getPublicProfile("u1", "u1");
+
+    expect(result.access.canViewFullProfile).toBe(true);
+    expect(result.email).toBe("self@example.com");
+    expect(result.isOnline).toBe(true);
+    expect(result.lastSeen).toEqual(new Date("2026-02-01T00:00:00.000Z"));
+    expect(result.relationship).toBeUndefined();
+    expect(Follow.checkRelationship).not.toHaveBeenCalled();
+});
+
+test("updateProfile validates maximum profile field lengths", async () => {
+    await expect(userService.updateProfile("u1", { bio: "x".repeat(161) }))
+        .rejects
+        .toThrow("Bio cannot exceed 160 characters");
+    await expect(userService.updateProfile("u1", { headline: "x".repeat(81) }))
+        .rejects
+        .toThrow("Headline cannot exceed 80 characters");
+    await expect(userService.updateProfile("u1", { location: "x".repeat(81) }))
+        .rejects
+        .toThrow("Location cannot exceed 80 characters");
+    await expect(userService.updateProfile("u1", { name: "x".repeat(51) }))
+        .rejects
+        .toThrow("Name cannot exceed 50 characters");
+});
+
+test("updateProfile rejects empty/unsupported update payload", async () => {
+    await expect(userService.updateProfile("u1", { unsupported: true }))
+        .rejects
+        .toMatchObject({ message: "No valid profile fields provided", statusCode: 400 });
+});
+
+test("updateProfile aborts and returns 404 when current user is missing", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById.mockReturnValueOnce({
+        select: jest.fn().mockReturnValue({
+            session: jest.fn().mockResolvedValue(null)
+        })
+    });
+
+    await expect(userService.updateProfile("u1", { bio: "ok" }))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("updateProfile auto-approves pending follow requests when account becomes public", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                session: jest.fn().mockResolvedValue({ isPrivate: true })
+            })
+        })
+        .mockReturnValueOnce(mockSelectResolved({
+            toProfileJSON: () => ({ id: "u1" })
+        }));
+    User.findByIdAndUpdate.mockResolvedValue({});
+    const autoApproveSpy = jest.spyOn(userService, "autoApprovePendingFollowRequests")
+        .mockResolvedValue({ autoApprovedFollowRequests: 3 });
+
+    const result = await userService.updateProfile("u1", { isPrivate: false, bio: "updated" });
+
+    expect(autoApproveSpy).toHaveBeenCalledWith("u1", session);
+    expect(result.privacySync).toEqual({ autoApprovedFollowRequests: 3 });
+    autoApproveSpy.mockRestore();
+});
+
+test("updateProfile throws when user cannot be reloaded after commit", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                session: jest.fn().mockResolvedValue({ isPrivate: false })
+            })
+        })
+        .mockReturnValueOnce(mockSelectResolved(null));
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    await expect(userService.updateProfile("u1", { bio: "updated" }))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+});
+
+test("searchUsers returns plain results when current user is not provided", async () => {
+    User.countDocuments.mockResolvedValue(1);
+    User.find.mockReturnValue(makeFindQuery([
+        { _id: "u2", username: "bob", name: "Bob" }
+    ]));
+
+    const result = await userService.searchUsers("b", 1, 10);
+
+    expect(Follow.checkMultipleRelationships).not.toHaveBeenCalled();
+    expect(result.users).toEqual([{ _id: "u2", username: "bob", name: "Bob" }]);
+});
+
+test("searchMentionCandidates handles subtask/task/project scopes and default query scoring", async () => {
+    Subtask.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue({
+                assignedTo: ["u2"],
+                createdBy: "u1",
+                task: "task-1"
+            })
+        })
+    });
+    Task.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue({
+                assignees: ["u3"],
+                createdBy: "u4"
+            })
+        })
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { _id: "u2", username: "alpha", name: "Alpha", isOnline: true, preferences: { privacy: {} } },
+                    { _id: "u3", username: "beta", name: "Beta", isOnline: false, preferences: { privacy: { showOnlineStatus: false } } }
+                ])
+            })
+        })
+    });
+
+    const scoped = await userService.searchMentionCandidates("", "u1", { subtaskId: "st-1", limit: 2 });
+
+    expect(scoped.users).toHaveLength(2);
+    expect(scoped.users[0].username).toBe("alpha");
+    expect(scoped.users[1].isOnline).toBe(false);
+
+    Project.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue({
+                owner: "u1",
+                members: [{ user: "u5" }, { user: "u6" }]
+            })
+        })
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([])
+            })
+        })
+    });
+
+    const projectScoped = await userService.searchMentionCandidates("x", "u1", { projectId: "p-1" });
+    expect(projectScoped).toEqual({ users: [] });
+});
+
+test("searchMentionCandidates returns empty when task scope cannot be resolved", async () => {
+    Task.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue(null)
+        })
+    });
+
+    const result = await userService.searchMentionCandidates("al", "u1", { taskId: "task-404" });
+    expect(result).toEqual({ users: [] });
+    expect(User.find).not.toHaveBeenCalled();
+});
+
+test("updatePreferences throws when user does not exist", async () => {
+    User.findByIdAndUpdate.mockReturnValue(mockSelectResolved(null));
+
+    await expect(userService.updatePreferences("u1", {
+        preferences: { notifications: { email: true } }
+    })).rejects.toThrow("User not found");
+});
+
+test("getUserStats returns counters and account age", async () => {
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(new Date("2026-01-11T00:00:00.000Z").getTime());
+    User.findById.mockReturnValue(mockSelectResolved({
+        followersCount: 8,
+        followingCount: 3,
+        postsCount: 11,
+        createdAt
+    }));
+
+    const result = await userService.getUserStats("u1");
+
+    expect(result).toEqual({
+        followers: 8,
+        following: 3,
+        posts: 11,
+        accountAgeDays: 10,
+        joinedAt: createdAt
+    });
+    nowSpy.mockRestore();
+});
+
+test("getUserStats throws when user is missing", async () => {
+    User.findById.mockReturnValue(mockSelectResolved(null));
+
+    await expect(userService.getUserStats("u1"))
+        .rejects
+        .toThrow("User not found");
+});
+
+test("updateActivity writes online state and timestamps", async () => {
+    const nowSpy = jest.spyOn(Date, "now").mockReturnValue(1700000000000);
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    await userService.updateActivity("u1", false);
+
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith("u1", {
+        $set: {
+            isOnline: false,
+            lastSeen: 1700000000000,
+            lastActive: 1700000000000
+        }
+    });
+    nowSpy.mockRestore();
+});
+
+test("deactivateAccount and reactivateAccount handle success and missing user", async () => {
+    User.findByIdAndUpdate.mockResolvedValueOnce({
+        _id: "u1",
+        accountStatus: "deactivated"
+    });
+
+    const deactivateResult = await userService.deactivateAccount("u1");
+    expect(deactivateResult).toEqual({ success: true, message: "Account deactivated" });
+
+    User.findByIdAndUpdate.mockResolvedValueOnce(null);
+    await expect(userService.deactivateAccount("u404"))
+        .rejects
+        .toThrow("User not found");
+
+    User.findByIdAndUpdate.mockResolvedValueOnce({
+        _id: "u1",
+        accountStatus: "active"
+    });
+    const reactivateResult = await userService.reactivateAccount("u1");
+    expect(reactivateResult).toEqual({ success: true, message: "Account reactivated" });
+
+    User.findByIdAndUpdate.mockResolvedValueOnce(null);
+    await expect(userService.reactivateAccount("u404"))
+        .rejects
+        .toThrow("User not found");
+});
+
+test("getPopularUsers returns active users sorted by popularity", async () => {
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+                limit: jest.fn().mockReturnValue({
+                    lean: jest.fn().mockResolvedValue([{ _id: "u2", username: "bob" }])
+                })
+            })
+        })
+    });
+
+    const result = await userService.getPopularUsers(5);
+
+    expect(result).toEqual([{ _id: "u2", username: "bob" }]);
+});
+
+test("blockUser validates required ids and aborts for inactive target user", async () => {
+    await expect(userService.blockUser(null, "u2"))
+        .rejects
+        .toMatchObject({ message: "User IDs are required", statusCode: 400 });
+
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({ _id: "u1", blockedUsers: [] }))
+        .mockReturnValueOnce(mockSelectSession({ _id: "u2", accountStatus: "deactivated" }));
+
+    await expect(userService.blockUser("u1", "u2"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("blockUser skips target counter update when no reverse delta exists", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({ _id: "u1", blockedUsers: [] }))
+        .mockReturnValueOnce(mockSelectSession({ _id: "u2", accountStatus: "active" }));
+    Follow.find.mockReturnValue({
+        session: jest.fn().mockResolvedValue([
+            { _id: "f-1", follower: "u1", following: "u2", isApproved: false }
+        ])
+    });
+    Follow.deleteMany.mockReturnValue({
+        session: jest.fn().mockResolvedValue({ deletedCount: 1 })
+    });
+    User.findByIdAndUpdate.mockResolvedValue({});
+
+    const result = await userService.blockUser("u1", "u2");
+
+    expect(result).toEqual({ success: true, alreadyBlocked: false });
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "u1",
+        { $addToSet: { blockedUsers: "u2" } },
+        { session }
+    );
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalledWith(
+        "u2",
+        expect.anything(),
+        { session }
+    );
+});
+
+test("unblockUser validates required ids and missing user match", async () => {
+    await expect(userService.unblockUser(null, "u2"))
+        .rejects
+        .toMatchObject({ message: "User IDs are required", statusCode: 400 });
+
+    await expect(userService.unblockUser("u1", "u1"))
+        .rejects
+        .toMatchObject({ message: "Invalid operation", statusCode: 400 });
+
+    User.updateOne.mockResolvedValueOnce({ matchedCount: 0, modifiedCount: 0 });
+    await expect(userService.unblockUser("u404", "u2"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
 });

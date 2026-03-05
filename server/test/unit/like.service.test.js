@@ -72,7 +72,8 @@ const makeFindQuery = (value) => ({
 });
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.restoreAllMocks();
+    jest.resetAllMocks();
 });
 
 test("likePost updates reaction when like already exists with different reaction", async () => {
@@ -297,5 +298,300 @@ test("getUserLikedPosts filters inactive posts and applies access filtering", as
         total: 2,
         pages: 1,
         hasMore: false
+    });
+});
+
+test("likePost returns already-liked when reaction is unchanged", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
+    Like.findOne.mockReturnValue(withSession({
+        reactionType: "like",
+        save: jest.fn().mockResolvedValue(undefined)
+    }));
+
+    const result = await likeService.likePost("user-1", "post-1", "like");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Post already liked",
+        liked: true
+    });
+    expect(Like.create).not.toHaveBeenCalled();
+});
+
+test("likePost skips notifications for self-likes", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "user-1" });
+    Like.findOne.mockReturnValue(withSession(null));
+
+    const result = await likeService.likePost("user-1", "post-1", "love");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Post liked successfully",
+        liked: true
+    });
+    expect(User.findById).not.toHaveBeenCalled();
+    expect(notificationService.createNotifications).not.toHaveBeenCalled();
+});
+
+test("likePost does not send notification when post author disabled like notifications", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
+    Like.findOne.mockReturnValue(withSession(null));
+    User.findById
+        .mockReturnValueOnce(selectSessionLean({
+            preferences: { notifications: { likes: false } }
+        }))
+        .mockReturnValueOnce(selectSessionLean({
+            name: "Alice",
+            username: "alice"
+        }));
+
+    const result = await likeService.likePost("user-1", "post-1", "like");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Post liked successfully",
+        liked: true
+    });
+    expect(notificationService.createNotifications).not.toHaveBeenCalled();
+});
+
+test("likePost swallows notification failures after successful commit", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
+    Like.findOne.mockReturnValue(withSession(null));
+    User.findById
+        .mockReturnValueOnce(selectSessionLean({
+            preferences: { notifications: { likes: true } }
+        }))
+        .mockReturnValueOnce(selectSessionLean({
+            username: "alice"
+        }));
+    notificationService.createNotifications.mockRejectedValue(new Error("notify down"));
+
+    const result = await likeService.likePost("user-1", "post-1", "wow");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Post liked successfully",
+        liked: true
+    });
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("likePost duplicate race updates reaction when existing like differs", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
+    Like.findOne
+        .mockReturnValueOnce(withSession(null))
+        .mockResolvedValueOnce({
+            reactionType: "like",
+            save: jest.fn().mockResolvedValue(undefined)
+        });
+    Like.create.mockRejectedValue({
+        name: "MongoServerError",
+        code: 11000,
+        keyPattern: { user: 1, post: 1 }
+    });
+
+    const result = await likeService.likePost("user-1", "post-1", "sad");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Reaction updated",
+        liked: true
+    });
+});
+
+test("likePost rethrows non-duplicate create failures", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    postService.assertCanAccessPostById.mockResolvedValue({ author: "author-2" });
+    Like.findOne.mockReturnValue(withSession(null));
+    Like.create.mockRejectedValue(new Error("db write failed"));
+
+    await expect(likeService.likePost("user-1", "post-1", "like"))
+        .rejects
+        .toThrow("db write failed");
+    expect(session.abortTransaction).toHaveBeenCalledTimes(1);
+});
+
+test("unlikePost removes like and decrements post counters", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Like.findOne.mockReturnValue(withSession({ _id: "like-1" }));
+    Like.findByIdAndDelete.mockReturnValue(withSession({ _id: "like-1" }));
+
+    const result = await likeService.unlikePost("user-1", "post-1");
+
+    expect(Post.updateOne).toHaveBeenCalledWith(
+        { _id: "post-1", likesCount: { $gt: 0 } },
+        { $inc: { likesCount: -1 } },
+        { session }
+    );
+    expect(result).toEqual({
+        success: true,
+        message: "Post unliked successfully",
+        liked: false
+    });
+});
+
+test("unlikePost skips abort when transaction is already inactive", async () => {
+    const session = {
+        startTransaction: jest.fn(),
+        commitTransaction: jest.fn().mockResolvedValue(undefined),
+        abortTransaction: jest.fn().mockResolvedValue(undefined),
+        endSession: jest.fn(),
+        inTransaction: jest.fn(() => false)
+    };
+    mongoose.startSession.mockResolvedValue(session);
+    Like.findOne.mockReturnValue(withSession({ _id: "like-1" }));
+    Like.findByIdAndDelete.mockReturnValue({
+        session: jest.fn().mockRejectedValue(new Error("delete failed"))
+    });
+
+    await expect(likeService.unlikePost("user-1", "post-1"))
+        .rejects
+        .toThrow("delete failed");
+    expect(session.abortTransaction).not.toHaveBeenCalled();
+});
+
+test("likeComment returns already-liked when like exists", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => withSession({
+            _id: "comment-1",
+            author: "author-2",
+            post: "post-1",
+            status: "active"
+        }))
+    });
+    postService.assertCanAccessPostById.mockResolvedValue({ _id: "post-1" });
+    Like.findOne.mockReturnValue(withSession({ _id: "like-1" }));
+
+    const result = await likeService.likeComment("user-1", "comment-1");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Comment already liked",
+        liked: true
+    });
+});
+
+test("likeComment creates like and optionally sends notification", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => withSession({
+            _id: "comment-1",
+            author: "author-2",
+            post: "post-1",
+            status: "active"
+        }))
+    });
+    postService.assertCanAccessPostById.mockResolvedValue({ _id: "post-1" });
+    Like.findOne.mockReturnValue(withSession(null));
+    User.findById
+        .mockReturnValueOnce(selectSessionLean({
+            preferences: { notifications: { likes: true } }
+        }))
+        .mockReturnValueOnce(selectSessionLean({
+            name: "Alice"
+        }));
+
+    const result = await likeService.likeComment("user-1", "comment-1");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Comment liked successfully",
+        liked: true
+    });
+    expect(notificationService.createNotifications).toHaveBeenCalledWith(
+        expect.objectContaining({
+            recipientIds: ["author-2"],
+            metadata: expect.objectContaining({
+                kind: "comment_like",
+                commentId: "comment-1",
+                postId: "post-1"
+            })
+        })
+    );
+});
+
+test("likeComment handles duplicate-like race and returns already-liked", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => withSession({
+            _id: "comment-1",
+            author: "author-2",
+            post: "post-1",
+            status: "active"
+        }))
+    });
+    postService.assertCanAccessPostById.mockResolvedValue({ _id: "post-1" });
+    Like.findOne
+        .mockReturnValueOnce(withSession(null))
+        .mockResolvedValueOnce({ _id: "like-1" });
+    Like.create.mockRejectedValue({
+        name: "MongoServerError",
+        code: 11000,
+        keyPattern: { user: 1, comment: 1 }
+    });
+
+    const result = await likeService.likeComment("user-1", "comment-1");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Comment already liked",
+        liked: true
+    });
+});
+
+test("likeComment rethrows duplicate errors when no existing like is found", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Comment.findById.mockReturnValue({
+        select: jest.fn(() => withSession({
+            _id: "comment-1",
+            author: "author-2",
+            post: "post-1",
+            status: "active"
+        }))
+    });
+    postService.assertCanAccessPostById.mockResolvedValue({ _id: "post-1" });
+    Like.findOne
+        .mockReturnValueOnce(withSession(null))
+        .mockResolvedValueOnce(null);
+    Like.create.mockRejectedValue({
+        name: "MongoServerError",
+        code: 11000,
+        keyPattern: { user: 1, comment: 1 }
+    });
+
+    await expect(likeService.likeComment("user-1", "comment-1"))
+        .rejects
+        .toMatchObject({ code: 11000 });
+});
+
+test("unlikeComment returns already-unliked when no like exists", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Like.findOne.mockReturnValue(withSession(null));
+
+    const result = await likeService.unlikeComment("user-1", "comment-1");
+
+    expect(result).toEqual({
+        success: true,
+        message: "Comment already unliked",
+        liked: false
     });
 });
