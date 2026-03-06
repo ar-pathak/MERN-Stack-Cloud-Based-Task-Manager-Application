@@ -613,3 +613,250 @@ test("listMyFeedback rejects invalid requester id", async () => {
             message: "Invalid user"
         });
 });
+
+test("listHelpArticles applies default query paths without category or search filters", async () => {
+    SupportArticle.find.mockReturnValue(makeListQuery([]));
+    SupportArticle.countDocuments.mockResolvedValue(0);
+    SupportArticle.aggregate.mockResolvedValue([]);
+
+    const result = await SupportService.listHelpArticles();
+
+    expect(SupportArticle.find).toHaveBeenCalledWith({ published: true });
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 1,
+        hasMore: false
+    });
+});
+
+test("listFaqs returns full faq list when filters are omitted", async () => {
+    const result = await SupportService.listFaqs();
+
+    expect(Array.isArray(result.faqs)).toBe(true);
+    expect(result.faqs.length).toBeGreaterThan(0);
+    expect(result.categories).toEqual(expect.arrayContaining([
+        expect.objectContaining({ key: "account" })
+    ]));
+});
+
+test("listTickets handles defaults and missing ticket optional fields", async () => {
+    SupportTicket.find.mockReturnValue(makeListQuery([
+        {
+            _id: TICKET_ID,
+            ticketNumber: "SUP-20260303-1001",
+            subject: "General question",
+            category: "account",
+            priority: "medium",
+            status: "open",
+            source: "ticket",
+            comments: [],
+            attachments: "invalid-array"
+        }
+    ]));
+    SupportTicket.countDocuments.mockResolvedValue(1);
+    SupportTicket.aggregate.mockResolvedValue([]);
+
+    const result = await SupportService.listTickets(USER_ID);
+
+    expect(SupportTicket.find).toHaveBeenCalledWith({
+        requester: expect.any(mongoose.Types.ObjectId)
+    });
+    expect(result.tickets[0]).toEqual(expect.objectContaining({
+        requesterSnapshot: {},
+        commentCount: 0,
+        attachmentsCount: 0,
+        lastCommentAt: null,
+        lastCommentPreview: ""
+    }));
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+        hasMore: false
+    });
+});
+
+test("getTicketById returns empty comments when stored comments are not an array", async () => {
+    SupportTicket.findOne.mockReturnValue({
+        populate: jest.fn().mockReturnThis(),
+        lean: jest.fn().mockResolvedValue({
+            _id: TICKET_ID,
+            comments: null
+        })
+    });
+
+    const result = await SupportService.getTicketById(USER_ID, TICKET_ID);
+
+    expect(result.comments).toEqual([]);
+});
+
+test("addTicketComment throws when parent comment does not exist", async () => {
+    SupportTicket.findOne.mockResolvedValue({
+        _id: TICKET_ID,
+        comments: [{ _id: new mongoose.Types.ObjectId("507f1f77bcf86cd799439044") }]
+    });
+
+    await expect(SupportService.addTicketComment(
+        { _id: USER_ID, username: "alice" },
+        TICKET_ID,
+        {
+            body: "Reply",
+            parentCommentId: "507f1f77bcf86cd799439045"
+        }
+    )).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Parent comment not found"
+    });
+});
+
+test("addTicketComment supports minimal payload and inserted toObject branch", async () => {
+    const comments = [];
+    comments.push = function pushWithToObject(entry) {
+        const wrapped = {
+            ...entry,
+            toObject: () => ({
+                ...entry,
+                wrapped: true
+            })
+        };
+        return Array.prototype.push.call(this, wrapped);
+    };
+
+    const ticketDoc = {
+        _id: TICKET_ID,
+        status: "open",
+        comments,
+        save: jest.fn().mockResolvedValue({})
+    };
+
+    SupportTicket.findOne.mockResolvedValue(ticketDoc);
+
+    const result = await SupportService.addTicketComment(USER_ID, TICKET_ID);
+
+    expect(ticketDoc.save).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+        comment: expect.objectContaining({
+            wrapped: true,
+            body: "",
+            parentCommentId: null,
+            attachments: [],
+            authorName: "User",
+            author: expect.objectContaining({
+                _id: expect.any(mongoose.Types.ObjectId),
+                name: "",
+                username: "",
+                avatar: ""
+            })
+        }),
+        status: "open",
+        ticketId: TICKET_ID
+    });
+});
+
+test("createSupportTicket supports default payload branch values", async () => {
+    SupportTicket.create.mockResolvedValue({
+        toObject: () => ({
+            _id: TICKET_ID,
+            category: undefined,
+            source: "ticket"
+        })
+    });
+
+    const result = await SupportService.createSupportTicket({
+        _id: USER_ID,
+        username: "alice"
+    });
+
+    expect(SupportTicket.create).toHaveBeenCalledWith(expect.objectContaining({
+        subject: "",
+        description: "",
+        priority: "medium",
+        attachments: [],
+        source: "ticket",
+        metadata: {},
+        requesterSnapshot: {
+            name: "alice",
+            email: ""
+        }
+    }));
+    expect(result).toEqual(expect.objectContaining({ _id: TICKET_ID }));
+});
+
+test("contactSupport supports default payload branch values", async () => {
+    SupportTicket.create.mockResolvedValue({
+        toObject: () => ({
+            _id: TICKET_ID,
+            source: "contact"
+        })
+    });
+
+    const result = await SupportService.contactSupport({ _id: USER_ID, username: "alice" });
+
+    expect(SupportTicket.create).toHaveBeenCalledWith(expect.objectContaining({
+        category: "account",
+        source: "contact",
+        subject: "Contact form request from",
+        description: "Contact message from  <>.",
+        requesterSnapshot: {
+            name: "alice",
+            email: ""
+        },
+        metadata: { source: "contact_form" }
+    }));
+    expect(result).toEqual(expect.objectContaining({ _id: TICKET_ID }));
+});
+
+test("submitFeedback supports default payload branch values for string user id", async () => {
+    SupportFeedback.create.mockResolvedValue({
+        toObject: () => ({
+            _id: "f-default",
+            category: "account",
+            title: "",
+            message: "",
+            rating: 0
+        })
+    });
+
+    const result = await SupportService.submitFeedback(USER_ID);
+
+    expect(SupportFeedback.create).toHaveBeenCalledWith(expect.objectContaining({
+        user: expect.any(mongoose.Types.ObjectId),
+        category: "account",
+        title: "",
+        message: "",
+        rating: 0
+    }));
+    expect(result).toEqual({
+        _id: "f-default",
+        category: "account",
+        title: "",
+        message: "",
+        rating: 0
+    });
+});
+
+test("listMyFeedback supports default query and empty aggregate summary", async () => {
+    SupportFeedback.find.mockReturnValue(makeListQuery([]));
+    SupportFeedback.countDocuments.mockResolvedValue(0);
+    SupportFeedback.aggregate.mockResolvedValue([]);
+
+    const result = await SupportService.listMyFeedback(USER_ID);
+
+    expect(result).toEqual({
+        feedback: [],
+        summary: {
+            averageRating: 0,
+            total: 0
+        },
+        pagination: {
+            page: 1,
+            limit: 20,
+            total: 0,
+            totalPages: 1,
+            hasMore: false
+        }
+    });
+});

@@ -47,7 +47,9 @@ const Task = require("../../src/models/tasks");
 const Project = require("../../src/models/project");
 const Workspace = require("../../src/models/workspace");
 const Chat = require("../../src/models/chat");
+const Message = require("../../src/models/message");
 const { logActivity, getUserLabel, getUserLabels } = require("../../src/modules/utils/activityLogger");
+const { getTeamMemberIds } = require("../../src/modules/utils/chatMembershipSync");
 const subtaskService = require("../../src/modules/subtask/subtask.service");
 
 const makeSubtaskListQuery = (value) => ({
@@ -583,4 +585,363 @@ test("leaveSubtask validates assignment and removes member from chat", async () 
         $pull: { members: "user-1" }
     });
     expect(result).toEqual({ message: "You have left the subtask successfully" });
+});
+
+test("toggleSubtask throws when subtask does not exist", async () => {
+    Subtask.findById.mockResolvedValue(null);
+
+    await expect(subtaskService.toggleSubtask("missing-subtask", "user-1"))
+        .rejects
+        .toThrow("Subtask not found");
+});
+
+test("updateSubtask logs reopened action when completion changes from true to false", async () => {
+    const subtaskDoc = {
+        _id: "subtask-2",
+        title: "Subtask B",
+        completed: true,
+        completedAt: new Date(),
+        completedBy: "user-2",
+        task: "task-2",
+        chatId: "chat-2",
+        createdBy: "creator-2",
+        assignedTo: ["user-2"],
+        save: jest.fn().mockResolvedValue({}),
+        populate: jest.fn().mockResolvedValue({})
+    };
+
+    Subtask.findById.mockResolvedValue(subtaskDoc);
+    Task.findById.mockReturnValue(makeTaskContextQuery({
+        _id: "task-2",
+        title: "Task B",
+        workspace: null,
+        project: null,
+        chatId: "task-chat-2"
+    }));
+    Task.findByIdAndUpdate.mockResolvedValue({});
+    getUserLabel.mockResolvedValue("Actor");
+    logActivity.mockResolvedValue({});
+
+    await subtaskService.updateSubtask("subtask-2", { completed: false }, "actor-2");
+
+    expect(subtaskDoc.completed).toBe(false);
+    expect(subtaskDoc.completedAt).toBeUndefined();
+    expect(subtaskDoc.completedBy).toBeUndefined();
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        action: "subtask.reopened"
+    }));
+});
+
+test("updateSubtask skips assignment validation when parent task cannot be loaded", async () => {
+    const subtaskDoc = {
+        _id: "subtask-3",
+        title: "Subtask C",
+        completed: false,
+        task: "task-3",
+        chatId: null,
+        createdBy: "creator-3",
+        assignedTo: ["user-2"],
+        save: jest.fn().mockResolvedValue({}),
+        populate: jest.fn().mockResolvedValue({})
+    };
+
+    Subtask.findById.mockResolvedValue(subtaskDoc);
+    Task.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockResolvedValue(null)
+        })
+        .mockReturnValueOnce(makeTaskContextQuery(null));
+    Task.findByIdAndUpdate.mockResolvedValue({});
+    getUserLabel.mockResolvedValue("Actor");
+    logActivity.mockResolvedValue({});
+
+    const result = await subtaskService.updateSubtask(
+        "subtask-3",
+        { assignedTo: ["user-2"] },
+        "actor-3"
+    );
+
+    expect(result).toBe(subtaskDoc);
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+});
+
+test("updateSubtask merges assignees with team members when team assignments exist", async () => {
+    const subtaskDoc = {
+        _id: "subtask-4",
+        title: "Subtask D",
+        completed: false,
+        task: "task-4",
+        chatId: "chat-4",
+        createdBy: "creator-4",
+        assignedTo: ["user-2"],
+        save: jest.fn().mockResolvedValue({}),
+        populate: jest.fn().mockResolvedValue({})
+    };
+
+    Subtask.findById.mockResolvedValue(subtaskDoc);
+    Task.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockResolvedValue({
+                createdBy: "creator-4",
+                assignees: ["user-2"],
+                assigneesTeams: ["team-1"]
+            })
+        })
+        .mockReturnValueOnce(makeTaskContextQuery({
+            _id: "task-4",
+            title: "Task D",
+            workspace: null,
+            project: null,
+            chatId: "task-chat-4"
+        }));
+    getTeamMemberIds.mockResolvedValue(["team-user-1"]);
+    Task.findByIdAndUpdate.mockResolvedValue({});
+    getUserLabel.mockResolvedValue("Actor");
+    logActivity.mockResolvedValue({});
+
+    await subtaskService.updateSubtask(
+        "subtask-4",
+        { assignedTo: ["team-user-1"] },
+        "actor-4"
+    );
+
+    expect(getTeamMemberIds).toHaveBeenCalledWith(["team-1"]);
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith("chat-4", {
+        members: ["creator-4", "team-user-1"]
+    });
+});
+
+test("addAssignees throws when subtask does not exist", async () => {
+    Subtask.findById.mockResolvedValue(null);
+
+    await expect(subtaskService.addAssignees("subtask-missing", ["user-2"], "actor-1"))
+        .rejects
+        .toThrow("Subtask not found");
+});
+
+test("addAssignees treats undefined assignee list as invalid input", async () => {
+    Subtask.findById.mockResolvedValue({
+        _id: "subtask-5",
+        task: "task-5",
+        chatId: null,
+        createdBy: "creator-5"
+    });
+
+    await expect(subtaskService.addAssignees("subtask-5", undefined, "actor-5"))
+        .rejects
+        .toThrow("At least one assignee is required");
+});
+
+test("addAssignees allows missing parent task and uses fallback actor id when omitted", async () => {
+    Subtask.findById.mockResolvedValue({
+        _id: "subtask-6",
+        title: "Subtask F",
+        task: "task-6",
+        chatId: null,
+        createdBy: "creator-6"
+    });
+    Task.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockResolvedValue(null)
+        })
+        .mockReturnValueOnce(makeTaskContextQuery(null));
+    Subtask.updateOne.mockResolvedValue({});
+    getUserLabel.mockResolvedValue("Creator");
+    getUserLabels.mockResolvedValue(["User Two"]);
+    logActivity.mockResolvedValue({});
+    jest.spyOn(subtaskService, "getSubtaskById").mockResolvedValue({ _id: "subtask-6" });
+
+    const result = await subtaskService.addAssignees("subtask-6", ["user-2"]);
+
+    expect(Subtask.updateOne).toHaveBeenCalledWith(
+        { _id: "subtask-6" },
+        { $addToSet: { assignedTo: { $each: ["user-2"] } } }
+    );
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        actorId: "creator-6"
+    }));
+    expect(result).toEqual({ _id: "subtask-6" });
+});
+
+test("removeAssignees throws when subtask does not exist", async () => {
+    Subtask.findById.mockResolvedValue(null);
+
+    await expect(subtaskService.removeAssignees("subtask-missing", ["user-2"], "actor-1"))
+        .rejects
+        .toThrow("Subtask not found");
+});
+
+test("removeAssignees rejects undefined assignee list", async () => {
+    Subtask.findById.mockResolvedValue({
+        _id: "subtask-7",
+        task: "task-7",
+        chatId: null,
+        createdBy: "creator-7"
+    });
+
+    await expect(subtaskService.removeAssignees("subtask-7"))
+        .rejects
+        .toThrow("At least one assignee is required");
+});
+
+test("removeAssignees updates chat members and uses fallback actor when omitted", async () => {
+    Subtask.findById.mockResolvedValue({
+        _id: "subtask-8",
+        title: "Subtask H",
+        task: "task-8",
+        chatId: "chat-8",
+        createdBy: "creator-8"
+    });
+    Task.findById.mockReturnValue(makeTaskContextQuery(null));
+    Subtask.updateOne.mockResolvedValue({});
+    Chat.findByIdAndUpdate.mockResolvedValue({});
+    getUserLabel.mockResolvedValue("Creator");
+    getUserLabels.mockResolvedValue(["User Two"]);
+    logActivity.mockResolvedValue({});
+    jest.spyOn(subtaskService, "getSubtaskById").mockResolvedValue({ _id: "subtask-8" });
+
+    const result = await subtaskService.removeAssignees("subtask-8", ["user-2"]);
+
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith("chat-8", {
+        $pull: { members: { $in: ["user-2"] } }
+    });
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        actorId: "creator-8"
+    }));
+    expect(result).toEqual({ _id: "subtask-8" });
+});
+
+test("getSubtaskStats returns zero completion rate when grouped total is zero", async () => {
+    const taskId = "507f1f77bcf86cd799439011";
+    Subtask.aggregate.mockResolvedValueOnce([{
+        total: 0,
+        completed: 0,
+        pending: 0
+    }]);
+
+    await expect(subtaskService.getSubtaskStats(taskId)).resolves.toEqual({
+        total: 0,
+        completed: 0,
+        pending: 0,
+        completionRate: 0
+    });
+});
+
+test("leaveSubtask succeeds without chat membership update when subtask has no chat", async () => {
+    const subtaskDoc = {
+        _id: "subtask-9",
+        title: "Subtask I",
+        task: "task-9",
+        chatId: null,
+        assignedTo: ["user-9"]
+    };
+    Subtask.findById.mockResolvedValue(subtaskDoc);
+    Task.findById.mockReturnValue(makeTaskContextQuery(null));
+    getUserLabel.mockResolvedValue("Actor");
+    logActivity.mockResolvedValue({});
+    Subtask.updateOne.mockResolvedValue({});
+
+    const result = await subtaskService.leaveSubtask("subtask-9", "user-9");
+
+    expect(Subtask.updateOne).toHaveBeenCalledWith(
+        { _id: "subtask-9" },
+        { $pull: { assignedTo: "user-9" } }
+    );
+    expect(Chat.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(result).toEqual({ message: "You have left the subtask successfully" });
+});
+
+test("deleteSubtask uses creator fallback when actor id is omitted and skips chat deletion", async () => {
+    const session = createSession();
+    jest.spyOn(mongoose, "startSession").mockResolvedValue(session);
+    const subtaskDoc = {
+        _id: "subtask-10",
+        title: "Subtask J",
+        task: "task-10",
+        createdBy: "creator-10",
+        chatId: null,
+        deleteOne: jest.fn().mockResolvedValue({})
+    };
+    Subtask.findById.mockResolvedValue(subtaskDoc);
+    Task.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "task-10",
+                    workspace: null,
+                    project: "project-10",
+                    chatId: null
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        })
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "task-10",
+                    workspace: null,
+                    project: "project-10",
+                    chatId: null
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        });
+    Project.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "project-10",
+                    chatId: "project-chat-10",
+                    workspace: "workspace-10"
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        })
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "project-10",
+                    chatId: "project-chat-10",
+                    workspace: "workspace-10"
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        });
+    Workspace.findById
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "workspace-10",
+                    chatId: "workspace-chat-10"
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        })
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue({
+                    _id: "workspace-10",
+                    chatId: "workspace-chat-10"
+                }),
+                session: jest.fn().mockReturnThis()
+            })
+        });
+    getUserLabel.mockResolvedValue("Creator");
+    logActivity.mockResolvedValue({});
+    Task.findByIdAndUpdate.mockResolvedValue({});
+    Subtask.find.mockReturnValue({
+        sort: jest.fn().mockResolvedValue([])
+    });
+
+    const result = await subtaskService.deleteSubtask("subtask-10");
+
+    expect(logActivity).toHaveBeenCalledWith(expect.objectContaining({
+        actorId: "creator-10",
+        chatId: "project-chat-10"
+    }));
+    expect(Message.deleteMany).not.toHaveBeenCalled();
+    expect(Chat.findByIdAndDelete).not.toHaveBeenCalled();
+    expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ message: "Subtask deleted successfully" });
 });

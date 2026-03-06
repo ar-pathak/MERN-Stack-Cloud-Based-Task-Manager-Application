@@ -103,6 +103,19 @@ test("createTicket sends custom success message with 201", async () => {
     expect(res.statusCode).toBe(201);
 });
 
+test("createTicket falls back to empty body payload when body is missing", async () => {
+    supportService.createSupportTicket.mockResolvedValue({ _id: "t1" });
+    const req = {
+        user: { _id: "u1" }
+    };
+    const res = createResponse();
+
+    await supportController.createTicket(req, res);
+
+    expect(supportService.createSupportTicket).toHaveBeenCalledWith(req.user, {});
+    expect(res.statusCode).toBe(201);
+});
+
 test("listTickets delegates user id and query", async () => {
     supportService.listTickets.mockResolvedValue({ tickets: [] });
     const req = {
@@ -114,6 +127,19 @@ test("listTickets delegates user id and query", async () => {
     await supportController.listTickets(req, res);
 
     expect(supportService.listTickets).toHaveBeenCalledWith("u1", req.query);
+    expect(res.statusCode).toBe(200);
+});
+
+test("listTickets falls back to empty query when query is missing", async () => {
+    supportService.listTickets.mockResolvedValue({ tickets: [] });
+    const req = {
+        user: { _id: "u1" }
+    };
+    const res = createResponse();
+
+    await supportController.listTickets(req, res);
+
+    expect(supportService.listTickets).toHaveBeenCalledWith("u1", {});
     expect(res.statusCode).toBe(200);
 });
 
@@ -151,6 +177,20 @@ test("addTicketComment sends comment-specific success message", async () => {
     expect(res.statusCode).toBe(200);
 });
 
+test("addTicketComment falls back to empty body when body is missing", async () => {
+    supportService.addTicketComment.mockResolvedValue({ comment: { _id: "c1" } });
+    const req = {
+        user: { _id: "u1" },
+        params: { ticketId: "t1" }
+    };
+    const res = createResponse();
+
+    await supportController.addTicketComment(req, res);
+
+    expect(supportService.addTicketComment).toHaveBeenCalledWith(req.user, "t1", {});
+    expect(res.statusCode).toBe(200);
+});
+
 test("contactSupport sends contact-specific success message with 201", async () => {
     supportService.contactSupport.mockResolvedValue({ _id: "t1" });
     const req = {
@@ -163,6 +203,19 @@ test("contactSupport sends contact-specific success message with 201", async () 
 
     expect(supportService.contactSupport).toHaveBeenCalledWith(req.user, req.body);
     expect(sendSuccess).toHaveBeenCalledWith(res, { _id: "t1" }, "Contact request submitted", 201);
+    expect(res.statusCode).toBe(201);
+});
+
+test("contactSupport falls back to empty body when body is missing", async () => {
+    supportService.contactSupport.mockResolvedValue({ _id: "t1" });
+    const req = {
+        user: { _id: "u1" }
+    };
+    const res = createResponse();
+
+    await supportController.contactSupport(req, res);
+
+    expect(supportService.contactSupport).toHaveBeenCalledWith(req.user, {});
     expect(res.statusCode).toBe(201);
 });
 
@@ -181,6 +234,19 @@ test("submitFeedback sends feedback-specific success message with 201", async ()
     expect(res.statusCode).toBe(201);
 });
 
+test("submitFeedback falls back to empty body when body is missing", async () => {
+    supportService.submitFeedback.mockResolvedValue({ _id: "f1" });
+    const req = {
+        user: { _id: "u1" }
+    };
+    const res = createResponse();
+
+    await supportController.submitFeedback(req, res);
+
+    expect(supportService.submitFeedback).toHaveBeenCalledWith(req.user, {});
+    expect(res.statusCode).toBe(201);
+});
+
 test("listFeedback delegates requester id and query", async () => {
     supportService.listMyFeedback.mockResolvedValue({ feedback: [] });
     const req = {
@@ -192,6 +258,19 @@ test("listFeedback delegates requester id and query", async () => {
     await supportController.listFeedback(req, res);
 
     expect(supportService.listMyFeedback).toHaveBeenCalledWith("u1", req.query);
+    expect(res.statusCode).toBe(200);
+});
+
+test("listFeedback falls back to empty query when query is missing", async () => {
+    supportService.listMyFeedback.mockResolvedValue({ feedback: [] });
+    const req = {
+        user: { _id: "u1" }
+    };
+    const res = createResponse();
+
+    await supportController.listFeedback(req, res);
+
+    expect(supportService.listMyFeedback).toHaveBeenCalledWith("u1", {});
     expect(res.statusCode).toBe(200);
 });
 

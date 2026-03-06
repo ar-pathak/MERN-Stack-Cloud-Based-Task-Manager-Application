@@ -121,6 +121,44 @@ test("resolveAuthorAccess handles missing/owner/blocked/follower contexts", asyn
         });
 });
 
+test("resolveAuthorAccess supports anonymous viewers", async () => {
+    User.findById.mockReturnValueOnce(mockSelectLean({
+        _id: "author-2",
+        accountStatus: "active",
+        isPrivate: false,
+        blockedUsers: []
+    }));
+
+    const result = await storyService.resolveAuthorAccess("author-2");
+
+    expect(result).toEqual({
+        isOwner: false,
+        isPrivate: false,
+        isApprovedFollower: false,
+        isBlockedContext: false
+    });
+    expect(Follow.checkRelationship).not.toHaveBeenCalled();
+});
+
+test("resolveAuthorAccess rejects inactive viewer accounts", async () => {
+    User.findById
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "author-3",
+            accountStatus: "active",
+            isPrivate: true,
+            blockedUsers: []
+        }))
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "viewer-3",
+            accountStatus: "deactivated",
+            blockedUsers: []
+        }));
+
+    await expect(storyService.resolveAuthorAccess("author-3", "viewer-3"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+});
+
 test("createStory rejects inactive author", async () => {
     User.findById.mockReturnValueOnce(mockSelectLean({
         _id: "author-1",

@@ -634,6 +634,7 @@ test("unfollowUser validates ids and not-following condition", async () => {
 });
 
 test("unfollowUser swallows follow-request notification update failures", async () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     const session = createSession();
     mongoose.startSession.mockResolvedValue(session);
     Follow.findOne.mockReturnValueOnce(mockSessionQuery({
@@ -647,6 +648,11 @@ test("unfollowUser swallows follow-request notification update failures", async 
 
     expect(result).toEqual({ success: true });
     expect(session.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "follow request cancellation notification update error",
+        expect.any(Error)
+    );
+    consoleErrorSpy.mockRestore();
 });
 
 test("assertCanViewConnections allows self-view without extra lookups", async () => {
@@ -817,6 +823,7 @@ test("approveFollowRequest blocks approval when users have blocked each other", 
 });
 
 test("rejectFollowRequest handles not-found and notification-update errors", async () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
     Follow.findOne.mockResolvedValueOnce(null);
     await expect(followService.rejectFollowRequest("u1", "req-missing"))
         .rejects
@@ -832,4 +839,9 @@ test("rejectFollowRequest handles not-found and notification-update errors", asy
 
     const result = await followService.rejectFollowRequest("u1", "req-4");
     expect(result).toEqual({ success: true });
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+        "follow request rejection notification update error",
+        expect.any(Error)
+    );
+    consoleErrorSpy.mockRestore();
 });

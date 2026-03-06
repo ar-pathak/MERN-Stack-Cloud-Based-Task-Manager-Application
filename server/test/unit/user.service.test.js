@@ -690,6 +690,66 @@ test("searchMentionCandidates returns empty when task scope cannot be resolved",
     expect(User.find).not.toHaveBeenCalled();
 });
 
+test("searchMentionCandidates resolves task scope assignees and creator", async () => {
+    Task.findById.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue({
+                assignees: ["u1", "u2"],
+                createdBy: "u3"
+            })
+        })
+    });
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { _id: "u2", username: "alex", name: "Alex", isOnline: false, preferences: { privacy: {} } }
+                ])
+            })
+        })
+    });
+
+    const result = await userService.searchMentionCandidates("al", "u1", { taskId: "task-1" });
+
+    expect(result).toEqual({
+        users: [
+            {
+                _id: "u2",
+                username: "alex",
+                name: "Alex",
+                avatar: undefined,
+                isOnline: false
+            }
+        ]
+    });
+    expect(User.find).toHaveBeenCalledWith(expect.objectContaining({
+        _id: expect.objectContaining({
+            $in: expect.arrayContaining(["u1", "u2", "u3"])
+        })
+    }));
+});
+
+test("searchMentionCandidates falls back to global search when no scope is provided", async () => {
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            limit: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    { _id: "u2", username: "alice", name: "Alice", isOnline: true, preferences: { privacy: {} } }
+                ])
+            })
+        })
+    });
+
+    const result = await userService.searchMentionCandidates("", "u1", {});
+
+    expect(result.users).toHaveLength(1);
+    expect(User.find).toHaveBeenCalledWith(expect.objectContaining({
+        accountStatus: "active",
+        "preferences.privacy.allowMentions": { $ne: false },
+        _id: { $ne: "u1" }
+    }));
+});
+
 test("updatePreferences throws when user does not exist", async () => {
     User.findByIdAndUpdate.mockReturnValue(mockSelectResolved(null));
 
@@ -785,6 +845,32 @@ test("getPopularUsers returns active users sorted by popularity", async () => {
     const result = await userService.getPopularUsers(5);
 
     expect(result).toEqual([{ _id: "u2", username: "bob" }]);
+});
+
+test("getBlockedUsers normalizes mixed blocked id shapes", async () => {
+    User.findById.mockReturnValue(mockSelectLean({
+        blockedUsers: [
+            101,
+            { _id: "u2" },
+            { toHexString: () => "u3" },
+            { toString: () => "u4" },
+            { toString: () => "[object Object]" }
+        ]
+    }));
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([
+                { _id: "u2", username: "bob", accountStatus: "active" },
+                { _id: "u3", username: "charlie", accountStatus: "active" },
+                { _id: "u4", username: "dave", accountStatus: "active" }
+            ])
+        })
+    });
+
+    const result = await userService.getBlockedUsers("u1", 1, 10);
+
+    expect(result.users.map((entry) => entry._id)).toEqual(["u2", "u3", "u4"]);
+    expect(result.pagination.total).toBe(4);
 });
 
 test("blockUser validates required ids and aborts for inactive target user", async () => {
