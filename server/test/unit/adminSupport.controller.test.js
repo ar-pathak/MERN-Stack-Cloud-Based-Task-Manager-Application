@@ -230,3 +230,49 @@ test("controller forwards service errors to handleError", async () => {
     expect(handleError).toHaveBeenCalledWith(error, res);
     expect(res.statusCode).toBe(503);
 });
+
+test.each([
+    ["listAgents", "listAgents", { req: {} }],
+    ["listTickets", "listTickets", { req: { admin: { _id: "admin-1" }, query: {} } }],
+    ["getTicketById", "getTicketById", { req: { params: { ticketId: "ticket-1" } } }],
+    ["updateTicketStatus", "updateTicketStatus", { req: { admin: { _id: "admin-1" }, params: { ticketId: "ticket-1" }, body: { status: "open" } } }],
+    ["assignTicket", "assignTicket", { req: { params: { ticketId: "ticket-1" }, body: { assigneeId: "admin-2" } } }],
+    ["addReply", "addReply", { req: { admin: { _id: "admin-1" }, params: { ticketId: "ticket-1" }, body: { body: "reply" } } }],
+    ["listFeedback", "listFeedback", { req: { query: {} } }]
+])("%s delegates failures to handleError", async (handlerName, serviceMethod, fixture) => {
+    const error = new Error(`${handlerName} failed`);
+    error.statusCode = 422;
+    AdminSupportService[serviceMethod].mockRejectedValue(error);
+
+    const res = createResponse();
+    await AdminSupportController[handlerName](fixture.req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
+});
+
+test("listTickets/addReply/listFeedback pass fallback empty objects when payload is missing", async () => {
+    const res = createResponse();
+
+    AdminSupportService.listTickets.mockResolvedValue({ tickets: [] });
+    await AdminSupportController.listTickets({ admin: { _id: "admin-1" } }, res);
+    expect(AdminSupportService.listTickets).toHaveBeenCalledWith(
+        { _id: "admin-1" },
+        {}
+    );
+
+    AdminSupportService.addReply.mockResolvedValue({ ok: true });
+    await AdminSupportController.addReply({
+        admin: { _id: "admin-1" },
+        params: { ticketId: "ticket-1" }
+    }, res);
+    expect(AdminSupportService.addReply).toHaveBeenCalledWith(
+        { _id: "admin-1" },
+        "ticket-1",
+        {}
+    );
+
+    AdminSupportService.listFeedback.mockResolvedValue({ feedback: [] });
+    await AdminSupportController.listFeedback({}, res);
+    expect(AdminSupportService.listFeedback).toHaveBeenCalledWith({});
+});

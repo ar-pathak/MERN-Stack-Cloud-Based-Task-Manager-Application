@@ -266,6 +266,84 @@ test("emit helper no-ops when io store is unavailable", async () => {
     expect(res.statusCode).toBe(200);
 });
 
+test("emit helper no-ops when chat has no members", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    const io = { to: jest.fn(() => ({ emit: jest.fn() })) };
+
+    chatService.togglePinMessage.mockResolvedValue({ messageId: "msg-1" });
+    getIO.mockReturnValue(io);
+    Chat.findById.mockReturnValue(makeMemberQuery([]));
+
+    await controller.togglePinMessage(req, res);
+
+    expect(Chat.findById).toHaveBeenCalledWith("chat-1");
+    expect(io.to).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(200);
+});
+
+test("edit/add/remove reaction payloads fall back to request defaults when service omits fields", async () => {
+    const req = baseReq();
+    const res = createResponse();
+    const ioEmit = jest.fn();
+    const io = {
+        to: jest.fn(() => ({ emit: ioEmit }))
+    };
+
+    chatService.editMessage.mockResolvedValue({ _id: "msg-1" });
+    chatService.addReaction.mockResolvedValue({ _id: "msg-1" });
+    chatService.removeReaction.mockResolvedValue({ _id: "msg-1" });
+    getIO.mockReturnValue(io);
+    Chat.findById.mockReturnValue(makeMemberQuery([{ _id: "user-1" }, { _id: "user-2" }]));
+
+    await controller.editMessage(req, res);
+    await controller.addReaction(req, res);
+    await controller.removeReaction(req, res);
+
+    expect(ioEmit).toHaveBeenCalledWith("chat:message_edited", expect.objectContaining({
+        content: req.body.content
+    }));
+    expect(ioEmit).toHaveBeenCalledWith("chat:reaction_updated", {
+        chatId: "chat-1",
+        messageId: "msg-1",
+        reactions: []
+    });
+});
+
+test("emit helper supports non-string member id shapes via toIdString normalization", async () => {
+    const req = baseReq();
+    req.user._id = 101;
+    const res = createResponse();
+    const ioEmit = jest.fn();
+    const io = {
+        to: jest.fn(() => ({ emit: ioEmit }))
+    };
+
+    chatService.togglePinMessage.mockResolvedValue({ messageId: "msg-1" });
+    getIO.mockReturnValue(io);
+    Chat.findById.mockReturnValue(makeMemberQuery([
+        101,
+        { _id: 202 },
+        {
+            _id: {
+                toHexString: () => "hex-member"
+            }
+        },
+        {
+            _id: {
+                toString: () => "string-member"
+            }
+        }
+    ]));
+
+    await controller.togglePinMessage(req, res);
+
+    expect(io.to).toHaveBeenCalledWith("user:202");
+    expect(io.to).toHaveBeenCalledWith("user:hex-member");
+    expect(io.to).toHaveBeenCalledWith("user:string-member");
+    expect(ioEmit).toHaveBeenCalledWith("chat:message_pin_updated", { messageId: "msg-1" });
+});
+
 test("controller delegates service errors to handleError", async () => {
     const req = baseReq();
     const res = createResponse();
@@ -282,4 +360,38 @@ test("controller delegates service errors to handleError", async () => {
         success: false,
         message: "not allowed"
     });
+});
+
+test.each([
+    ["checkPrivateChat", "checkPrivateChatExists", (req) => [req.user._id, req.params.targetUserId]],
+    ["createGroupChat", "createGroupChat", (req) => [req.user._id, req.body.name, req.body.members]],
+    ["updateGroupChat", "updateGroupChat", (req) => [req.params.chatId, req.user._id, req.body]],
+    ["addMembers", "addMembers", (req) => [req.params.chatId, req.user._id, req.body.members]],
+    ["removeMember", "removeMember", (req) => [req.params.chatId, req.user._id, req.body.userId]],
+    ["leaveGroup", "leaveGroup", (req) => [req.params.chatId, req.user._id]],
+    ["toggleMute", "toggleMute", (req) => [req.params.chatId, req.user._id]],
+    ["toggleArchive", "toggleArchive", (req) => [req.params.chatId, req.user._id]],
+    ["getChats", "getChats", (req) => [req.user._id]],
+    ["getMessages", "getMessages", (req) => [req.params.chatId, req.user._id, req.query.page, req.query.limit]],
+    ["getUnreadMentionSummary", "getUnreadMentionSummary", (req) => [req.user._id, req.query.limit]],
+    ["getUnreadCallInviteSummary", "getUnreadCallInviteSummary", (req) => [req.user._id, req.query.limit]],
+    ["sendMessage", "sendMessage", (req) => [req.user._id, req.body.chatId, req.body.content, req.body.attachments, req.body.replyTo, req.body.postId]],
+    ["togglePinMessage", "togglePinMessage", (req) => [req.params.messageId, req.user._id, req.body.chatId]],
+    ["deleteMessage", "deleteMessage", (req) => [req.params.messageId, req.user._id, req.body.chatId]],
+    ["editMessage", "editMessage", (req) => [req.params.messageId, req.user._id, req.body.chatId, req.body.content]],
+    ["addReaction", "addReaction", (req) => [req.params.messageId, req.user._id, req.body.emoji, req.body.chatId]],
+    ["removeReaction", "removeReaction", (req) => [req.params.messageId, req.user._id, req.body.emoji, req.body.chatId]],
+    ["searchMessages", "searchMessages", (req) => [req.params.chatId, req.user._id, req.query.q, req.query.limit]]
+])("%s delegates thrown service errors to handleError", async (handlerName, serviceMethod, getArgs) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error(`${handlerName} failed`);
+    error.statusCode = 422;
+    chatService[serviceMethod].mockRejectedValue(error);
+
+    await controller[handlerName](req, res);
+
+    expect(chatService[serviceMethod]).toHaveBeenCalledWith(...getArgs(req));
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
 });

@@ -109,3 +109,36 @@ test("controller delegates service errors to handleError", async () => {
         message: "Notification not found"
     });
 });
+
+test("markAllAsRead falls back to empty body when payload is missing", async () => {
+    const req = baseReq();
+    delete req.body;
+    const res = createResponse();
+    notificationService.markAllAsRead.mockResolvedValue({ matchedCount: 0, modifiedCount: 0 });
+
+    await controller.markAllAsRead(req, res);
+
+    expect(notificationService.markAllAsRead).toHaveBeenCalledWith("user-1", {});
+    expect(res.statusCode).toBe(200);
+});
+
+test.each([
+    ["listNotifications", "listNotifications", (req) => [req.user._id, req.query]],
+    ["getUnreadCount", "getUnreadCount", (req) => [req.user._id]],
+    ["markAsRead", "markAsRead", (req) => [req.user._id, req.params.notificationId]],
+    ["markAsUnread", "markAsUnread", (req) => [req.user._id, req.params.notificationId]],
+    ["markAllAsRead", "markAllAsRead", (req) => [req.user._id, req.body || {}]],
+    ["bulkAction", "bulkAction", (req) => [req.user._id, req.body]]
+])("%s forwards service failures to handleError", async (handlerName, serviceMethod, getArgs) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error(`${handlerName} failed`);
+    error.statusCode = 422;
+    notificationService[serviceMethod].mockRejectedValue(error);
+
+    await controller[handlerName](req, res);
+
+    expect(notificationService[serviceMethod]).toHaveBeenCalledWith(...getArgs(req));
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
+});

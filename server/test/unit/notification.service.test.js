@@ -668,3 +668,306 @@ test("createActivityNotifications returns [] when no recipients are resolved", a
     expect(created).toEqual([]);
     expect(Notification.insertMany).not.toHaveBeenCalled();
 });
+
+test("listNotifications handles true-read and single vs multi CSV filters", async () => {
+    Notification.find.mockReturnValue(makeChainQuery([]));
+    Notification.countDocuments
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+
+    const result = await notificationService.listNotifications(USER_ID, {
+        page: "1",
+        limit: "10",
+        read: "true",
+        category: "social",
+        type: "activity,member",
+        priority: "high,urgent",
+        entityType: "task,project"
+    });
+
+    expect(Notification.find).toHaveBeenCalledWith(expect.objectContaining({
+        user: expect.any(mongoose.Types.ObjectId),
+        read: true,
+        category: "social",
+        type: { $in: ["activity", "member"] },
+        priority: { $in: ["high", "urgent"] },
+        entityType: { $in: ["task", "project"] }
+    }));
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 10,
+        total: 0,
+        totalPages: 0,
+        hasMore: false
+    });
+});
+
+test("createNotifications skips socket emission when session is provided", async () => {
+    const { io } = createIo();
+    getIO.mockReturnValue(io);
+
+    Notification.insertMany.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(NOTIFICATION_ID) }
+    ]);
+    Notification.find.mockReturnValue(makeChainQuery([
+        { _id: NOTIFICATION_ID, user: USER_ID }
+    ]));
+
+    const created = await notificationService.createNotifications({
+        recipientIds: [USER_ID, USER_ID, ACTOR_ID],
+        actorId: ACTOR_ID,
+        title: "T",
+        message: "M",
+        link: "",
+        channels: { inApp: false, email: 1, push: 0 },
+        metadata: { source: "unit" },
+        session: { id: "session" }
+    });
+
+    expect(created).toHaveLength(1);
+    expect(Notification.insertMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+            expect.objectContaining({
+                link: "/main",
+                channels: { inApp: false, email: true, push: false },
+                dedupeKey: null
+            })
+        ]),
+        { ordered: false, session: { id: "session" } }
+    );
+    expect(io.to).not.toHaveBeenCalled();
+    expect(Notification.aggregate).not.toHaveBeenCalled();
+});
+
+test("createNotifications returns [] when dedupe blocks all recipients", async () => {
+    Notification.find.mockReturnValue(makeChainQuery([
+        { user: new mongoose.Types.ObjectId(USER_ID) },
+        { user: new mongoose.Types.ObjectId(USER_ID_2) }
+    ]));
+
+    const created = await notificationService.createNotifications({
+        recipientIds: [USER_ID, USER_ID_2],
+        actorId: ACTOR_ID,
+        title: "title",
+        message: "message",
+        dedupeKey: "dedupe:block-all"
+    });
+
+    expect(created).toEqual([]);
+    expect(Notification.insertMany).not.toHaveBeenCalled();
+});
+
+test("createNotifications works when socket server is unavailable", async () => {
+    getIO.mockReturnValue(null);
+    Notification.insertMany.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(NOTIFICATION_ID) }
+    ]);
+    Notification.find.mockReturnValue(makeChainQuery([
+        { _id: NOTIFICATION_ID, user: USER_ID }
+    ]));
+
+    const created = await notificationService.createNotifications({
+        recipientIds: [USER_ID],
+        title: "title",
+        message: "message"
+    });
+
+    expect(created).toHaveLength(1);
+    expect(Notification.aggregate).not.toHaveBeenCalled();
+});
+
+test("buildActivityRecipientIds handles workspace-only scope without role filter", async () => {
+    WorkspaceMember.find.mockReturnValue(makeChainQuery([
+        { user: USER_ID },
+        { user: USER_ID_2 }
+    ]));
+
+    const recipients = await notificationService.buildActivityRecipientIds({
+        workspaceId: WORKSPACE_ID
+    });
+
+    expect(recipients).toEqual(expect.arrayContaining([USER_ID, USER_ID_2]));
+    expect(WorkspaceMember.find).toHaveBeenCalledWith({
+        workspace: expect.any(mongoose.Types.ObjectId)
+    });
+});
+
+test("setFollowRequestNotificationState supports read=false and returns null when record missing", async () => {
+    Notification.findOneAndUpdate
+        .mockReturnValueOnce(makeChainQuery({
+            _id: NOTIFICATION_ID,
+            user: USER_ID,
+            read: false
+        }))
+        .mockReturnValueOnce(makeChainQuery(null));
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 2 }
+    ]);
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+
+    const updated = await notificationService.setFollowRequestNotificationState({
+        recipientUserId: USER_ID,
+        requestId: REQUEST_ID,
+        requestState: "rejected",
+        read: false
+    });
+    const missing = await notificationService.setFollowRequestNotificationState({
+        recipientUserId: USER_ID,
+        requestId: REQUEST_ID,
+        requestState: "approved",
+        read: true
+    });
+
+    expect(updated).toEqual(expect.objectContaining({ _id: NOTIFICATION_ID }));
+    expect(Notification.findOneAndUpdate).toHaveBeenNthCalledWith(
+        1,
+        expect.any(Object),
+        { $set: { "metadata.requestState": "rejected" } },
+        { new: true }
+    );
+    expect(missing).toBeNull();
+    expect(emit).toHaveBeenCalledWith("notification:updated", expect.any(Object));
+});
+
+test("markAsUnread throws 404 when notification does not exist", async () => {
+    Notification.findOneAndUpdate.mockReturnValue(makeChainQuery(null));
+
+    await expect(notificationService.markAsUnread(USER_ID, NOTIFICATION_ID))
+        .rejects
+        .toMatchObject({
+            message: "Notification not found",
+            statusCode: 404
+        });
+});
+
+test("markAllAsRead falls back to zero counters when update response omits counts", async () => {
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+    Notification.updateMany.mockResolvedValue({});
+    Notification.aggregate.mockResolvedValue([]);
+
+    const result = await notificationService.markAllAsRead(USER_ID);
+
+    expect(result).toEqual({
+        matchedCount: 0,
+        modifiedCount: 0
+    });
+    expect(emit).toHaveBeenCalledWith("notification:all_read", {
+        matchedCount: 0,
+        modifiedCount: 0
+    });
+});
+
+test("setTaskAssigneeRequestNotificationState with read=false avoids read timestamps", async () => {
+    Notification.updateMany.mockResolvedValue({ matchedCount: 0, modifiedCount: 0 });
+    Notification.find.mockReturnValue(makeChainQuery([]));
+
+    const result = await notificationService.setTaskAssigneeRequestNotificationState({
+        requestId: REQUEST_ID,
+        requestState: "rejected",
+        recipientUserIds: [USER_ID],
+        read: false
+    });
+
+    expect(result).toEqual([]);
+    expect(Notification.updateMany).toHaveBeenCalledWith(
+        {
+            "metadata.kind": "global_task_assignee_request",
+            "metadata.requestId": REQUEST_ID,
+            user: { $in: [expect.any(mongoose.Types.ObjectId)] }
+        },
+        { $set: { "metadata.requestState": "rejected" } }
+    );
+    expect(Notification.aggregate).not.toHaveBeenCalled();
+});
+
+test("bulkAction supports missing notificationIds payload", async () => {
+    const result = await notificationService.bulkAction(USER_ID, {
+        action: "read"
+    });
+
+    expect(result).toEqual({
+        matchedCount: 0,
+        modifiedCount: 0
+    });
+});
+
+test("createActivityNotifications resolves call category and urgent priority", async () => {
+    const { io, emit } = createIo();
+    getIO.mockReturnValue(io);
+    WorkspaceMember.find.mockReturnValue(makeChainQuery([{ user: USER_ID }]));
+    Notification.insertMany.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(NOTIFICATION_ID) }
+    ]);
+    Notification.find
+        .mockReturnValueOnce(makeChainQuery([]))
+        .mockReturnValueOnce(makeChainQuery([
+            { _id: NOTIFICATION_ID, user: USER_ID }
+        ]));
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 9 }
+    ]);
+
+    const created = await notificationService.createActivityNotifications({
+        actorId: ACTOR_ID,
+        action: "call.ownership_transferred",
+        message: "Ownership transferred",
+        level: "custom_level",
+        workspaceId: WORKSPACE_ID,
+        callId: REQUEST_ID
+    });
+
+    expect(created).toHaveLength(1);
+    expect(Notification.insertMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+            expect.objectContaining({
+                type: "member",
+                category: "system",
+                priority: "urgent",
+                title: "Activity update",
+                entityType: "workspace"
+            })
+        ]),
+        expect.any(Object)
+    );
+    expect(emit).toHaveBeenCalledWith("notification:new", expect.any(Object));
+});
+
+test("createActivityNotifications maps pure call actions to call category", async () => {
+    const { io } = createIo();
+    getIO.mockReturnValue(io);
+    WorkspaceMember.find.mockReturnValue(makeChainQuery([{ user: USER_ID }]));
+    Notification.insertMany.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(NOTIFICATION_ID) }
+    ]);
+    Notification.find
+        .mockReturnValueOnce(makeChainQuery([]))
+        .mockReturnValueOnce(makeChainQuery([
+            { _id: NOTIFICATION_ID, user: USER_ID }
+        ]));
+    Notification.aggregate.mockResolvedValue([
+        { _id: new mongoose.Types.ObjectId(USER_ID), count: 1 }
+    ]);
+
+    const created = await notificationService.createActivityNotifications({
+        actorId: ACTOR_ID,
+        action: "call.started",
+        message: "Call started",
+        level: "custom_level",
+        workspaceId: WORKSPACE_ID,
+        callId: REQUEST_ID
+    });
+
+    expect(created).toHaveLength(1);
+    expect(Notification.insertMany).toHaveBeenCalledWith(
+        expect.arrayContaining([
+            expect.objectContaining({
+                type: "call",
+                category: "call",
+                priority: "low"
+            })
+        ]),
+        expect.any(Object)
+    );
+});

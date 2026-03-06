@@ -385,3 +385,441 @@ test("verifyEmail marks admin verified and clears verification fields", async ()
         message: "Admin email verified successfully."
     });
 });
+
+test("register enforces admin invite code when configured", async () => {
+    const previousInviteCode = process.env.ADMIN_INVITE_CODE;
+    process.env.ADMIN_INVITE_CODE = "unit-invite";
+
+    try {
+        await expect(AdminAuthService.register({
+            name: "Admin User",
+            email: ALLOWED_EMAIL,
+            password: "Str0ng@Pass1",
+            inviteCode: "wrong-code"
+        })).rejects.toMatchObject({
+            statusCode: 403,
+            code: "ADMIN_INVITE_CODE_INVALID"
+        });
+    } finally {
+        if (typeof previousInviteCode === "undefined") {
+            delete process.env.ADMIN_INVITE_CODE;
+        } else {
+            process.env.ADMIN_INVITE_CODE = previousInviteCode;
+        }
+    }
+});
+
+test("register assigns support_agent role when admin already exists", async () => {
+    AdminAccount.findOne.mockResolvedValue(null);
+    AdminAccount.countDocuments.mockResolvedValue(2);
+    bcrypt.hash.mockResolvedValue("hashed-password");
+
+    const createdAdmin = {
+        _id: "admin-2",
+        name: "Support User",
+        email: ALLOWED_EMAIL,
+        role: "support_agent",
+        accountStatus: "active",
+        emailVerified: false
+    };
+    const adminDoc = {
+        ...createdAdmin,
+        save: jest.fn().mockResolvedValue({})
+    };
+
+    AdminAccount.create.mockResolvedValue(createdAdmin);
+    AdminAccount.findById.mockReturnValue(mockSelectResolved(adminDoc));
+    sendEmail.mockResolvedValue({ accepted: [ALLOWED_EMAIL] });
+
+    await AdminAuthService.register({
+        name: "Support User",
+        email: ALLOWED_EMAIL,
+        password: "Str0ng@Pass1"
+    });
+
+    expect(AdminAccount.create).toHaveBeenCalledWith(expect.objectContaining({
+        role: "support_agent"
+    }));
+});
+
+test("register clears verification fields when verification email fails", async () => {
+    AdminAccount.findOne.mockResolvedValue(null);
+    AdminAccount.countDocuments.mockResolvedValue(0);
+    bcrypt.hash.mockResolvedValue("hashed-password");
+
+    const createdAdmin = {
+        _id: "admin-3",
+        name: "Admin User",
+        email: ALLOWED_EMAIL,
+        role: "owner",
+        accountStatus: "active",
+        emailVerified: false
+    };
+    const adminDoc = {
+        ...createdAdmin,
+        save: jest.fn().mockResolvedValue({})
+    };
+
+    AdminAccount.create.mockResolvedValue(createdAdmin);
+    AdminAccount.findById.mockReturnValue(mockSelectResolved(adminDoc));
+    sendEmail.mockRejectedValue(new Error("smtp down"));
+
+    await expect(AdminAuthService.register({
+        name: "Admin User",
+        email: ALLOWED_EMAIL,
+        password: "Str0ng@Pass1"
+    })).rejects.toMatchObject({
+        statusCode: 500,
+        code: "ADMIN_VERIFICATION_EMAIL_FAILED"
+    });
+
+    expect(adminDoc.emailVerificationToken).toBeUndefined();
+    expect(adminDoc.emailVerificationExpires).toBeUndefined();
+    expect(adminDoc.save).toHaveBeenCalledTimes(2);
+});
+
+test("login rejects unknown or inactive admin account", async () => {
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved(null));
+    await expect(AdminAuthService.login({
+        email: ALLOWED_EMAIL,
+        password: "Str0ng@Pass1"
+    })).rejects.toMatchObject({
+        statusCode: 401,
+        code: "ADMIN_INVALID_CREDENTIALS"
+    });
+
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        passwordHash: "stored-hash",
+        accountStatus: "suspended",
+        emailVerified: true
+    }));
+    await expect(AdminAuthService.login({
+        email: ALLOWED_EMAIL,
+        password: "Str0ng@Pass1"
+    })).rejects.toMatchObject({
+        statusCode: 403,
+        code: "ADMIN_INACTIVE"
+    });
+});
+
+test("login rejects unverified admin even when password matches", async () => {
+    AdminAccount.findOne.mockReturnValue(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        passwordHash: "stored-hash",
+        accountStatus: "active",
+        emailVerified: false
+    }));
+    bcrypt.compare.mockResolvedValue(true);
+
+    await expect(AdminAuthService.login({
+        email: ALLOWED_EMAIL,
+        password: "Str0ng@Pass1"
+    })).rejects.toMatchObject({
+        statusCode: 403,
+        code: "ADMIN_EMAIL_NOT_VERIFIED"
+    });
+});
+
+test("verifyLoginOtp validates account existence and OTP request state", async () => {
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved(null));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "123456"
+    })).rejects.toMatchObject({
+        statusCode: 404,
+        code: "ADMIN_NOT_FOUND"
+    });
+
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: true,
+        loginOtpHash: undefined,
+        loginOtpExpires: undefined,
+        save: jest.fn().mockResolvedValue({})
+    }));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "123456"
+    })).rejects.toMatchObject({
+        statusCode: 400,
+        code: "ADMIN_LOGIN_OTP_NOT_REQUESTED"
+    });
+});
+
+test("verifyLoginOtp rejects inactive/unverified admin", async () => {
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "inactive",
+        emailVerified: true
+    }));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "123456"
+    })).rejects.toMatchObject({
+        statusCode: 403,
+        code: "ADMIN_INACTIVE"
+    });
+
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: false
+    }));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "123456"
+    })).rejects.toMatchObject({
+        statusCode: 403,
+        code: "ADMIN_EMAIL_NOT_VERIFIED"
+    });
+});
+
+test("verifyLoginOtp handles attempt-limit paths", async () => {
+    const lockedAdmin = {
+        _id: "admin-locked",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: true,
+        loginOtpHash: sha256("123456"),
+        loginOtpExpires: new Date(Date.now() + 10 * 60 * 1000),
+        loginOtpAttempts: 5,
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved(lockedAdmin));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "123456"
+    })).rejects.toMatchObject({
+        statusCode: 429,
+        code: "ADMIN_LOGIN_OTP_ATTEMPTS_EXCEEDED"
+    });
+    expect(lockedAdmin.loginOtpHash).toBeUndefined();
+    expect(lockedAdmin.loginOtpExpires).toBeUndefined();
+    expect(lockedAdmin.loginOtpAttempts).toBe(0);
+
+    const exhaustedByInvalidOtp = {
+        _id: "admin-exhaust",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: true,
+        loginOtpHash: sha256("123456"),
+        loginOtpExpires: new Date(Date.now() + 10 * 60 * 1000),
+        loginOtpAttempts: 4,
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findOne.mockReturnValueOnce(mockSelectResolved(exhaustedByInvalidOtp));
+    await expect(AdminAuthService.verifyLoginOtp({
+        email: ALLOWED_EMAIL,
+        otp: "999999"
+    })).rejects.toMatchObject({
+        statusCode: 429,
+        code: "ADMIN_LOGIN_OTP_ATTEMPTS_EXCEEDED"
+    });
+    expect(exhaustedByInvalidOtp.loginOtpHash).toBeUndefined();
+    expect(exhaustedByInvalidOtp.loginOtpExpires).toBeUndefined();
+    expect(exhaustedByInvalidOtp.loginOtpAttempts).toBe(0);
+});
+
+test("getMe validates admin status and returns sanitized payload", async () => {
+    AdminAccount.findById.mockResolvedValueOnce(null);
+    await expect(AdminAuthService.getMe("missing-admin"))
+        .rejects
+        .toMatchObject({
+            statusCode: 404,
+            code: "ADMIN_NOT_FOUND"
+        });
+
+    AdminAccount.findById.mockResolvedValueOnce({
+        _id: "admin-1",
+        accountStatus: "inactive"
+    });
+    await expect(AdminAuthService.getMe("inactive-admin"))
+        .rejects
+        .toMatchObject({
+            statusCode: 403,
+            code: "ADMIN_INACTIVE"
+        });
+
+    const adminDoc = {
+        _id: "admin-2",
+        name: "Admin",
+        email: ALLOWED_EMAIL,
+        role: "owner",
+        accountStatus: "active",
+        emailVerified: true,
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findById.mockResolvedValueOnce(adminDoc);
+
+    const result = await AdminAuthService.getMe("admin-2");
+    expect(adminDoc.lastSeenAt).toEqual(expect.any(Date));
+    expect(result).toEqual({
+        admin: expect.objectContaining({
+            _id: "admin-2",
+            email: ALLOWED_EMAIL
+        })
+    });
+});
+
+test("forgotPassword returns generic message for inactive admin", async () => {
+    AdminAccount.findOne.mockReturnValue(mockSelectResolved({
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "inactive"
+    }));
+
+    const result = await AdminAuthService.forgotPassword({ email: ALLOWED_EMAIL });
+    expect(result).toEqual({
+        message: "If that admin email exists, a reset link has been sent."
+    });
+    expect(sendEmail).not.toHaveBeenCalled();
+});
+
+test("forgotPassword sends reset email for active admin", async () => {
+    const adminDoc = {
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findOne.mockReturnValue(mockSelectResolved(adminDoc));
+    sendEmail.mockResolvedValue({ accepted: [ALLOWED_EMAIL] });
+
+    const result = await AdminAuthService.forgotPassword({ email: ALLOWED_EMAIL });
+
+    expect(adminDoc.resetPasswordToken).toEqual(expect.any(String));
+    expect(adminDoc.resetPasswordExpires).toBeTruthy();
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+        to: ALLOWED_EMAIL,
+        type: "reset-password",
+        actionUrl: expect.stringContaining("/admin/auth/reset-password/")
+    }));
+    expect(result).toEqual({
+        message: "If that admin email exists, a reset link has been sent."
+    });
+});
+
+test("requestVerificationByEmail returns generic message and sends for active admin", async () => {
+    AdminAccount.findOne.mockResolvedValueOnce(null);
+    const missingResult = await AdminAuthService.requestVerificationByEmail({
+        email: "missing@example.com"
+    });
+    expect(missingResult).toEqual({
+        message: "If that admin email exists, a verification link has been sent."
+    });
+
+    const activeAdmin = {
+        _id: "admin-1",
+        accountStatus: "active"
+    };
+    const adminDoc = {
+        _id: "admin-1",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: false,
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findOne.mockResolvedValueOnce(activeAdmin);
+    AdminAccount.findById.mockReturnValue(mockSelectResolved(adminDoc));
+    sendEmail.mockResolvedValue({ accepted: [ALLOWED_EMAIL] });
+
+    const activeResult = await AdminAuthService.requestVerificationByEmail({
+        email: ALLOWED_EMAIL
+    });
+    expect(activeResult).toEqual({
+        message: "If that admin email exists, a verification link has been sent."
+    });
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+        to: ALLOWED_EMAIL,
+        type: "email-verification"
+    }));
+});
+
+test("sendVerificationEmail validates admin account state", async () => {
+    AdminAccount.findById.mockReturnValueOnce(mockSelectResolved(null));
+    await expect(AdminAuthService.sendVerificationEmail("missing-admin"))
+        .rejects
+        .toMatchObject({
+            statusCode: 404,
+            code: "ADMIN_NOT_FOUND"
+        });
+
+    AdminAccount.findById.mockReturnValueOnce(mockSelectResolved({
+        _id: "inactive-admin",
+        email: ALLOWED_EMAIL,
+        accountStatus: "inactive",
+        emailVerified: false
+    }));
+    await expect(AdminAuthService.sendVerificationEmail("inactive-admin"))
+        .rejects
+        .toMatchObject({
+            statusCode: 403,
+            code: "ADMIN_INACTIVE"
+        });
+
+    AdminAccount.findById.mockReturnValueOnce(mockSelectResolved({
+        _id: "verified-admin",
+        email: ALLOWED_EMAIL,
+        accountStatus: "active",
+        emailVerified: true
+    }));
+    await expect(AdminAuthService.sendVerificationEmail("verified-admin"))
+        .resolves
+        .toEqual({ message: "Admin email is already verified." });
+});
+
+test("sendVerificationEmail falls back to localhost frontend URL", async () => {
+    const previousFrontendUrl = process.env.FRONTEND_URL;
+    process.env.FRONTEND_URL = "   ";
+
+    try {
+        const adminDoc = {
+            _id: "admin-url-fallback",
+            email: ALLOWED_EMAIL,
+            accountStatus: "active",
+            emailVerified: false,
+            save: jest.fn().mockResolvedValue({})
+        };
+        AdminAccount.findById.mockReturnValue(mockSelectResolved(adminDoc));
+        sendEmail.mockResolvedValue({ accepted: [ALLOWED_EMAIL] });
+
+        await AdminAuthService.sendVerificationEmail("admin-url-fallback");
+
+        expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({
+            actionUrl: expect.stringContaining("http://localhost:5173/admin/verify-email/")
+        }));
+    } finally {
+        if (typeof previousFrontendUrl === "undefined") {
+            delete process.env.FRONTEND_URL;
+        } else {
+            process.env.FRONTEND_URL = previousFrontendUrl;
+        }
+    }
+});
+
+test("verifyEmail clears verification token even when already verified", async () => {
+    const adminDoc = {
+        _id: "admin-verified",
+        emailVerified: true,
+        emailVerificationToken: "token",
+        emailVerificationExpires: new Date(Date.now() + 10 * 60 * 1000),
+        save: jest.fn().mockResolvedValue({})
+    };
+    AdminAccount.findOne.mockReturnValue(mockSelectResolved(adminDoc));
+
+    const result = await AdminAuthService.verifyEmail("already-verified-token");
+
+    expect(adminDoc.emailVerified).toBe(true);
+    expect(adminDoc.emailVerificationToken).toBeUndefined();
+    expect(adminDoc.emailVerificationExpires).toBeUndefined();
+    expect(result).toEqual({
+        message: "Admin email verified successfully."
+    });
+});

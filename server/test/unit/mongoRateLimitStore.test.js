@@ -47,6 +47,18 @@ test("ensureCollection initializes collection and indexes only once", async () =
     expect(collection.createIndex).toHaveBeenCalledTimes(2);
 });
 
+test("ensureCollection returns cached collection without reinitializing indexes", async () => {
+    const store = new MongoRateLimitStore({ windowMs: 1000 });
+    const cachedCollection = createCollectionMock();
+    store.collection = cachedCollection;
+    store.indexesEnsured = true;
+
+    const result = await store.ensureCollection();
+
+    expect(result).toBe(cachedCollection);
+    expect(cachedCollection.createIndex).not.toHaveBeenCalled();
+});
+
 test("increment returns active hit count when non-expired document exists", async () => {
     const collection = createCollectionMock();
     collection.findOneAndUpdate.mockResolvedValue({
@@ -70,6 +82,31 @@ test("increment returns active hit count when non-expired document exists", asyn
     expect(result).toEqual({
         totalHits: 3,
         resetTime: new Date("2026-03-03T12:00:00.000Z")
+    });
+    expect(collection.updateOne).not.toHaveBeenCalled();
+});
+
+test("increment supports legacy findOneAndUpdate return payload shape", async () => {
+    const collection = createCollectionMock();
+    collection.findOneAndUpdate.mockResolvedValue({
+        hits: 5,
+        expiresAt: new Date("2026-03-03T13:00:00.000Z")
+    });
+
+    mongoose.connection.db = {
+        collection: jest.fn().mockReturnValue(collection)
+    };
+
+    const store = new MongoRateLimitStore({
+        windowMs: 5000,
+        prefix: "auth_rate"
+    });
+
+    const result = await store.increment("ip:legacy");
+
+    expect(result).toEqual({
+        totalHits: 5,
+        resetTime: new Date("2026-03-03T13:00:00.000Z")
     });
     expect(collection.updateOne).not.toHaveBeenCalled();
 });
@@ -153,4 +190,31 @@ test("init accepts runtime window override", () => {
     const store = new MongoRateLimitStore({ windowMs: 1000 });
     store.init({ windowMs: "2500" });
     expect(store.windowMs).toBe(2500);
+});
+
+test("init ignores invalid runtime window override", () => {
+    const store = new MongoRateLimitStore({ windowMs: 1000 });
+    store.init({ windowMs: "invalid" });
+    expect(store.windowMs).toBe(1000);
+});
+
+test("constructor and init default argument fallbacks are applied", () => {
+    const store = new MongoRateLimitStore();
+    expect(store.windowMs).toBe(15 * 60 * 1000);
+    expect(store.prefix).toBe("rate_limit");
+    expect(store.collectionName).toBe("rate_limits");
+
+    store.init();
+    expect(store.windowMs).toBe(15 * 60 * 1000);
+});
+
+test("constructor normalizes empty prefix and collectionName to defaults", () => {
+    const store = new MongoRateLimitStore({
+        windowMs: 1000,
+        prefix: "",
+        collectionName: ""
+    });
+
+    expect(store.prefix).toBe("rate_limit");
+    expect(store.collectionName).toBe("rate_limits");
 });

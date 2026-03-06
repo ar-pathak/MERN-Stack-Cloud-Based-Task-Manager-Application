@@ -95,6 +95,28 @@ test("join-chat emits not-member error when requester is not in chat", async () 
     });
 });
 
+test("join-chat emits chat-not-found error and joins room on authorized success", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io } = makeIo();
+
+    Chat.findById
+        .mockReturnValueOnce(makePopulateQuery(null))
+        .mockReturnValueOnce(makePopulateQuery({
+            _id: "chat-1",
+            members: [{ _id: "user-1" }, { _id: "user-2" }]
+        }));
+
+    registerChatSocket(io, socket);
+    await handlers["join-chat"]("chat-missing");
+    await handlers["join-chat"]("chat-1");
+
+    expect(socket.emit).toHaveBeenCalledWith("error", {
+        event: "chat",
+        reason: "Chat not found"
+    });
+    expect(socket.join).toHaveBeenCalledWith("chat-1");
+});
+
 test("join-chat emits internal error when authorisation lookup fails", async () => {
     const { socket, handlers } = makeSocket("user-1");
     const { io } = makeIo();
@@ -119,6 +141,16 @@ test("leave-chat ignores empty chat id", async () => {
     await handlers["leave-chat"](undefined);
 
     expect(socket.leave).not.toHaveBeenCalled();
+});
+
+test("leave-chat leaves room for valid chat id", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io } = makeIo();
+
+    registerChatSocket(io, socket);
+    await handlers["leave-chat"]("chat-1");
+
+    expect(socket.leave).toHaveBeenCalledWith("chat-1");
 });
 
 test("chat:send returns permission error without emitting member events", async () => {
@@ -147,6 +179,60 @@ test("chat:send returns permission error without emitting member events", async 
     expect(io.to).not.toHaveBeenCalledWith("user:user-2");
 });
 
+test("chat:send emits receive/update/unread events on successful permission check", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io, emit } = makeIo();
+
+    Chat.findById.mockReturnValue(makePopulateQuery({
+        _id: "chat-1",
+        members: [{ _id: "user-1" }, { _id: "user-2" }]
+    }));
+    chatService.assertCanSendSectionChat.mockResolvedValue({
+        isSectionChat: true,
+        canSend: true
+    });
+
+    registerChatSocket(io, socket);
+    await handlers["chat:send"]({
+        chatId: "chat-1",
+        message: { _id: "msg-1", content: "hello" }
+    });
+
+    expect(emit).toHaveBeenCalledWith("chat:receive", expect.objectContaining({
+        chatId: "chat-1"
+    }));
+    expect(emit).toHaveBeenCalledWith("overview:update", expect.objectContaining({
+        entity: "chat",
+        chatId: "chat-1"
+    }));
+    expect(emit).toHaveBeenCalledWith("overview:unread", {
+        chatId: "chat-1",
+        incrementBy: 1
+    });
+});
+
+test("chat:send emits internal error when non-403 permission check fails", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io } = makeIo();
+
+    Chat.findById.mockReturnValue(makePopulateQuery({
+        _id: "chat-1",
+        members: [{ _id: "user-1" }, { _id: "user-2" }]
+    }));
+    chatService.assertCanSendSectionChat.mockRejectedValue(new Error("permission lookup failed"));
+
+    registerChatSocket(io, socket);
+    await handlers["chat:send"]({
+        chatId: "chat-1",
+        message: { content: "hello" }
+    });
+
+    expect(socket.emit).toHaveBeenCalledWith("error", {
+        event: "chat:send",
+        reason: "Internal error"
+    });
+});
+
 test("chat:typing and chat:stop_typing emit to other chat members", async () => {
     const { socket, handlers } = makeSocket("user-1");
     const { io, emit } = makeIo();
@@ -171,6 +257,23 @@ test("chat:typing and chat:stop_typing emit to other chat members", async () => 
         chatId: "chat-1",
         userId: "user-1"
     });
+});
+
+test("chat:typing and stop_typing no-op when user cannot access chat", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io, emit } = makeIo();
+
+    Chat.findById.mockReturnValue(makePopulateQuery({
+        _id: "chat-1",
+        members: [{ _id: "user-2" }]
+    }));
+    User.findById.mockReturnValue(makeSelectResolved({ name: "Owner" }));
+
+    registerChatSocket(io, socket);
+    await handlers["chat:typing"]({ chatId: "chat-1" });
+    await handlers["chat:stop_typing"]({ chatId: "chat-1" });
+
+    expect(emit).not.toHaveBeenCalled();
 });
 
 test("chat:read updates readBy and emits read_update + unread reset", async () => {
@@ -217,6 +320,28 @@ test("chat:read updates readBy and emits read_update + unread reset", async () =
     });
 });
 
+test("chat:read exits early when reference message is missing", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io, emit } = makeIo();
+
+    Chat.findById.mockReturnValue(makePopulateQuery({
+        _id: "chat-1",
+        members: [{ _id: "user-1" }, { _id: "user-2" }]
+    }));
+    Message.findOne.mockReturnValue(makeSelectLeanQuery(null));
+
+    registerChatSocket(io, socket);
+    await handlers["chat:read"]({
+        chatId: "chat-1",
+        lastReadMessageId: "msg-missing"
+    });
+
+    expect(Message.updateMany).not.toHaveBeenCalled();
+    expect(emit).not.toHaveBeenCalledWith("overview:unread_reset", {
+        chatId: "chat-1"
+    });
+});
+
 test("chat:read emits internal error on message lookup failure", async () => {
     const { socket, handlers } = makeSocket("user-1");
     const { io } = makeIo();
@@ -240,5 +365,27 @@ test("chat:read emits internal error on message lookup failure", async () => {
     expect(socket.emit).toHaveBeenCalledWith("error", {
         event: "chat:read",
         reason: "Internal error"
+    });
+});
+
+test("disconnect marks user offline and emits status update", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io } = makeIo();
+    User.findByIdAndUpdate
+        .mockImplementationOnce(() => ({
+            select: jest.fn().mockResolvedValue({ _id: "user-1", isOnline: true })
+        }))
+        .mockResolvedValueOnce({ _id: "user-1", isOnline: false });
+
+    registerChatSocket(io, socket);
+    await handlers.disconnect();
+
+    expect(User.findByIdAndUpdate).toHaveBeenCalledWith(
+        "user-1",
+        { isOnline: false, lastSeen: expect.any(Date) }
+    );
+    expect(socket.broadcast.emit).toHaveBeenCalledWith("user:status", {
+        _id: "user-1",
+        isOnline: false
     });
 });

@@ -124,6 +124,40 @@ test("getFollowSuggestions wraps suggestions list inside data payload", async ()
     );
 });
 
+test("getFollowers/getFollowing apply default pagination when query values are absent", async () => {
+    const req = {
+        user: { _id: "user-1" },
+        params: { id: "user-2" },
+        query: {}
+    };
+    const res = createResponse();
+    followService.getFollowers.mockResolvedValue({ followers: [] });
+    followService.getFollowing.mockResolvedValue({ following: [] });
+
+    await controller.getFollowers(req, res);
+    await controller.getFollowing(req, res);
+
+    expect(followService.getFollowers).toHaveBeenCalledWith("user-2", "user-1", 1, 20);
+    expect(followService.getFollowing).toHaveBeenCalledWith("user-2", "user-1", 1, 20);
+});
+
+test("getFollowSuggestions and getPendingRequests apply default limits/pages", async () => {
+    const req = {
+        user: { _id: "user-1" },
+        params: { id: "user-2" },
+        query: {}
+    };
+    const res = createResponse();
+    followService.getFollowSuggestions.mockResolvedValue([]);
+    followService.getPendingRequests.mockResolvedValue({ requests: [] });
+
+    await controller.getFollowSuggestions(req, res);
+    await controller.getPendingRequests(req, res);
+
+    expect(followService.getFollowSuggestions).toHaveBeenCalledWith("user-1", 10);
+    expect(followService.getPendingRequests).toHaveBeenCalledWith("user-1", 1, 20);
+});
+
 test("getMutualFollowers wraps list and count in response data", async () => {
     const req = baseReq();
     const res = createResponse();
@@ -163,4 +197,29 @@ test("controller delegates service errors to handleError", async () => {
         success: false,
         message: "forbidden"
     });
+});
+
+test.each([
+    ["follow", "followUser"],
+    ["unfollow", "unfollowUser"],
+    ["getFollowers", "getFollowers"],
+    ["getFollowing", "getFollowing"],
+    ["checkFollowStatus", "checkIsFollowing"],
+    ["getMutualFollowers", "getMutualFollowers"],
+    ["getFollowSuggestions", "getFollowSuggestions"],
+    ["getPendingRequests", "getPendingRequests"],
+    ["approveFollowRequest", "approveFollowRequest"],
+    ["rejectFollowRequest", "rejectFollowRequest"]
+])("%s forwards service failures to handleError", async (handlerName, serviceMethod) => {
+    const req = baseReq();
+    const res = createResponse();
+    const error = new Error(`${handlerName} failed`);
+    error.statusCode = 422;
+
+    followService[serviceMethod].mockRejectedValue(error);
+
+    await controller[handlerName](req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
+    expect(res.statusCode).toBe(422);
 });

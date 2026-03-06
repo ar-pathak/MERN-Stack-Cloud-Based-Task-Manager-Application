@@ -326,3 +326,157 @@ test("sendVerificationEmail uses authenticated admin id", async () => {
     expect(AdminAuthService.sendVerificationEmail).toHaveBeenCalledWith("admin-1");
     expect(res.statusCode).toBe(200);
 });
+
+test.each([
+    {
+        handlerName: "register",
+        setup: () => {
+            registerAdminSchema.parse.mockReturnValue({ email: "admin@example.com" });
+            const error = new Error("register failed");
+            error.statusCode = 422;
+            AdminAuthService.register.mockRejectedValue(error);
+            return error;
+        },
+        req: { body: { email: "admin@example.com" } }
+    },
+    {
+        handlerName: "verifyLoginOtp",
+        setup: () => {
+            verifyAdminLoginOtpSchema.parse.mockReturnValue({ email: "admin@example.com", otp: "123456" });
+            const error = new Error("otp failed");
+            error.statusCode = 422;
+            AdminAuthService.verifyLoginOtp.mockRejectedValue(error);
+            return error;
+        },
+        req: { body: { email: "admin@example.com", otp: "123456" } }
+    },
+    {
+        handlerName: "me",
+        setup: () => {
+            const error = new Error("me failed");
+            error.statusCode = 422;
+            AdminAuthService.getMe.mockRejectedValue(error);
+            return error;
+        },
+        req: { admin: { _id: "admin-1" } }
+    },
+    {
+        handlerName: "forgotPassword",
+        setup: () => {
+            forgotAdminPasswordSchema.parse.mockReturnValue({ email: "admin@example.com" });
+            const error = new Error("forgot failed");
+            error.statusCode = 422;
+            AdminAuthService.forgotPassword.mockRejectedValue(error);
+            return error;
+        },
+        req: { body: { email: "admin@example.com" } }
+    },
+    {
+        handlerName: "requestVerificationByEmail",
+        setup: () => {
+            requestAdminVerificationSchema.parse.mockReturnValue({ email: "admin@example.com" });
+            const error = new Error("request verification failed");
+            error.statusCode = 422;
+            AdminAuthService.requestVerificationByEmail.mockRejectedValue(error);
+            return error;
+        },
+        req: { body: { email: "admin@example.com" } }
+    },
+    {
+        handlerName: "resetPassword",
+        setup: () => {
+            resetAdminPasswordSchema.parse.mockReturnValue({
+                token: "a".repeat(64),
+                password: "N3w@Pass123"
+            });
+            const error = new Error("reset failed");
+            error.statusCode = 422;
+            AdminAuthService.resetPassword.mockRejectedValue(error);
+            return error;
+        },
+        req: {
+            params: { token: "a".repeat(64) },
+            body: { password: "N3w@Pass123" }
+        }
+    },
+    {
+        handlerName: "sendVerificationEmail",
+        setup: () => {
+            const error = new Error("send verification failed");
+            error.statusCode = 422;
+            AdminAuthService.sendVerificationEmail.mockRejectedValue(error);
+            return error;
+        },
+        req: { admin: { _id: "admin-1" } }
+    },
+    {
+        handlerName: "verifyEmail",
+        setup: () => {
+            verifyAdminEmailSchema.parse.mockReturnValue({ token: "b".repeat(64) });
+            const error = new Error("verify failed");
+            error.statusCode = 422;
+            AdminAuthService.verifyEmail.mockRejectedValue(error);
+            return error;
+        },
+        req: { params: { token: "b".repeat(64) }, body: {} }
+    }
+])("$handlerName delegates thrown errors to handleError", async ({ handlerName, setup, req }) => {
+    const expectedError = setup();
+    const res = createResponse();
+
+    await AdminAuthController[handlerName](req, res);
+
+    expect(handleError).toHaveBeenCalledWith(expectedError, res);
+    expect(res.statusCode).toBe(422);
+});
+
+test("schemas receive fallback empty payloads when request body is missing", async () => {
+    const res = createResponse();
+
+    registerAdminSchema.parse.mockReturnValue({ email: "admin@example.com" });
+    AdminAuthService.register.mockResolvedValue({ admin: { _id: "admin-1" } });
+    await AdminAuthController.register({}, res);
+    expect(registerAdminSchema.parse).toHaveBeenCalledWith({});
+
+    loginAdminSchema.parse.mockReturnValue({ email: "admin@example.com" });
+    AdminAuthService.login.mockResolvedValue({ accessToken: "token", admin: { _id: "admin-1" } });
+    await AdminAuthController.login({}, res);
+    expect(loginAdminSchema.parse).toHaveBeenCalledWith({});
+
+    verifyAdminLoginOtpSchema.parse.mockReturnValue({ email: "admin@example.com", otp: "123456" });
+    AdminAuthService.verifyLoginOtp.mockResolvedValue({ accessToken: "token", admin: { _id: "admin-1" } });
+    await AdminAuthController.verifyLoginOtp({}, res);
+    expect(verifyAdminLoginOtpSchema.parse).toHaveBeenCalledWith({});
+
+    forgotAdminPasswordSchema.parse.mockReturnValue({ email: "admin@example.com" });
+    AdminAuthService.forgotPassword.mockResolvedValue({ message: "ok" });
+    await AdminAuthController.forgotPassword({}, res);
+    expect(forgotAdminPasswordSchema.parse).toHaveBeenCalledWith({});
+
+    requestAdminVerificationSchema.parse.mockReturnValue({ email: "admin@example.com" });
+    AdminAuthService.requestVerificationByEmail.mockResolvedValue({ message: "ok" });
+    await AdminAuthController.requestVerificationByEmail({}, res);
+    expect(requestAdminVerificationSchema.parse).toHaveBeenCalledWith({});
+});
+
+test("resetPassword and verifyEmail support fallback token extraction paths", async () => {
+    const res = createResponse();
+
+    resetAdminPasswordSchema.parse.mockReturnValue({
+        token: "tkn",
+        password: "N3w@Pass123"
+    });
+    AdminAuthService.resetPassword.mockResolvedValue({ message: "ok" });
+    await AdminAuthController.resetPassword({ params: {}, body: undefined }, res);
+    expect(resetAdminPasswordSchema.parse).toHaveBeenCalledWith({ token: undefined });
+
+    verifyAdminEmailSchema.parse.mockReturnValue({ token: "body-token" });
+    AdminAuthService.verifyEmail.mockResolvedValue({ message: "ok" });
+    await AdminAuthController.verifyEmail({
+        params: {},
+        body: { token: "body-token" }
+    }, res);
+    expect(verifyAdminEmailSchema.parse).toHaveBeenCalledWith({
+        token: "body-token"
+    });
+});

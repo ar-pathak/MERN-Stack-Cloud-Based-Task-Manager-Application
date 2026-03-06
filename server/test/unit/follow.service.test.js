@@ -845,3 +845,364 @@ test("rejectFollowRequest handles not-found and notification-update errors", asy
     );
     consoleErrorSpy.mockRestore();
 });
+
+test("followUser validates user existence and account activity before creating relation", async () => {
+    const makeActiveUser = (id) => ({
+        _id: id,
+        username: `user-${id}`,
+        accountStatus: "active",
+        blockedUsers: [],
+        isPrivate: false,
+        preferences: { notifications: { follows: true } }
+    });
+
+    const sessionMissingCurrent = createSession();
+    mongoose.startSession.mockResolvedValueOnce(sessionMissingCurrent);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession(null))
+        .mockReturnValueOnce(mockSelectSession(makeActiveUser("u2")));
+    await expect(followService.followUser("u1", "u2"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+
+    const sessionMissingTarget = createSession();
+    mongoose.startSession.mockResolvedValueOnce(sessionMissingTarget);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession(makeActiveUser("u1")))
+        .mockReturnValueOnce(mockSelectSession(null));
+    await expect(followService.followUser("u1", "u2"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+
+    const sessionInactiveCurrent = createSession();
+    mongoose.startSession.mockResolvedValueOnce(sessionInactiveCurrent);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({
+            ...makeActiveUser("u1"),
+            accountStatus: "suspended"
+        }))
+        .mockReturnValueOnce(mockSelectSession(makeActiveUser("u2")));
+    await expect(followService.followUser("u1", "u2"))
+        .rejects
+        .toMatchObject({ message: "Your account is not active", statusCode: 403 });
+
+    const sessionInactiveTarget = createSession();
+    mongoose.startSession.mockResolvedValueOnce(sessionInactiveTarget);
+    User.findById
+        .mockReturnValueOnce(mockSelectSession(makeActiveUser("u1")))
+        .mockReturnValueOnce(mockSelectSession({
+            ...makeActiveUser("u2"),
+            accountStatus: "disabled"
+        }));
+    await expect(followService.followUser("u1", "u2"))
+        .rejects
+        .toMatchObject({ message: "Cannot follow inactive user", statusCode: 403 });
+});
+
+test("followUser notification metadata maps reverse follow state variations", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    User.findByIdAndUpdate.mockResolvedValue({});
+    Follow.create.mockResolvedValue([{ _id: "follow-x" }]);
+
+    const configureSuccessPath = (reverseRelation) => {
+        User.findById
+            .mockReturnValueOnce(mockSelectSession({
+                _id: "u1",
+                name: "",
+                username: "",
+                accountStatus: "active",
+                blockedUsers: []
+            }))
+            .mockReturnValueOnce(mockSelectSession({
+                _id: "u2",
+                username: "bob",
+                accountStatus: "active",
+                isPrivate: false,
+                blockedUsers: [],
+                preferences: { notifications: { follows: true } }
+            }));
+        Follow.findOne
+            .mockReturnValueOnce(mockSessionQuery(reverseRelation))
+            .mockReturnValueOnce(mockSessionQuery(null));
+    };
+
+    configureSuccessPath({ isApproved: true });
+    await followService.followUser("u1", "u2");
+    expect(notificationService.createNotifications).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+            metadata: expect.objectContaining({
+                followActionState: "following"
+            })
+        })
+    );
+
+    configureSuccessPath({ isApproved: false });
+    await followService.followUser("u1", "u2");
+    expect(notificationService.createNotifications).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+            metadata: expect.objectContaining({
+                followActionState: "requested"
+            }),
+            message: "Someone started following you"
+        })
+    );
+});
+
+test("followUser blocked-user detection supports nested id shapes", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+
+    const currentUserId = { toString: () => "u1" };
+    const targetUserId = { toString: () => "u2", _id: { toHexString: () => "u2" } };
+
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({
+            _id: "u1",
+            username: "alice",
+            accountStatus: "active",
+            blockedUsers: [{ _id: { toHexString: () => "u2" } }]
+        }))
+        .mockReturnValueOnce(mockSelectSession({
+            _id: "u2",
+            username: "bob",
+            accountStatus: "active",
+            isPrivate: false,
+            blockedUsers: [],
+            preferences: { notifications: { follows: true } }
+        }));
+
+    await expect(followService.followUser(currentUserId, targetUserId))
+        .rejects
+        .toMatchObject({ message: "Unblock this user before following", statusCode: 403 });
+});
+
+test("assertCanViewConnections validates required ids and user activity", async () => {
+    await expect(followService.assertCanViewConnections(null, "u1"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+
+    User.findById
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "u2",
+            accountStatus: "disabled",
+            isPrivate: false,
+            blockedUsers: []
+        }))
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "u1",
+            accountStatus: "active",
+            blockedUsers: []
+        }));
+    await expect(followService.assertCanViewConnections("u2", "u1"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+
+    User.findById
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "u2",
+            accountStatus: "active",
+            isPrivate: false,
+            blockedUsers: []
+        }))
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "u1",
+            accountStatus: "disabled",
+            blockedUsers: []
+        }));
+    await expect(followService.assertCanViewConnections("u2", "u1"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+});
+
+test("getFollowers supports anonymous viewer and empty follower population", async () => {
+    jest.spyOn(followService, "assertCanViewConnections").mockResolvedValue(undefined);
+    Follow.countDocuments.mockResolvedValue(2);
+
+    Follow.find.mockReturnValueOnce(mockFindListQuery([
+        {
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            follower: { _id: "u2", username: "bob" }
+        },
+        {
+            createdAt: new Date("2026-01-02T00:00:00.000Z"),
+            follower: null
+        }
+    ]));
+
+    const anonymous = await followService.getFollowers("target-1", null, 1, 10);
+    expect(anonymous.followers).toEqual([
+        expect.objectContaining({
+            _id: "u2",
+            isFollowing: undefined,
+            isFollowedBy: undefined
+        })
+    ]);
+    expect(Follow.checkMultipleRelationships).not.toHaveBeenCalled();
+
+    Follow.find.mockReturnValueOnce(mockFindListQuery([
+        {
+            createdAt: new Date("2026-01-03T00:00:00.000Z"),
+            follower: null
+        }
+    ]));
+    Follow.checkMultipleRelationships.mockResolvedValue({});
+
+    const emptyFollowerIds = await followService.getFollowers("target-1", "viewer-1", 1, 10);
+    expect(emptyFollowerIds.followers).toEqual([]);
+    expect(Follow.checkMultipleRelationships).toHaveBeenCalledWith("viewer-1", []);
+});
+
+test("getFollowing supports anonymous viewer and ignores invalid self ids", async () => {
+    jest.spyOn(followService, "assertCanViewConnections").mockResolvedValue(undefined);
+    Follow.countDocuments.mockResolvedValue(1);
+
+    Follow.find.mockReturnValueOnce(mockFindListQuery([
+        {
+            createdAt: new Date("2026-01-01T00:00:00.000Z"),
+            following: { _id: "u2", username: "bob" }
+        }
+    ]));
+
+    const anonymous = await followService.getFollowing("target-1", null, 1, 10);
+    expect(anonymous.following).toEqual([
+        expect.objectContaining({
+            _id: "u2",
+            isFollowing: undefined,
+            isFollowedBy: undefined
+        })
+    ]);
+
+    Follow.find
+        .mockReturnValueOnce(mockFindListQuery([
+            {
+                createdAt: new Date("2026-01-02T00:00:00.000Z"),
+                following: { _id: {}, username: "odd" }
+            }
+        ]))
+        .mockReturnValueOnce({
+            select: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([])
+            })
+        });
+
+    const selfResult = await followService.getFollowing("u1", "u1", 1, 10);
+    expect(selfResult.following).toHaveLength(1);
+    expect(selfResult.following[0]).toEqual(expect.objectContaining({
+        username: "odd",
+        isFollowing: undefined
+    }));
+});
+
+test("checkIsFollowing returns false for self relationship", async () => {
+    const result = await followService.checkIsFollowing("u1", "u1");
+    expect(result).toEqual({ isFollowing: false, isApproved: false });
+    expect(Follow.checkRelationship).not.toHaveBeenCalled();
+});
+
+test("getFollowSuggestions applies default limit when omitted", async () => {
+    Follow.find
+        .mockReturnValueOnce({
+            distinct: jest.fn().mockResolvedValue(["u2"])
+        })
+        .mockReturnValueOnce({
+            distinct: jest.fn().mockResolvedValue([])
+        });
+    Follow.aggregate.mockResolvedValue([{ _id: "u3", count: 1 }]);
+    User.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            lean: jest.fn().mockResolvedValue([{ _id: "u3", username: "new" }])
+        })
+    });
+
+    const result = await followService.getFollowSuggestions("u1");
+    expect(result).toEqual([{ _id: "u3", username: "new" }]);
+    expect(Follow.aggregate).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ $limit: 20 })])
+    );
+});
+
+test("removeFollower does not update counters for unapproved relation", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Follow.findOne.mockReturnValue(mockSessionQuery({
+        _id: "follow-pending",
+        follower: "u2",
+        following: "u1",
+        isApproved: false
+    }));
+    Follow.findByIdAndDelete.mockReturnValue(mockSessionQuery({}));
+
+    const result = await followService.removeFollower("u1", "u2");
+
+    expect(result).toEqual({ success: true });
+    expect(User.findByIdAndUpdate).not.toHaveBeenCalled();
+});
+
+test("getPendingRequests rejects missing or inactive users", async () => {
+    User.findById
+        .mockReturnValueOnce(mockSelectLean(null))
+        .mockReturnValueOnce(mockSelectLean({
+            _id: "u1",
+            accountStatus: "inactive",
+            isPrivate: true
+        }));
+
+    await expect(followService.getPendingRequests("u1"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+    await expect(followService.getPendingRequests("u1"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+});
+
+test("approveFollowRequest handles missing user docs and disabled notification preference", async () => {
+    const session = createSession();
+    mongoose.startSession.mockResolvedValue(session);
+    Follow.findOne.mockReturnValueOnce(mockSessionQuery({
+        _id: "req-5",
+        follower: "u2",
+        isApproved: false,
+        save: jest.fn().mockResolvedValue(undefined)
+    }));
+    User.findById
+        .mockReturnValueOnce(mockSelectSession(null))
+        .mockReturnValueOnce(mockSelectSession({
+            _id: "u2",
+            username: "bob",
+            blockedUsers: [],
+            preferences: { notifications: { follows: true } }
+        }));
+
+    await expect(followService.approveFollowRequest("u1", "req-5"))
+        .rejects
+        .toMatchObject({ message: "User not found", statusCode: 404 });
+
+    const nextSession = createSession();
+    mongoose.startSession.mockResolvedValueOnce(nextSession);
+    const followRequest = {
+        _id: "req-6",
+        follower: "u2",
+        isApproved: false,
+        save: jest.fn().mockResolvedValue(undefined)
+    };
+    Follow.findOne.mockReturnValueOnce(mockSessionQuery(followRequest));
+    User.findById
+        .mockReturnValueOnce(mockSelectSession({
+            _id: "u1",
+            name: "Alice",
+            blockedUsers: []
+        }))
+        .mockReturnValueOnce(mockSelectSession({
+            _id: "u2",
+            username: "bob",
+            blockedUsers: [],
+            preferences: { notifications: { follows: false } }
+        }));
+    User.findByIdAndUpdate.mockResolvedValue({});
+    notificationService.setFollowRequestNotificationState.mockResolvedValue({});
+
+    const result = await followService.approveFollowRequest("u1", "req-6");
+    expect(result).toEqual({ success: true });
+    expect(notificationService.createNotifications).not.toHaveBeenCalled();
+});

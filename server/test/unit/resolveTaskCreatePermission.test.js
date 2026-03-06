@@ -257,3 +257,114 @@ test("returns false when no workspace, project, or team context is provided", as
 
     expect(allowed).toBe(false);
 });
+
+test("requireProjectAdminOrWorkspaceOwner skips workspace refetch when scoped member matches project workspace", async () => {
+    WorkspaceMember.findOne.mockReturnValue(mockSelect({ role: "member" }));
+    Project.findById.mockReturnValue(mockSelectLean(createProject({
+        workspace: "workspace-1",
+        owner: "owner-2",
+        members: [],
+        teams: ["team-1"]
+    })));
+    Team.findOne.mockReturnValue(mockSelectLean(null));
+
+    const allowed = await canCreateTask({
+        userId: "user-1",
+        workspaceId: "workspace-1",
+        projectId: "project-1",
+        requireProjectAdminOrWorkspaceOwner: true
+    });
+
+    expect(WorkspaceMember.findOne).toHaveBeenCalledTimes(1);
+    expect(allowed).toBe(false);
+});
+
+test("project flow allows direct project owner when admin-only flags are disabled", async () => {
+    Project.findById.mockReturnValue(mockSelectLean(createProject({
+        owner: "user-1",
+        teams: []
+    })));
+
+    const allowed = await canCreateTask({
+        userId: "user-1",
+        projectId: "project-1"
+    });
+
+    expect(allowed).toBe(true);
+});
+
+test("project flow allows assigned team lead and member fallback without scoped teams", async () => {
+    Project.findById
+        .mockReturnValueOnce(mockSelectLean(createProject({
+            owner: "owner-1",
+            members: [{ user: "user-1", role: "member" }],
+            teams: ["team-1"]
+        })))
+        .mockReturnValueOnce(mockSelectLean(createProject({
+            owner: "owner-1",
+            members: [{ user: "user-1", role: "member" }],
+            teams: []
+        })));
+    Team.findOne.mockReturnValue(mockSelectLean({ _id: "team-1" }));
+
+    const scopedTeamAllowed = await canCreateTask({
+        userId: "user-1",
+        projectId: "project-1",
+        teamIds: ["team-1"]
+    });
+
+    const memberFallbackAllowed = await canCreateTask({
+        userId: "user-1",
+        projectId: "project-1",
+        teamIds: []
+    });
+
+    expect(scopedTeamAllowed).toBe(true);
+    expect(memberFallbackAllowed).toBe(true);
+});
+
+test("project flow falls back to workspace owner/admin when user is not project member", async () => {
+    WorkspaceMember.findOne.mockReturnValue(mockSelect({ role: "owner" }));
+    Project.findById.mockReturnValue(mockSelectLean(createProject({
+        owner: "owner-2",
+        members: [],
+        teams: []
+    })));
+
+    const allowed = await canCreateTask({
+        userId: "user-1",
+        workspaceId: "workspace-1",
+        projectId: "project-1"
+    });
+
+    expect(allowed).toBe(true);
+});
+
+test("team-level fallback returns false when no matching team membership exists", async () => {
+    Team.findOne.mockReturnValue(mockLean(null));
+
+    const allowed = await canCreateTask({
+        userId: "user-1",
+        teamId: "team-unknown"
+    });
+
+    expect(allowed).toBe(false);
+});
+
+test("requestedTeamIds ignores non-array teamIds and falsy entries", async () => {
+    Team.findOne.mockReturnValue(mockLean({
+        members: [{ user: "user-1", role: "lead" }]
+    }));
+
+    const allowed = await canCreateTask({
+        userId: "user-1",
+        teamIds: "not-an-array",
+        teamId: "team-1"
+    });
+
+    expect(Team.findOne).toHaveBeenCalledWith({
+        _id: { $in: ["team-1"] },
+        "members.user": "user-1"
+    });
+    expect(allowed).toBe(true);
+});

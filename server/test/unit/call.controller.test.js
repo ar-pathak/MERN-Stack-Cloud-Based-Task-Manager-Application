@@ -131,6 +131,36 @@ test("getCallHistory applies filters and transforms entries", async () => {
     });
 });
 
+test("getCallHistory uses safe defaults for invalid pagination and ignores invalid type filter", async () => {
+    Call.find.mockReturnValue(makeListQuery([]));
+    Call.countDocuments.mockResolvedValue(0);
+
+    const req = {
+        user: { _id: USER_ID },
+        query: {
+            page: "not-a-number",
+            limit: "999",
+            type: "invalid",
+            status: "ringing"
+        }
+    };
+    const res = createResponse();
+
+    await CallController.getCallHistory(req, res);
+
+    expect(Call.find).toHaveBeenCalledWith(expect.objectContaining({
+        status: "ringing"
+    }));
+    expect(Call.find.mock.calls[0][0].type).toBeUndefined();
+    expect(res.body.data.pagination).toEqual({
+        page: 1,
+        limit: 50,
+        total: 0,
+        totalPages: 0,
+        hasMore: false
+    });
+});
+
 test("getCallHistory delegates unexpected errors to handleError", async () => {
     const error = new Error("db error");
     Call.find.mockImplementation(() => {
@@ -217,6 +247,52 @@ test("getActiveCall returns active call with activeParticipants only", async () 
     expect(res.statusCode).toBe(200);
     expect(res.body.data.activeCall.activeParticipants).toHaveLength(1);
     expect(String(res.body.data.activeCall.activeParticipants[0].userId._id)).toBe(USER_ID);
+});
+
+test("getActiveCall returns chat-scoped active call for authorized member", async () => {
+    Chat.findById.mockReturnValue(makeSelectResolved({
+        _id: "chat-1",
+        members: [USER_ID, PEER_ID]
+    }));
+    Call.findOne.mockReturnValue(makeFindOneQuery({
+        _id: "call-1",
+        chatId: { _id: "chat-1" },
+        participants: [{ userId: { _id: USER_ID }, leftAt: null }]
+    }));
+
+    const req = {
+        user: { _id: USER_ID },
+        query: { chatId: "chat-1" }
+    };
+    const res = createResponse();
+
+    await CallController.getActiveCall(req, res);
+
+    expect(Call.findOne).toHaveBeenCalledWith({
+        chatId: "chat-1",
+        status: { $in: ["ringing", "ongoing"] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.activeCall._id).toBe("call-1");
+});
+
+test("getActiveCall supports direct Chat.findById promise result without select()", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    Call.findOne.mockReturnValue(makeFindOneQuery(null));
+
+    const req = {
+        user: { _id: USER_ID },
+        query: { chatId: "chat-1" }
+    };
+    const res = createResponse();
+
+    await CallController.getActiveCall(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.activeCall).toBeNull();
 });
 
 test("getActiveCalls returns empty list when user has no chats", async () => {
@@ -372,6 +448,25 @@ test("getCallStatistics calculates aggregated counters", async () => {
     }));
 });
 
+test("getCallStatistics handles empty dataset with zero average duration", async () => {
+    Call.find.mockReturnValue({
+        lean: jest.fn().mockResolvedValue([])
+    });
+
+    const req = {
+        user: { _id: USER_ID },
+        query: { period: "bad-value" }
+    };
+    const res = createResponse();
+
+    await CallController.getCallStatistics(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.stats.total).toBe(0);
+    expect(res.body.data.stats.averageDuration).toBe(0);
+    expect(Number.isNaN(res.body.data.period)).toBe(true);
+});
+
 test("deleteCallHistory returns 404 when call does not exist", async () => {
     Call.findOne.mockResolvedValue(null);
 
@@ -460,6 +555,21 @@ test("clearCallHistory maps legacy nModified when modifiedCount is absent", asyn
     expect(res.body.data.updatedCount).toBe(3);
 });
 
+test("clearCallHistory reports zero when no update counters are returned", async () => {
+    Call.updateMany.mockResolvedValue({});
+
+    const req = {
+        user: { _id: USER_ID }
+    };
+    const res = createResponse();
+
+    await CallController.clearCallHistory(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.updatedCount).toBe(0);
+    expect(res.body.data.deletedCount).toBe(0);
+});
+
 test("getMissedCallsCount returns count payload", async () => {
     Call.countDocuments.mockResolvedValue(4);
 
@@ -488,6 +598,21 @@ test("markMissedCallsAsViewed returns success message", async () => {
     await CallController.markMissedCallsAsViewed(req, res);
 
     expect(sendSuccess).toHaveBeenCalledWith(res, { message: "Missed calls marked as viewed" });
+});
+
+test("markMissedCallsAsViewed delegates sendSuccess failures to handleError", async () => {
+    const req = {
+        user: { _id: USER_ID }
+    };
+    const res = createResponse();
+    const error = new Error("write failed");
+    sendSuccess.mockImplementationOnce(() => {
+        throw error;
+    });
+
+    await CallController.markMissedCallsAsViewed(req, res);
+
+    expect(handleError).toHaveBeenCalledWith(error, res);
 });
 
 test("getChatCallLogs returns 404 when chat does not exist", async () => {
@@ -552,6 +677,32 @@ test("getChatCallLogs returns paginated call logs for chat member", async () => 
         limit: 1,
         total: 3,
         totalPages: 3
+    });
+});
+
+test("getChatCallLogs supports direct chat lookup without select()", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    Call.find.mockReturnValue(makeListQuery([]));
+    Call.countDocuments.mockResolvedValue(0);
+
+    const req = {
+        user: { _id: USER_ID },
+        params: { chatId: "chat-1" },
+        query: { page: "bad", limit: "5000" }
+    };
+    const res = createResponse();
+
+    await CallController.getChatCallLogs(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.pagination).toEqual({
+        page: 1,
+        limit: 50,
+        total: 0,
+        totalPages: 0
     });
 });
 
@@ -621,4 +772,32 @@ test("submitCallFeedback persists rating and issue counters", async () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.message).toBe("Success");
     expect(res.body.data.message).toBe("Feedback submitted");
+});
+
+test("submitCallFeedback initializes quality object and tracks issues when rating is absent", async () => {
+    const callDoc = {
+        _id: "call-2",
+        participants: [{ userId: USER_ID }],
+        quality: null,
+        save: jest.fn().mockResolvedValue({})
+    };
+    Call.findById.mockResolvedValue(callDoc);
+
+    const req = {
+        user: { _id: USER_ID },
+        params: { callId: "call-2" },
+        body: {
+            rating: 0,
+            issues: ["network", "reconnection"]
+        }
+    };
+    const res = createResponse();
+
+    await CallController.submitCallFeedback(req, res);
+
+    expect(callDoc.quality).toEqual({
+        networkIssues: 1,
+        reconnections: 1
+    });
+    expect(callDoc.save).toHaveBeenCalledTimes(1);
 });
