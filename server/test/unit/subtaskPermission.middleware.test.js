@@ -198,6 +198,64 @@ test("canViewSubtask allows workspace member", async () => {
     expect(next).toHaveBeenCalledTimes(1);
 });
 
+test("canViewSubtask returns 404 when subtask does not exist", async () => {
+    Subtask.findById.mockReturnValue(mockSelect(null));
+
+    const req = createReq({ params: { subtaskId: "subtask-404" } });
+    const res = createRes();
+    const next = jest.fn();
+
+    await canViewSubtask(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: "Subtask not found" });
+});
+
+test("canViewSubtask allows direct task assignee", async () => {
+    Task.findById.mockReturnValue(mockSelect({
+        createdBy: "owner-2",
+        assignees: ["user-1"],
+        assigneesTeams: [],
+        workspace: null,
+        project: null
+    }));
+
+    const req = createReq({ params: { taskId: "task-1" } });
+    const res = createRes();
+    const next = jest.fn();
+
+    await canViewSubtask(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+});
+
+test("canViewSubtask allows assigned subtask member using req.user._id", async () => {
+    Subtask.findById.mockReturnValue(mockSelect({
+        createdBy: "owner-2",
+        assignedTo: ["user-1"],
+        task: "task-1"
+    }));
+    Task.findById.mockReturnValue(mockSelect({
+        createdBy: "owner-2",
+        assignees: [],
+        assigneesTeams: [],
+        workspace: null,
+        project: null
+    }));
+
+    const req = createReq({
+        user: { _id: "user-1" },
+        params: { subtaskId: "subtask-1" }
+    });
+    const res = createRes();
+    const next = jest.fn();
+
+    await canViewSubtask(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+});
+
 test("canViewSubtask allows project owner", async () => {
     Task.findById.mockReturnValue(mockSelect({
         createdBy: "owner-2",
@@ -209,6 +267,28 @@ test("canViewSubtask allows project owner", async () => {
     Project.findById.mockReturnValue(mockSelect({
         owner: "user-1",
         members: []
+    }));
+
+    const req = createReq({ params: { taskId: "task-1" } });
+    const res = createRes();
+    const next = jest.fn();
+
+    await canViewSubtask(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+});
+
+test("canViewSubtask allows project member", async () => {
+    Task.findById.mockReturnValue(mockSelect({
+        createdBy: "owner-2",
+        assignees: [],
+        assigneesTeams: [],
+        workspace: null,
+        project: "project-1"
+    }));
+    Project.findById.mockReturnValue(mockSelect({
+        owner: "owner-2",
+        members: [{ user: "user-1", role: "member" }]
     }));
 
     const req = createReq({ params: { taskId: "task-1" } });
@@ -265,4 +345,22 @@ test("canViewSubtask returns 403 for unauthorized user", async () => {
     expect(res.json).toHaveBeenCalledWith({
         message: "You do not have permission to view this subtask data"
     });
+});
+
+test("canViewSubtask returns 500 on unexpected errors", async () => {
+    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+    Task.findById.mockImplementation(() => {
+        throw new Error("task query failed");
+    });
+
+    const req = createReq({ params: { taskId: "task-1" } });
+    const res = createRes();
+    const next = jest.fn();
+
+    await canViewSubtask(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "Permission check failed" });
+    consoleErrorSpy.mockRestore();
 });
