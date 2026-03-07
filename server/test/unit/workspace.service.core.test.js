@@ -112,7 +112,12 @@ const makeSession = () => ({
 });
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    syncWorkspaceChats.mockResolvedValue(undefined);
+});
+
+afterEach(() => {
+    jest.restoreAllMocks();
 });
 
 test("createWorkspace creates workspace chat, membership, and activity", async () => {

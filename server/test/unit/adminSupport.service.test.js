@@ -431,3 +431,323 @@ test("listFeedback returns paginated feedback and rounded summary", async () => 
         hasMore: false
     });
 });
+
+test("listAgents falls back missing lastSeenAt to null", async () => {
+    AdminAccount.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    {
+                        _id: "507f1f77bcf86cd799439012",
+                        name: "Agent Two",
+                        email: "agent2@example.com",
+                        role: "owner"
+                    }
+                ])
+            })
+        })
+    });
+
+    const result = await AdminSupportService.listAgents();
+    expect(result).toEqual([
+        {
+            _id: "507f1f77bcf86cd799439012",
+            name: "Agent Two",
+            email: "agent2@example.com",
+            role: "owner",
+            lastSeenAt: null
+        }
+    ]);
+});
+
+test("getDashboardSummary returns zero-filled summaries when aggregates are empty", async () => {
+    SupportTicket.aggregate
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+    SupportTicket.countDocuments
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+
+    const result = await AdminSupportService.getDashboardSummary();
+
+    expect(result.totals).toEqual({
+        totalTickets: 0,
+        openTickets: 0,
+        unassigned: 0,
+        overdue: 0,
+        waitingForReply: 0
+    });
+    expect(result.statuses.every((entry) => entry.count === 0)).toBe(true);
+    expect(result.priorities.every((entry) => entry.count === 0)).toBe(true);
+    expect(result.categories.every((entry) => entry.count === 0)).toBe(true);
+});
+
+test("listTickets normalizes filters and default ticket summary fields", async () => {
+    SupportTicket.find.mockReturnValue(makeListQuery([
+        {
+            _id: "507f1f77bcf86cd799439099",
+            ticketNumber: "TKT-2001",
+            subject: "Regex + case?",
+            category: "privacy",
+            priority: "urgent",
+            status: "closed",
+            source: "contact",
+            requesterSnapshot: {},
+            assignee: null,
+            attachments: null,
+            comments: [],
+            updatedAt: null,
+            createdAt: new Date("2026-02-01T00:00:00.000Z")
+        }
+    ]));
+    SupportTicket.countDocuments
+        .mockResolvedValueOnce(2)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(0);
+    SupportTicket.aggregate
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([]);
+    AdminAccount.find.mockReturnValue({
+        select: jest.fn().mockReturnValue({
+            sort: jest.fn().mockReturnValue({
+                lean: jest.fn().mockResolvedValue([
+                    {
+                        _id: ADMIN_ID,
+                        name: "Agent One",
+                        email: "agent@example.com",
+                        role: "support_agent"
+                    }
+                ])
+            })
+        })
+    });
+
+    const result = await AdminSupportService.listTickets(
+        { _id: "invalid-admin-id" },
+        {
+            page: 0,
+            limit: 500,
+            status: "OPEN",
+            category: "PRIVACY",
+            priority: "URGENT",
+            source: "CONTACT",
+            assignee: "unassigned",
+            search: "a+b?"
+        }
+    );
+
+    expect(SupportTicket.find).toHaveBeenCalledWith(expect.objectContaining({
+        status: "open",
+        category: "privacy",
+        priority: "urgent",
+        source: "contact",
+        assignee: null,
+        $or: expect.any(Array)
+    }));
+    expect(String(SupportTicket.find.mock.calls[0][0].$or[0].ticketNumber)).toContain("a\\+b\\?");
+    expect(result.tickets[0]).toEqual(expect.objectContaining({
+        commentsCount: 0,
+        attachmentsCount: 0,
+        needsAdminResponse: false,
+        isOverdue: false,
+        assigneeSnapshot: {}
+    }));
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 100,
+        total: 2,
+        totalPages: 1,
+        hasMore: true
+    });
+});
+
+test("getTicketById returns empty comments and overdue false when comment data is absent", async () => {
+    SupportTicket.findById.mockReturnValue(makeFindByIdQuery({
+        _id: "507f1f77bcf86cd799439098",
+        status: "closed",
+        updatedAt: null,
+        comments: null
+    }));
+
+    const result = await AdminSupportService.getTicketById("507f1f77bcf86cd799439098");
+    expect(result.comments).toEqual([]);
+    expect(result.isOverdue).toBe(false);
+});
+
+test("updateTicketStatus throws for missing tickets and preserves existing assignee otherwise", async () => {
+    SupportTicket.findById.mockResolvedValueOnce(null);
+
+    await expect(AdminSupportService.updateTicketStatus(
+        { _id: ADMIN_ID },
+        "507f1f77bcf86cd799439097",
+        "closed"
+    )).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Support ticket not found"
+    });
+
+    const assignedTicket = {
+        _id: "507f1f77bcf86cd799439096",
+        status: "open",
+        assignee: "507f1f77bcf86cd799439012",
+        assigneeSnapshot: { name: "Assigned", email: "assigned@example.com" },
+        save: jest.fn().mockResolvedValue({}),
+        toObject: jest.fn().mockReturnValue({ status: "resolved" })
+    };
+    SupportTicket.findById.mockResolvedValueOnce(assignedTicket);
+
+    const result = await AdminSupportService.updateTicketStatus(
+        { _id: ADMIN_ID, name: "Agent One", email: "agent@example.com" },
+        "507f1f77bcf86cd799439096",
+        "resolved"
+    );
+
+    expect(assignedTicket.assignee).toBe("507f1f77bcf86cd799439012");
+    expect(assignedTicket.assigneeSnapshot).toEqual({
+        name: "Assigned",
+        email: "assigned@example.com"
+    });
+    expect(result).toEqual({ status: "resolved" });
+});
+
+test("assignTicket rejects missing ticket and assigns active admin snapshot", async () => {
+    SupportTicket.findById.mockResolvedValueOnce(null);
+
+    await expect(AdminSupportService.assignTicket(
+        "507f1f77bcf86cd799439095",
+        "507f1f77bcf86cd799439012"
+    )).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Support ticket not found"
+    });
+
+    const ticketDoc = {
+        _id: "507f1f77bcf86cd799439094",
+        assignee: null,
+        assigneeSnapshot: { name: "", email: "" },
+        save: jest.fn().mockResolvedValue({}),
+        toObject: jest.fn().mockReturnValue({ _id: "507f1f77bcf86cd799439094" })
+    };
+    SupportTicket.findById.mockResolvedValueOnce(ticketDoc);
+    AdminAccount.findOne.mockResolvedValueOnce({
+        _id: "507f1f77bcf86cd799439012",
+        name: "  Agent Two  ",
+        email: " agent2@example.com "
+    });
+
+    const result = await AdminSupportService.assignTicket(
+        "507f1f77bcf86cd799439094",
+        "507f1f77bcf86cd799439012"
+    );
+
+    expect(ticketDoc.assignee).toBe("507f1f77bcf86cd799439012");
+    expect(ticketDoc.assigneeSnapshot).toEqual({
+        name: "Agent Two",
+        email: "agent2@example.com"
+    });
+    expect(result).toEqual({ _id: "507f1f77bcf86cd799439094" });
+});
+
+test("addReply rejects invalid admin or missing ticket", async () => {
+    await expect(AdminSupportService.addReply(
+        { _id: "invalid-admin-id" },
+        "507f1f77bcf86cd799439093",
+        { body: "Reply" }
+    )).rejects.toMatchObject({
+        statusCode: 400,
+        message: "Invalid admin"
+    });
+
+    SupportTicket.findById.mockResolvedValueOnce(null);
+    await expect(AdminSupportService.addReply(
+        { _id: ADMIN_ID },
+        "507f1f77bcf86cd799439093",
+        { body: "Reply" }
+    )).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Support ticket not found"
+    });
+});
+
+test("addReply supports valid parent comments and inserted toObject payloads without reassignment", async () => {
+    const parentCommentId = new mongoose.Types.ObjectId("507f1f77bcf86cd799439091");
+    const comments = [
+        { _id: parentCommentId }
+    ];
+    comments.push = function pushWithSerializer(comment) {
+        return Array.prototype.push.call(this, {
+            ...comment,
+            toObject: () => ({
+                ...comment,
+                serialized: true
+            })
+        });
+    };
+
+    const ticketDoc = {
+        _id: "507f1f77bcf86cd799439092",
+        status: "in_progress",
+        assignee: "507f1f77bcf86cd799439012",
+        assigneeSnapshot: { name: "Assigned", email: "assigned@example.com" },
+        comments,
+        save: jest.fn().mockResolvedValue({})
+    };
+    SupportTicket.findById.mockResolvedValue(ticketDoc);
+
+    const result = await AdminSupportService.addReply(
+        { _id: ADMIN_ID },
+        "507f1f77bcf86cd799439092",
+        {
+            body: "  Follow-up  ",
+            parentCommentId: String(parentCommentId),
+            attachments: null
+        }
+    );
+
+    expect(ticketDoc.status).toBe("in_progress");
+    expect(ticketDoc.assignee).toBe("507f1f77bcf86cd799439012");
+    expect(result.comment).toEqual(expect.objectContaining({
+        body: "Follow-up",
+        serialized: true,
+        visibleToRequester: true,
+        attachments: []
+    }));
+    expect(result.comment.author).toEqual({
+        _id: ADMIN_ID,
+        name: "Aurora Team",
+        email: "",
+        role: "support_agent"
+    });
+});
+
+test("listFeedback uses default filters and zero summary for empty results", async () => {
+    SupportFeedback.find.mockReturnValue(makeListQuery([]));
+    SupportFeedback.countDocuments.mockResolvedValue(0);
+    SupportFeedback.aggregate.mockResolvedValue([]);
+
+    const result = await AdminSupportService.listFeedback({
+        page: 0,
+        limit: 0,
+        type: "all",
+        category: "all",
+        search: "   "
+    });
+
+    expect(SupportFeedback.find).toHaveBeenCalledWith({});
+    expect(result.summary).toEqual({
+        averageRating: 0,
+        total: 0
+    });
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 1,
+        hasMore: false
+    });
+});

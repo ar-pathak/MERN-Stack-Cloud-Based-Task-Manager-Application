@@ -1056,3 +1056,201 @@ test("disconnect ignores per-call mutation VersionError", async () => {
     registerCallSocket(io, socket);
     await expect(handlers.disconnect()).resolves.toBeUndefined();
 });
+
+test("call:start captures mobile device info and falls back caller label when name is missing", async () => {
+    const { socket, handlers } = makeSocket("user-1", "Mozilla/5.0 Mobile");
+    const { io } = makeIo();
+    const chat = {
+        _id: "chat-1",
+        type: "group",
+        members: [{ _id: "user-1" }, { _id: "user-2" }]
+    };
+    const newCall = {
+        _id: "call-mobile",
+        callerId: null,
+        chatId: "chat-1",
+        type: "audio",
+        mode: "group",
+        status: "ringing",
+        participants: [{ userId: "user-1", leftAt: null }],
+        populate: jest.fn().mockImplementation(async () => {
+            newCall.callerId = {};
+            return newCall;
+        })
+    };
+
+    Chat.findById.mockReturnValue(makePopulateResolved(chat));
+    Call.findOne.mockResolvedValue(null);
+    Call.create.mockResolvedValue(newCall);
+    Message.create.mockResolvedValue({ _id: "msg-mobile" });
+    Message.findById.mockReturnValue(makePopulateChainLeanResolved({
+        _id: "msg-mobile",
+        content: "A user started a audio call."
+    }));
+
+    registerCallSocket(io, socket);
+    await handlers["call:start"]({ chatId: "chat-1", type: "audio" });
+
+    expect(Call.create).toHaveBeenCalledWith(expect.objectContaining({
+        participants: [expect.objectContaining({
+            deviceInfo: expect.objectContaining({
+                deviceType: "mobile"
+            })
+        })]
+    }));
+    expect(Message.create).toHaveBeenCalledWith(expect.objectContaining({
+        content: "A user started a audio call."
+    }));
+});
+
+test("call:join uses tablet device info and skips media update when no media state is provided", async () => {
+    const { socket, handlers } = makeSocket("user-1", "Mozilla/5.0 (iPad)");
+    const { io } = makeIo();
+    const joinCallDoc = {
+        _id: "call-tablet",
+        status: "ongoing",
+        chatId: { _id: "chat-1" },
+        participants: [{ userId: "user-1", leftAt: null }],
+        addParticipant: jest.fn().mockResolvedValue(null),
+        updateParticipantMedia: jest.fn().mockResolvedValue(null)
+    };
+
+    Call.findById
+        .mockImplementationOnce(() => makePopulateResolved(joinCallDoc))
+        .mockImplementationOnce(() => makePopulateChainLeanResolved({
+            _id: "call-tablet",
+            participants: [{ userId: { _id: "user-1", name: "Alice" }, leftAt: null }]
+        }));
+    Chat.findById.mockReturnValue(makePopulateResolved({
+        _id: "chat-1",
+        members: [{ _id: "user-1" }]
+    }));
+
+    registerCallSocket(io, socket);
+    await handlers["call:join"]({ callId: "call-tablet" });
+
+    expect(joinCallDoc.addParticipant).toHaveBeenCalledWith("user-1", expect.objectContaining({
+        deviceType: "tablet"
+    }));
+    expect(joinCallDoc.updateParticipantMedia).not.toHaveBeenCalled();
+});
+
+test("call:invite uses caller fallback naming, two-user invite formatting, and null invite message payload", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io, events } = makeIo();
+
+    Call.findById
+        .mockImplementationOnce(() => makePopulateThenResolved({
+            _id: "call-1",
+            chatId: "chat-1",
+            status: "ongoing",
+            mode: "group",
+            type: "video",
+            callerId: { _id: "user-9", name: "Host" },
+            participants: [{ userId: { _id: "user-1" }, leftAt: null }]
+        }))
+        .mockImplementationOnce(() => makePopulateChainLeanResolved({
+            _id: "call-1",
+            participants: [{ userId: { _id: "user-1" }, leftAt: null }]
+        }));
+    Chat.findById.mockReturnValue(makePopulateResolved({
+        _id: "chat-1",
+        members: [
+            { _id: "user-1", name: "", username: "" },
+            { _id: "user-2", name: "Bob", username: "" },
+            { _id: "user-3", username: "cara" }
+        ]
+    }));
+    Message.create.mockResolvedValue({ _id: "msg-invite-null" });
+    Message.findById.mockReturnValue(makePopulateChainLeanResolved(null));
+
+    registerCallSocket(io, socket);
+    await handlers["call:invite"]({
+        callId: "call-1",
+        targetUserIds: ["user-2", "user-3"]
+    });
+
+    expect(Message.create).toHaveBeenCalledWith(expect.objectContaining({
+        content: "Host invited Bob and @cara to join the video call."
+    }));
+    expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+            room: "user:user-2",
+            event: "call:invited",
+            payload: expect.objectContaining({
+                inviterName: "Host",
+                chatName: null,
+                message: null
+            })
+        })
+    ]));
+});
+
+test("call:ice-candidate validates signaling payload and participant authorization", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io } = makeIo();
+
+    registerCallSocket(io, socket);
+
+    await handlers["call:ice-candidate"]({
+        callId: null,
+        candidate: {},
+        targetUserId: "user-2"
+    });
+    expect(socket.emit).toHaveBeenCalledWith("call:error", {
+        reason: "Invalid signaling payload"
+    });
+
+    Call.findById.mockReturnValueOnce(makeSelectLeanResolved({
+        _id: "call-1",
+        status: "ongoing",
+        participants: [{ userId: "user-2", leftAt: null }]
+    }));
+    await handlers["call:ice-candidate"]({
+        callId: "call-1",
+        candidate: {},
+        targetUserId: "user-2"
+    });
+    expect(socket.emit).toHaveBeenCalledWith("call:error", {
+        reason: "Not authorized for this call"
+    });
+
+    Call.findById.mockReturnValueOnce(makeSelectLeanResolved({
+        _id: "call-1",
+        status: "ongoing",
+        participants: [{ userId: "user-1", leftAt: null }]
+    }));
+    await handlers["call:ice-candidate"]({
+        callId: "call-1",
+        candidate: {},
+        targetUserId: "user-2"
+    });
+    expect(socket.emit).toHaveBeenCalledWith("call:error", {
+        reason: "Target user is not in this call"
+    });
+});
+
+test("disconnect leaves ongoing calls untouched when another participant remains", async () => {
+    const { socket, handlers } = makeSocket("user-1");
+    const { io, events } = makeIo();
+    const activeCall = {
+        _id: "call-still-active",
+        participants: [
+            { userId: "user-1", leftAt: null },
+            { userId: "user-2", leftAt: null }
+        ],
+        removeParticipant: jest.fn().mockImplementation(async () => {
+            activeCall.participants[0].leftAt = new Date("2026-01-01T00:00:00.000Z");
+        }),
+        save: jest.fn()
+    };
+
+    Call.find.mockResolvedValue([activeCall]);
+
+    registerCallSocket(io, socket);
+    await handlers.disconnect();
+
+    expect(activeCall.removeParticipant).toHaveBeenCalledWith("user-1");
+    expect(activeCall.save).not.toHaveBeenCalled();
+    expect(events.find((entry) => entry.event === "call:ended")).toBeUndefined();
+});

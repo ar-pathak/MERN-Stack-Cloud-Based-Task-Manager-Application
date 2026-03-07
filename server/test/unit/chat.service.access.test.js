@@ -308,3 +308,172 @@ test("resolveSubtaskAccess returns no access for missing task chain", async () =
     });
 });
 
+test("resolveWorkspaceAccess handles missing workspace and missing membership", async () => {
+    const Workspace = require("../../src/models/workspace");
+    const WorkspaceMember = require("../../src/models/workspaceMember");
+
+    Workspace.findById.mockReturnValue(makeSelectLeanQuery(null));
+    await expect(chatService.resolveWorkspaceAccess("workspace-404", USER_ID)).resolves.toEqual({
+        isMember: false,
+        role: null,
+        source: "workspace",
+        canView: false,
+        canSend: false
+    });
+
+    WorkspaceMember.findOne.mockReturnValue(makeSelectLeanQuery(null));
+    await expect(chatService.resolveWorkspaceAccess(
+        "workspace-1",
+        USER_ID,
+        { _id: "workspace-1", createdBy: OTHER_ID }
+    )).resolves.toEqual({
+        isMember: false,
+        role: null,
+        source: "workspace",
+        canView: false,
+        canSend: false
+    });
+});
+
+test("resolveWorkspaceAccess defaults missing membership role to member", async () => {
+    const WorkspaceMember = require("../../src/models/workspaceMember");
+
+    WorkspaceMember.findOne.mockReturnValue(makeSelectLeanQuery({ role: undefined }));
+    await expect(chatService.resolveWorkspaceAccess(
+        "workspace-1",
+        USER_ID,
+        { _id: "workspace-1", createdBy: OTHER_ID }
+    )).resolves.toEqual({
+        isMember: true,
+        role: "member",
+        source: "workspace",
+        canView: true,
+        canSend: true
+    });
+});
+
+test("resolveTeamAccess handles no matching team and default member role", async () => {
+    const Team = require("../../src/models/team");
+
+    Team.findOne.mockReturnValueOnce(makeSelectLeanQuery(null));
+    await expect(chatService.resolveTeamAccess(["team-1"], USER_ID)).resolves.toEqual({
+        isMember: false,
+        role: null,
+        source: "team",
+        canView: false,
+        canSend: false
+    });
+
+    Team.findOne.mockReturnValueOnce(makeSelectLeanQuery({
+        members: [{ user: USER_ID, role: undefined }]
+    }));
+    await expect(chatService.resolveTeamAccess(["team-1", "team-1", ""], USER_ID)).resolves.toEqual({
+        isMember: true,
+        role: "member",
+        source: "team",
+        canView: true,
+        canSend: true
+    });
+});
+
+test("resolveProjectAccess returns no access when workspace/team fallback cannot send", async () => {
+    jest.spyOn(chatService, "resolveWorkspaceAccess").mockResolvedValue({
+        isMember: true,
+        role: "member",
+        source: "workspace",
+        canView: true,
+        canSend: true
+    });
+    jest.spyOn(chatService, "resolveTeamAccess").mockResolvedValue({
+        isMember: false,
+        role: null,
+        source: "team",
+        canView: false,
+        canSend: false
+    });
+
+    await expect(chatService.resolveProjectAccess({
+        owner: OTHER_ID,
+        members: [],
+        workspace: "workspace-1",
+        teams: []
+    }, USER_ID)).resolves.toEqual({
+        isMember: false,
+        role: null,
+        source: "project",
+        canView: false,
+        canSend: false
+    });
+});
+
+test("resolveTaskAccess returns no access when fallbacks are non-admin roles", async () => {
+    Project.findById.mockReturnValue(makeSelectLeanQuery({
+        _id: "project-1",
+        owner: OTHER_ID,
+        members: [{ user: USER_ID, role: "member" }],
+        workspace: "workspace-1"
+    }));
+    jest.spyOn(chatService, "resolveWorkspaceAccess").mockResolvedValue({
+        isMember: true,
+        role: "viewer",
+        source: "workspace",
+        canView: true,
+        canSend: false
+    });
+    jest.spyOn(chatService, "resolveTeamAccess").mockResolvedValue({
+        isMember: false,
+        role: null,
+        source: "team",
+        canView: false,
+        canSend: false
+    });
+
+    await expect(chatService.resolveTaskAccess({
+        createdBy: OTHER_ID,
+        assignees: [],
+        assigneesTeams: [],
+        project: "project-1",
+        workspace: "workspace-1"
+    }, USER_ID)).resolves.toEqual({
+        isMember: false,
+        role: null,
+        source: "task",
+        canView: false,
+        canSend: false
+    });
+});
+
+test("resolveSectionAccessByChat routes workspace and subtask scopes", async () => {
+    jest.spyOn(chatService, "findSectionScopeByChatId")
+        .mockResolvedValueOnce({ type: "workspace", entity: { _id: "workspace-1" } })
+        .mockResolvedValueOnce({ type: "subtask", entity: { _id: "subtask-1" } });
+
+    jest.spyOn(chatService, "resolveWorkspaceAccess").mockResolvedValue({
+        isMember: true,
+        role: "owner",
+        source: "workspace",
+        canView: true,
+        canSend: true
+    });
+    jest.spyOn(chatService, "resolveSubtaskAccess").mockResolvedValue({
+        isMember: true,
+        role: "assignee",
+        source: "subtask",
+        canView: true,
+        canSend: true
+    });
+
+    const workspaceAccess = await chatService.resolveSectionAccessByChat("chat-workspace", USER_ID);
+    const subtaskAccess = await chatService.resolveSectionAccessByChat("chat-subtask", USER_ID);
+
+    expect(workspaceAccess).toEqual(expect.objectContaining({
+        isSectionChat: true,
+        scopeType: "workspace",
+        role: "owner"
+    }));
+    expect(subtaskAccess).toEqual(expect.objectContaining({
+        isSectionChat: true,
+        scopeType: "subtask",
+        role: "assignee"
+    }));
+});

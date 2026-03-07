@@ -795,3 +795,802 @@ test("leaveGroup deletes chat when last member leaves", async () => {
     expect(Chat.findByIdAndDelete).toHaveBeenCalledWith("chat-1");
     expect(result).toEqual({ deleted: true });
 });
+
+test("assertCanMessageTarget rejects when sender has blocked target via nested id shape", async () => {
+    User.findById
+        .mockReturnValueOnce(makeSelectLeanQuery({
+            _id: USER_ID,
+            accountStatus: "active",
+            blockedUsers: [{ _id: { toHexString: () => TARGET_ID } }]
+        }))
+        .mockReturnValueOnce(makeSelectLeanQuery({
+            _id: TARGET_ID,
+            accountStatus: "active",
+            blockedUsers: []
+        }));
+    Follow.checkRelationship.mockResolvedValue({ isFollowing: true });
+
+    await expect(chatService.assertCanMessageTarget(USER_ID, { _id: { toHexString: () => TARGET_ID } }))
+        .rejects
+        .toMatchObject({
+            message: "Unblock this user before sending a message",
+            statusCode: 403
+        });
+});
+
+test("inferAttachmentType falls back to file when first attachment type is missing", () => {
+    expect(chatService.inferAttachmentType([{}])).toBe("file");
+});
+
+test("checkPrivateChatExists returns null when private chat does not exist", async () => {
+    Chat.findOne.mockReturnValue(makeSelectResolvedQuery(null));
+    await expect(chatService.checkPrivateChatExists(USER_ID, TARGET_ID)).resolves.toBeNull();
+});
+
+test("sendMessage rejects when chat does not exist", async () => {
+    Chat.findById.mockResolvedValue(null);
+
+    await expect(chatService.sendMessage(USER_ID, "chat-missing", "hello", [], null, null))
+        .rejects
+        .toMatchObject({
+            message: "Chat not found",
+            statusCode: 404
+        });
+});
+
+test("sendMessage enforces section membership and section send permission", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        type: "group",
+        members: [USER_ID, TARGET_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat")
+        .mockResolvedValueOnce({
+            isSectionChat: true,
+            isMember: false,
+            canSend: true
+        })
+        .mockResolvedValueOnce({
+            isSectionChat: true,
+            isMember: true,
+            canSend: false
+        });
+
+    await expect(chatService.sendMessage(USER_ID, "chat-1", "hello", [], null, null))
+        .rejects
+        .toMatchObject({
+            message: "You are not a member of this section chat",
+            statusCode: 403
+        });
+
+    await expect(chatService.sendMessage(USER_ID, "chat-1", "hello", [], null, null))
+        .rejects
+        .toMatchObject({
+            message: "You don't have permission to send messages in this section chat",
+            statusCode: 403
+        });
+});
+
+test("sendMessage validates reply references for missing or mismatched messages", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        type: "group",
+        members: [USER_ID, TARGET_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: false,
+        isMember: true,
+        canSend: true
+    });
+    Message.findById
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ _id: "reply-2", chatId: "other-chat" });
+
+    await expect(chatService.sendMessage(USER_ID, "chat-1", "hello", [], "reply-1", null))
+        .rejects
+        .toMatchObject({
+            message: "Invalid reply reference",
+            statusCode: 400
+        });
+
+    await expect(chatService.sendMessage(USER_ID, "chat-1", "hello", [], "reply-2", null))
+        .rejects
+        .toMatchObject({
+            message: "Invalid reply reference",
+            statusCode: 400
+        });
+});
+
+test("sendMessage supports shared-post payload and increments post shares", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        type: "group",
+        members: [USER_ID, TARGET_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: false,
+        isMember: true,
+        canSend: true
+    });
+    jest.spyOn(chatService, "resolveSharedPostForChat").mockResolvedValue("post-1");
+    resolveMentionUsersFromText.mockResolvedValue([]);
+    Message.create.mockResolvedValue({ _id: "msg-post-1" });
+    Message.findById.mockReturnValue(makeQuery({
+        _id: "msg-post-1",
+        type: "post",
+        sharedPost: "post-1",
+        senderId: { _id: USER_ID, name: "Sender" }
+    }));
+
+    const result = await chatService.sendMessage(USER_ID, "chat-1", "", [], null, "post-1");
+
+    expect(Message.create).toHaveBeenCalledWith(expect.objectContaining({
+        type: "post",
+        sharedPost: "post-1"
+    }));
+    expect(Post.findByIdAndUpdate).toHaveBeenCalledWith("post-1", { $inc: { sharesCount: 1 } });
+    expect(result).toEqual(expect.objectContaining({
+        _id: "msg-post-1",
+        type: "post"
+    }));
+});
+
+test("sendMessage swallows mention notification failures and still returns message", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        type: "group",
+        members: [USER_ID, TARGET_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: false,
+        isMember: true,
+        canSend: true
+    });
+    resolveMentionUsersFromText.mockResolvedValue([{ _id: TARGET_ID }]);
+    Message.create.mockResolvedValue({ _id: "msg-mention-1" });
+    Message.findById.mockReturnValue(makeQuery({
+        _id: "msg-mention-1",
+        senderId: { username: "sender-user" },
+        content: "hello @target"
+    }));
+    notifyMentionedUsers.mockRejectedValue(new Error("notify down"));
+
+    const result = await chatService.sendMessage(USER_ID, "chat-1", "hello @target", [], null, null);
+
+    expect(result).toEqual(expect.objectContaining({ _id: "msg-mention-1" }));
+    expect(errorSpy).toHaveBeenCalledWith("chat mention notification error", expect.any(Error));
+    errorSpy.mockRestore();
+});
+
+test("sendMessage skips private-target assertion when recipient cannot be resolved", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        type: "private",
+        members: [USER_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: false,
+        isMember: true,
+        canSend: true
+    });
+    const assertCanMessageTargetSpy = jest.spyOn(chatService, "assertCanMessageTarget");
+    resolveMentionUsersFromText.mockResolvedValue([]);
+    Message.create.mockResolvedValue({ _id: "msg-private-1" });
+    Message.findById.mockReturnValue(makeQuery({
+        _id: "msg-private-1",
+        content: "solo private"
+    }));
+
+    await chatService.sendMessage(USER_ID, "chat-1", "solo private", [], null, null);
+
+    expect(assertCanMessageTargetSpy).not.toHaveBeenCalled();
+});
+
+test("getMessages rejects missing chats and section viewers without access", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.getMessages("chat-404", USER_ID, 1, 20))
+        .rejects
+        .toMatchObject({
+            message: "Chat not found",
+            statusCode: 404
+        });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: true,
+        isMember: true,
+        canView: false
+    });
+    await expect(chatService.getMessages("chat-1", USER_ID, 1, 20))
+        .rejects
+        .toMatchObject({
+            message: "You are not a member of this section chat",
+            statusCode: 403
+        });
+});
+
+test("getMessages auto-adds section members and clamps pagination bounds", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: true,
+        isMember: true,
+        canView: true
+    });
+    Message.find.mockReturnValue(makeQuery([{ _id: "m1" }]));
+    Message.countDocuments.mockResolvedValue(1);
+
+    const result = await chatService.getMessages("chat-1", USER_ID, "0", "200");
+
+    expect(Chat.findByIdAndUpdate).toHaveBeenCalledWith("chat-1", {
+        $addToSet: { members: USER_ID }
+    });
+    expect(result.pagination).toEqual({
+        page: 1,
+        limit: 50,
+        total: 1,
+        totalPages: 1,
+        hasMore: false
+    });
+});
+
+test("getUnreadMentionSummary maps aggregate defaults and applies minimum limit", async () => {
+    Chat.find.mockReturnValue(makeSelectLeanQuery([{ _id: "chat-1" }]));
+    Message.aggregate.mockResolvedValue([
+        {
+            _id: "chat-1",
+            unreadMentionCount: undefined,
+            nextMentionMessageId: null,
+            nextMentionCreatedAt: null,
+            nextMentionContent: undefined
+        }
+    ]);
+
+    const result = await chatService.getUnreadMentionSummary(USER_ID, -5);
+
+    expect(Message.aggregate).toHaveBeenCalledWith(expect.arrayContaining([
+        { $limit: 1 }
+    ]));
+    expect(result).toEqual({
+        mentions: [{
+            chatId: "chat-1",
+            unreadMentionCount: 0,
+            nextMentionMessageId: null,
+            nextMentionCreatedAt: null,
+            nextMentionContent: ""
+        }],
+        byChat: {
+            "chat-1": {
+                chatId: "chat-1",
+                unreadMentionCount: 0,
+                nextMentionMessageId: null,
+                nextMentionCreatedAt: null,
+                nextMentionContent: ""
+            }
+        },
+        totalUnreadMentions: 0
+    });
+});
+
+test("getUnreadCallInviteSummary returns empty payload when user has no chats", async () => {
+    Chat.find.mockReturnValue(makeSelectLeanQuery([]));
+
+    const result = await chatService.getUnreadCallInviteSummary(USER_ID, 25);
+
+    expect(result).toEqual({
+        invites: [],
+        byChat: {},
+        totalUnreadInvites: 0
+    });
+});
+
+test("assertCanViewSectionChat and assertCanSendSectionChat return pass-through access for allowed flows", async () => {
+    jest.spyOn(chatService, "resolveSectionAccessByChat").mockResolvedValue({
+        isSectionChat: false,
+        isMember: true,
+        canView: true,
+        canSend: true
+    });
+    const viewAccess = await chatService.assertCanViewSectionChat("chat-1", USER_ID);
+    expect(viewAccess).toEqual({
+        isSectionChat: false,
+        isMember: true,
+        canView: true,
+        canSend: true
+    });
+
+    jest.spyOn(chatService, "assertCanViewSectionChat").mockResolvedValue({
+        isSectionChat: true,
+        isMember: true,
+        canView: true,
+        canSend: true
+    });
+    const sendAccess = await chatService.assertCanSendSectionChat("chat-1", USER_ID);
+    expect(sendAccess).toEqual({
+        isSectionChat: true,
+        isMember: true,
+        canView: true,
+        canSend: true
+    });
+});
+
+test("getUnreadCallInviteSummary applies minimum limit and default field mapping", async () => {
+    Chat.find.mockReturnValue(makeSelectLeanQuery([{ _id: "chat-1" }]));
+    Message.aggregate.mockResolvedValue([
+        {
+            _id: "chat-1",
+            unreadInviteCount: undefined,
+            nextInviteMessageId: null,
+            nextInviteCreatedAt: null,
+            nextInviteContent: undefined,
+            callId: null
+        }
+    ]);
+
+    const result = await chatService.getUnreadCallInviteSummary(USER_ID, -3);
+
+    expect(Message.aggregate).toHaveBeenCalledWith(expect.arrayContaining([
+        { $limit: 1 }
+    ]));
+    expect(result).toEqual({
+        invites: [{
+            chatId: "chat-1",
+            unreadInviteCount: 0,
+            nextInviteMessageId: null,
+            nextInviteCreatedAt: null,
+            nextInviteContent: "",
+            callId: null
+        }],
+        byChat: {
+            "chat-1": {
+                chatId: "chat-1",
+                unreadInviteCount: 0,
+                nextInviteMessageId: null,
+                nextInviteCreatedAt: null,
+                nextInviteContent: "",
+                callId: null
+            }
+        },
+        totalUnreadInvites: 0
+    });
+});
+
+test("togglePinMessage validates chat, membership, message ownership and status", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.togglePinMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.togglePinMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    jest.spyOn(chatService, "assertCanViewSectionChat").mockResolvedValue({
+        isSectionChat: false,
+        canView: true
+    });
+
+    Message.findById.mockResolvedValueOnce(null);
+    await expect(chatService.togglePinMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message not found", statusCode: 404 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "other-chat",
+        status: "active"
+    });
+    await expect(chatService.togglePinMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message does not belong to this chat", statusCode: 400 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "chat-1",
+        status: "deleted"
+    });
+    await expect(chatService.togglePinMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Only active messages can be pinned", statusCode: 400 });
+});
+
+test("togglePinMessage supports unpin flow without eviction", async () => {
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    jest.spyOn(chatService, "assertCanViewSectionChat").mockResolvedValue({
+        isSectionChat: false,
+        canView: true
+    });
+
+    const messageDoc = {
+        _id: "msg-1",
+        chatId: "chat-1",
+        status: "active",
+        pinned: true,
+        pinnedAt: new Date("2026-03-01T00:00:00.000Z"),
+        pinnedBy: USER_ID,
+        save: jest.fn().mockResolvedValue({})
+    };
+    Message.findById
+        .mockResolvedValueOnce(messageDoc)
+        .mockReturnValueOnce(makeQuery({
+            _id: "msg-1",
+            pinned: false,
+            pinnedAt: null,
+            pinnedBy: null
+        }));
+    Message.countDocuments.mockResolvedValue(0);
+
+    const result = await chatService.togglePinMessage("msg-1", USER_ID, "chat-1");
+    expect(messageDoc.pinned).toBe(false);
+    expect(messageDoc.pinnedAt).toBeNull();
+    expect(messageDoc.pinnedBy).toBeNull();
+    expect(result).toEqual(expect.objectContaining({
+        pinned: false,
+        evictedMessageId: null,
+        pinnedCount: 0
+    }));
+});
+
+test("deleteMessage validates chat membership/message linkage and supports success path", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.deleteMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.deleteMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    Message.findById.mockResolvedValueOnce(null);
+    await expect(chatService.deleteMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message not found", statusCode: 404 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "other-chat",
+        senderId: USER_ID
+    });
+    await expect(chatService.deleteMessage("msg-1", USER_ID, "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message does not belong to this chat", statusCode: 400 });
+
+    const ownMessage = {
+        _id: "msg-own",
+        chatId: "chat-1",
+        senderId: USER_ID,
+        status: "active",
+        save: jest.fn().mockResolvedValue({})
+    };
+    Message.findById.mockResolvedValueOnce(ownMessage);
+    const result = await chatService.deleteMessage("msg-own", USER_ID, "chat-1");
+    expect(ownMessage.status).toBe("deleted");
+    expect(ownMessage.save).toHaveBeenCalledTimes(1);
+    expect(result).toBe(ownMessage);
+});
+
+test("editMessage validates preconditions before update", async () => {
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "   "))
+        .rejects
+        .toMatchObject({ message: "Message content cannot be empty", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "Hello"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "Hello"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID, TARGET_ID]
+    });
+    Message.findById.mockResolvedValueOnce(null);
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "Hello"))
+        .rejects
+        .toMatchObject({ message: "Message not found", statusCode: 404 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "other-chat",
+        senderId: USER_ID
+    });
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "Hello"))
+        .rejects
+        .toMatchObject({ message: "Message does not belong to this chat", statusCode: 400 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "chat-1",
+        senderId: TARGET_ID
+    });
+    await expect(chatService.editMessage("msg-1", USER_ID, "chat-1", "Hello"))
+        .rejects
+        .toMatchObject({ message: "You can only edit your own messages", statusCode: 403 });
+});
+
+test("editMessage supports no-mention flow and mention-notification failure fallback", async () => {
+    const errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID, TARGET_ID]
+    });
+
+    const noMentionDoc = {
+        _id: "msg-2",
+        chatId: "chat-1",
+        senderId: USER_ID,
+        mentions: undefined,
+        save: jest.fn().mockResolvedValue({})
+    };
+    Message.findById
+        .mockResolvedValueOnce(noMentionDoc)
+        .mockReturnValueOnce(makeQuery({
+            _id: "msg-2",
+            senderId: { _id: USER_ID, username: "editor-user" },
+            mentions: []
+        }));
+    resolveMentionUsersFromText.mockResolvedValueOnce([]);
+
+    const noMentionResult = await chatService.editMessage("msg-2", USER_ID, "chat-1", "No mentions");
+    expect(noMentionResult).toEqual(expect.objectContaining({ _id: "msg-2" }));
+    expect(notifyMentionedUsers).not.toHaveBeenCalled();
+
+    const mentionDoc = {
+        _id: "msg-3",
+        chatId: "chat-1",
+        senderId: USER_ID,
+        mentions: [],
+        save: jest.fn().mockResolvedValue({})
+    };
+    Message.findById
+        .mockResolvedValueOnce(mentionDoc)
+        .mockReturnValueOnce(makeQuery({
+            _id: "msg-3",
+            senderId: {},
+            mentions: [{ _id: TARGET_ID }]
+        }));
+    resolveMentionUsersFromText.mockResolvedValueOnce([{ _id: TARGET_ID }]);
+    notifyMentionedUsers.mockRejectedValueOnce(new Error("notify down"));
+
+    const mentionResult = await chatService.editMessage("msg-3", USER_ID, "chat-1", "Ping @target");
+    expect(mentionResult).toEqual(expect.objectContaining({ _id: "msg-3" }));
+    expect(errorSpy).toHaveBeenCalledWith("chat edited mention notification error", expect.any(Error));
+
+    errorSpy.mockRestore();
+});
+
+test("addReaction and removeReaction validate chat and message constraints", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.addReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.addReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    Message.findById.mockResolvedValueOnce(null);
+    await expect(chatService.addReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message not found", statusCode: 404 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "other-chat",
+        addReaction: jest.fn()
+    });
+    await expect(chatService.addReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message does not belong to this chat", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.removeReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.removeReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValue({
+        _id: "chat-1",
+        members: [USER_ID]
+    });
+    Message.findById.mockResolvedValueOnce(null);
+    await expect(chatService.removeReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message not found", statusCode: 404 });
+
+    Message.findById.mockResolvedValueOnce({
+        _id: "msg-1",
+        chatId: "other-chat",
+        removeReaction: jest.fn()
+    });
+    await expect(chatService.removeReaction("msg-1", USER_ID, "🔥", "chat-1"))
+        .rejects
+        .toMatchObject({ message: "Message does not belong to this chat", statusCode: 400 });
+});
+
+test("group management methods validate chat type/admin constraints", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.updateGroupChat("chat-1", USER_ID, { name: "New" }))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "private", admin: USER_ID });
+    await expect(chatService.updateGroupChat("chat-1", USER_ID, { name: "New" }))
+        .rejects
+        .toMatchObject({ message: "Cannot update private chats", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "group", admin: TARGET_ID });
+    await expect(chatService.updateGroupChat("chat-1", USER_ID, { name: "New" }))
+        .rejects
+        .toMatchObject({ message: "Only the admin can update this group", statusCode: 403 });
+
+    const groupDoc = {
+        _id: "chat-1",
+        type: "group",
+        admin: USER_ID,
+        name: "Before",
+        avatar: "old.png",
+        save: jest.fn().mockResolvedValue({})
+    };
+    Chat.findById.mockResolvedValueOnce(groupDoc);
+    await chatService.updateGroupChat("chat-1", USER_ID, {});
+    expect(groupDoc.name).toBe("Before");
+    expect(groupDoc.avatar).toBe("old.png");
+});
+
+test("addMembers and removeMember validate not-found/type/admin edge cases", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.addMembers("chat-1", USER_ID, [TARGET_ID]))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "private", admin: USER_ID, members: [USER_ID] });
+    await expect(chatService.addMembers("chat-1", USER_ID, [TARGET_ID]))
+        .rejects
+        .toMatchObject({ message: "Cannot add members to private chats", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "group", admin: TARGET_ID, members: [USER_ID] });
+    await expect(chatService.addMembers("chat-1", USER_ID, [TARGET_ID]))
+        .rejects
+        .toMatchObject({ message: "Only the admin can add members", statusCode: 403 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "group", admin: USER_ID, members: [USER_ID, TARGET_ID] });
+    await expect(chatService.addMembers("chat-1", USER_ID, [TARGET_ID]))
+        .rejects
+        .toMatchObject({ message: "All users are already members", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.removeMember("chat-1", USER_ID, TARGET_ID))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "private", admin: USER_ID, members: [USER_ID] });
+    await expect(chatService.removeMember("chat-1", USER_ID, TARGET_ID))
+        .rejects
+        .toMatchObject({ message: "Cannot remove members from private chats", statusCode: 400 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "group", admin: TARGET_ID, members: [USER_ID, TARGET_ID] });
+    await expect(chatService.removeMember("chat-1", USER_ID, TARGET_ID))
+        .rejects
+        .toMatchObject({ message: "Only the admin can remove members", statusCode: 403 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "group", admin: USER_ID, members: [USER_ID, TARGET_ID] });
+    await expect(chatService.removeMember("chat-1", USER_ID, USER_ID))
+        .rejects
+        .toMatchObject({ message: "Cannot remove the admin", statusCode: 400 });
+});
+
+test("leaveGroup validates type/not-found and transfers admin when needed", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.leaveGroup("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({ _id: "chat-1", type: "private", admin: USER_ID, members: [USER_ID] });
+    await expect(chatService.leaveGroup("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "Cannot leave private chats", statusCode: 400 });
+
+    const transferDoc = {
+        _id: "chat-1",
+        type: "group",
+        admin: USER_ID,
+        members: [USER_ID, TARGET_ID, "507f1f77bcf86cd799439013"],
+        save: jest.fn().mockResolvedValue({})
+    };
+    Chat.findById.mockResolvedValueOnce(transferDoc);
+    const result = await chatService.leaveGroup("chat-1", USER_ID);
+    expect(transferDoc.admin).toBe(TARGET_ID);
+    expect(transferDoc.members).toEqual([TARGET_ID, "507f1f77bcf86cd799439013"]);
+    expect(transferDoc.save).toHaveBeenCalledTimes(1);
+    expect(result).toBe(transferDoc);
+});
+
+test("toggleMute, toggleArchive and searchMessages validate membership constraints", async () => {
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.toggleMute("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.toggleMute("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.toggleArchive("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.toggleArchive("chat-1", USER_ID))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+
+    Chat.findById.mockResolvedValueOnce(null);
+    await expect(chatService.searchMessages("chat-1", USER_ID, "hi"))
+        .rejects
+        .toMatchObject({ message: "Chat not found", statusCode: 404 });
+
+    Chat.findById.mockResolvedValueOnce({
+        _id: "chat-1",
+        members: [TARGET_ID]
+    });
+    await expect(chatService.searchMessages("chat-1", USER_ID, "hi"))
+        .rejects
+        .toMatchObject({ message: "You are not a member of this chat", statusCode: 403 });
+});
