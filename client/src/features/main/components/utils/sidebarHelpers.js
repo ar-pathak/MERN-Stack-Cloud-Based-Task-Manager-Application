@@ -1,4 +1,4 @@
-import { COLOR_THEMES } from "../../constants/sidebarConfig";
+import { COLOR_THEMES } from "../../constants/sidebarConfig.js";
 
 export const isActiveRoute = (path, currentPath) => {
     if (path === "/dashboard") {

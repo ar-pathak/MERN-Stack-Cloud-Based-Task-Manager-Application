@@ -159,6 +159,8 @@ App URLs:
 - `npm run dev --prefix client`
 - `npm run build --prefix client`
 - `npm run lint --prefix client`
+- `npm test --prefix client`
+- `npm run test:watch --prefix client`
 - `npm run preview --prefix client`
 
 ### Server (`server/package.json`)
@@ -172,6 +174,7 @@ App URLs:
 ## Testing
 
 - Backend unit tests and non-DB integration tests run with `npm test --prefix server`.
+- Frontend utility/component tests run with `npm test --prefix client` using Vitest + React Testing Library.
 - DB-backed integration suites are opt-in so local/dev `server/.env` Mongo URLs are not used accidentally during routine test runs.
 - To run DB-backed backend integration tests, create `server/.env.test` from `server/.env.test.example`, set `RUN_DB_INTEGRATION_TESTS=true`, and point `MONGO_URL` to a dedicated test database.
 - Frontend and end-to-end testing are still the next phases after backend validation.
@@ -216,7 +219,7 @@ Base routes mounted in `server/src/app.js`:
 
 ## Current Gaps
 
-- Backend has broad unit coverage plus opt-in DB integration coverage; frontend and end-to-end coverage are still pending.
+- Backend has broad unit coverage plus opt-in DB integration coverage, and frontend testing has started with Vitest + RTL; broader frontend page coverage and end-to-end coverage are still pending.
 - Root monorepo scripts are not defined; `client` and `server` are run separately.
 
 ## License

@@ -37,6 +37,14 @@ const platformHighlights = [
     "Aurora Insights"
 ];
 
+const sanitizeRedirectPath = (value) => {
+    const candidate = String(value || "").trim();
+    if (!candidate || !candidate.startsWith("/") || candidate.startsWith("//")) {
+        return "/main";
+    }
+    return candidate;
+};
+
 const authFeatureBlocks = [
     {
         icon: Workflow,
@@ -81,8 +89,7 @@ export default function AuthPage() {
                 result = await login(payload);
 
                 if (result?.success) {
-                    const redirectPath = String(searchParams.get("redirect") || "").trim();
-                    const safeTarget = redirectPath.startsWith("/") ? redirectPath : "/main";
+                    const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
                     toast.success("Login successful. Redirecting...");
                     setTimeout(() => navigate(safeTarget), 450);
                 } else {
@@ -92,8 +99,7 @@ export default function AuthPage() {
                 result = await register(payload);
 
                 if (result?.success) {
-                    const redirectPath = String(searchParams.get("redirect") || "").trim();
-                    const safeTarget = redirectPath.startsWith("/") ? redirectPath : "/main";
+                    const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
                     toast.success("Account created successfully. Redirecting...");
                     setTimeout(() => navigate(safeTarget), 450);
                 } else {

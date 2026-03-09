@@ -2,6 +2,14 @@ export const MOBILE_BREAKPOINT = 1024;
 export const POSTS_PAGE_SIZE = 15;
 export const FOLLOW_LIST_PAGE_SIZE = 20;
 
+const toFiniteNumber = (value, fallback = 0) => {
+    if (value == null) return fallback;
+    if (typeof value === "string" && value.trim() === "") return fallback;
+
+    const normalized = Number(value);
+    return Number.isFinite(normalized) ? normalized : fallback;
+};
+
 export const PROFILE_TABS = [
     { id: "posts", label: "Posts" },
     { id: "media", label: "Media" },
@@ -26,10 +34,10 @@ export const toId = (value) => {
 export const toDisplayName = (value) => value?.name || value?.username || "User";
 
 export const normalizePagination = (value = {}, fallbackPage = 1, fallbackLimit = FOLLOW_LIST_PAGE_SIZE) => ({
-    page: Number(value?.page || fallbackPage),
-    limit: Number(value?.limit || fallbackLimit),
-    total: Number(value?.total || 0),
-    pages: Number(value?.pages || 1),
+    page: toFiniteNumber(value?.page, fallbackPage),
+    limit: toFiniteNumber(value?.limit, fallbackLimit),
+    total: toFiniteNumber(value?.total, 0),
+    pages: toFiniteNumber(value?.pages, 1),
     hasMore: Boolean(value?.hasMore)
 });
 
@@ -39,8 +47,8 @@ export const normalizeConnection = (entry = {}) => ({
     username: entry?.username || "",
     avatar: entry?.avatar || "",
     isVerified: Boolean(entry?.isVerified),
-    followersCount: Number(entry?.followersCount || 0),
-    followingCount: Number(entry?.followingCount || 0),
+    followersCount: toFiniteNumber(entry?.followersCount, 0),
+    followingCount: toFiniteNumber(entry?.followingCount, 0),
     isFollowing: Boolean(entry?.isFollowing),
     isPending: Boolean(entry?.isPending),
     isFollowedBy: Boolean(entry?.isFollowedBy),
@@ -68,12 +76,12 @@ export const getFollowButtonState = (relationship = {}) => {
 
 export const getJoinedLabel = (value) => {
     if (!value) return "";
-    try {
-        return new Date(value).toLocaleDateString(undefined, {
-            year: "numeric",
-            month: "short"
-        });
-    } catch {
-        return "";
-    }
+
+    const dateValue = new Date(value);
+    if (Number.isNaN(dateValue.getTime())) return "";
+
+    return dateValue.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short"
+    });
 };

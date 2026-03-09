@@ -1,4 +1,4 @@
-import { DRAFT_STORAGE_KEY } from "../constants/dashboard.constants";
+import { DRAFT_STORAGE_KEY } from "../constants/dashboard.constants.js";
 
 export const toNumber = (value, fallback = 0) => {
     const normalized = Number(value);

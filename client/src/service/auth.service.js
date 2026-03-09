@@ -170,7 +170,10 @@ export const changePassword = async (passwordData) => {
  */
 export const forgotPassword = async (email) => {
     try {
-        const response = await api.post("/api/auth/forgot-password", { email });
+        const normalizedEmail = typeof email === "object" && email !== null
+            ? email.email
+            : email;
+        const response = await api.post("/api/auth/forgot-password", { email: normalizedEmail });
         return response.data;
     } catch (error) {
         throw {
