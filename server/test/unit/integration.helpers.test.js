@@ -138,3 +138,28 @@ test("loadEnv always loads default env and conditionally loads test env", () => 
         quiet: true
     }));
 });
+
+test("dbTestGate requires explicit opt-in and a mongo url", () => {
+    const originalEnv = process.env;
+
+    const loadGate = (env) => {
+        jest.resetModules();
+        process.env = { ...originalEnv, ...env };
+
+        let gate;
+        jest.isolateModules(() => {
+            gate = require("../integration/helpers/dbTestGate");
+        });
+
+        return gate;
+    };
+
+    expect(loadGate({ MONGO_URL: "mongodb://localhost:27017/aurora-test" }).isDbIntegrationEnabled)
+        .toBe(false);
+    expect(loadGate({ RUN_DB_INTEGRATION_TESTS: "true", MONGO_URL: "" }).isDbIntegrationEnabled)
+        .toBe(false);
+    expect(loadGate({ RUN_DB_INTEGRATION_TESTS: "true", MONGO_URL: "mongodb://localhost:27017/aurora-test" }).isDbIntegrationEnabled)
+        .toBe(true);
+
+    process.env = originalEnv;
+});

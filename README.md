@@ -165,6 +165,16 @@ App URLs:
 
 - `npm run dev --prefix server`
 - `npm run start --prefix server`
+- `npm test --prefix server`
+- `npm run test:unit --prefix server`
+- `npm run test:integration --prefix server`
+
+## Testing
+
+- Backend unit tests and non-DB integration tests run with `npm test --prefix server`.
+- DB-backed integration suites are opt-in so local/dev `server/.env` Mongo URLs are not used accidentally during routine test runs.
+- To run DB-backed backend integration tests, create `server/.env.test` from `server/.env.test.example`, set `RUN_DB_INTEGRATION_TESTS=true`, and point `MONGO_URL` to a dedicated test database.
+- Frontend and end-to-end testing are still the next phases after backend validation.
 
 ## API Surface (High-Level)
 
@@ -206,7 +216,7 @@ Base routes mounted in `server/src/app.js`:
 
 ## Current Gaps
 
-- Test coverage is currently limited to baseline server unit tests; broader integration/e2e coverage is still pending.
+- Backend has broad unit coverage plus opt-in DB integration coverage; frontend and end-to-end coverage are still pending.
 - Root monorepo scripts are not defined; `client` and `server` are run separately.
 
 ## License

@@ -31,8 +31,7 @@ const Call = require("../../src/models/call");
 const Notification = require("../../src/models/notification");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 const parsePositiveInt = (value, fallback) => {
     const parsed = Number.parseInt(value, 10);
@@ -237,7 +236,7 @@ const disconnectSocket = async (socket) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -261,7 +260,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdChatIds.size > 0) {
         const chatIds = [...createdChatIds];
@@ -297,7 +296,7 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdChatIds.size > 0) {
         const chatIds = [...createdChatIds];

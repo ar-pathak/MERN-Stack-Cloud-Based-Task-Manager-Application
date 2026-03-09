@@ -40,8 +40,7 @@ const User = require("../../src/models/user");
 const RefreshToken = require("../../src/models/RefreshToken");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 let baseUrl = "";
 const createdEmails = new Set();
@@ -128,7 +127,7 @@ const signupUser = async (payload) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -148,7 +147,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdUserIds.size > 0) {
         await RefreshToken.deleteMany({ user: { $in: [...createdUserIds] } });

@@ -26,8 +26,7 @@ const Activity = require("../../src/models/activity");
 const Chat = require("../../src/models/chat");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 let baseUrl = "";
 const createdEmails = new Set();
@@ -121,7 +120,7 @@ const signupUser = async (prefix) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -201,7 +200,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdWorkspaceIds.size > 0) {
         const workspaceIds = [...createdWorkspaceIds];

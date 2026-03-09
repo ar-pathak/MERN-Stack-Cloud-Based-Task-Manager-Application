@@ -33,8 +33,7 @@ const Comment = require("../../src/models/comment");
 const Notification = require("../../src/models/notification");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 let baseUrl = "";
 
@@ -141,7 +140,7 @@ const getListItems = (payload) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -202,7 +201,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     const workspaceIds = [...createdWorkspaceIds];
     const userIds = [...createdUserIds];

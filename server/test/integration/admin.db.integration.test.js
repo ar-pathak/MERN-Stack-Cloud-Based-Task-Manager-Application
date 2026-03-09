@@ -49,8 +49,7 @@ const SupportFeedback = require("../../src/models/supportFeedback");
 const User = require("../../src/models/user");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 let baseUrl = "";
 let currentAdminPassword = INITIAL_ADMIN_PASSWORD;
@@ -154,7 +153,7 @@ const loginAdminAndGetCookieJar = async (password = currentAdminPassword) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -176,7 +175,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdFeedbackIds.size > 0) {
         await SupportFeedback.deleteMany({ _id: { $in: [...createdFeedbackIds] } });

@@ -18,8 +18,7 @@ const Call = require("../../src/models/call");
 const RefreshToken = require("../../src/models/RefreshToken");
 const { httpServer, io } = require("../../src/app");
 
-const hasMongoUrl = Boolean(String(process.env.MONGO_URL || "").trim());
-const testWithDb = hasMongoUrl ? test : test.skip;
+const { isDbIntegrationEnabled, testWithDb } = require("./helpers/dbTestGate");
 
 let baseUrl = "";
 
@@ -122,7 +121,7 @@ const createCall = async (payload) => {
 };
 
 beforeAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     await connectDB();
 
@@ -142,7 +141,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-    if (!hasMongoUrl) return;
+    if (!isDbIntegrationEnabled) return;
 
     if (createdCallIds.size > 0) {
         await Call.deleteMany({ _id: { $in: [...createdCallIds] } });
