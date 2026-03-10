@@ -2,8 +2,8 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import AuthTabs from "./AuthTabs.jsx";
-import { views } from "../utils/view.js";
+import AuthTabs from "../../../../features/authentication/components/AuthTabs.jsx";
+import { views } from "../../../../features/authentication/utils/view.js";
 
 test("renders both auth tabs and switches to signup on click", async () => {
     const user = userEvent.setup();

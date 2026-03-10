@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 
-import { DRAFT_STORAGE_KEY } from "../constants/dashboard.constants.js";
+import { DRAFT_STORAGE_KEY } from "../../../../../../features/main/features/dashboard/constants/dashboard.constants.js";
 import {
     formatDateTime,
     formatNumber,
@@ -10,7 +10,7 @@ import {
     toInteractionEntry,
     toLocalInputDateTime,
     toNumber,
-} from "./dashboard.utils.js";
+} from "../../../../../../features/main/features/dashboard/utils/dashboard.utils.js";
 
 test("toNumber, formatNumber and formatPercent handle invalid input", () => {
     expect(toNumber("15.5")).toBe(15.5);

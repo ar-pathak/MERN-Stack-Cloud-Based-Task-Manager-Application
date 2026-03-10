@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi, test, expect } from "vitest";
 
-import TextInput from "./TextInput.jsx";
+import TextInput from "../../../../features/authentication/components/TextInput.jsx";
 
 test("renders label and forwards typed values to onChange", async () => {
     const user = userEvent.setup();

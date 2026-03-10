@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { expect, test } from "vitest";
 
-import { useAuth } from "./AuthContext";
+import { useAuth } from "../../context/AuthContext";
 
 function BrokenConsumer() {
     useAuth();

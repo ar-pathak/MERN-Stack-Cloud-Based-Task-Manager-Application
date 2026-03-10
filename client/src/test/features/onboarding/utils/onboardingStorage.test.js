@@ -6,7 +6,7 @@ import {
     readOnboardingRecord,
     removeOnboardingRecord,
     writeOnboardingRecord,
-} from "./onboardingStorage.js";
+} from "../../../../features/onboarding/utils/onboardingStorage.js";
 
 test("getOnboardingStorageKey returns stable per-user keys", () => {
     expect(getOnboardingStorageKey("user-42")).toBe("task-manager:onboarding:user-42");

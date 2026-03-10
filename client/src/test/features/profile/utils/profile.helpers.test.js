@@ -9,7 +9,7 @@ import {
     normalizePagination,
     toDisplayName,
     toId,
-} from "./profile.helpers.js";
+} from "../../../../features/profile/utils/profile.helpers.js";
 
 test("toId normalizes nested and object ids", () => {
     expect(toId(null)).toBe("");

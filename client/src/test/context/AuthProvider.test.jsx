@@ -20,7 +20,7 @@ vi.mock("react-router", async () => {
     };
 });
 
-vi.mock("../service/auth.service", () => ({
+vi.mock("../../service/auth.service", () => ({
     login: (...args) => loginServiceMock(...args),
     logout: (...args) => logoutServiceMock(...args),
     register: (...args) => registerServiceMock(...args),
@@ -28,12 +28,12 @@ vi.mock("../service/auth.service", () => ({
     getUserInfo: (...args) => getUserInfoMock(...args),
 }));
 
-vi.mock("../service/user.service", () => ({
+vi.mock("../../service/user.service", () => ({
     updateActivity: (...args) => updateActivityMock(...args),
 }));
 
-import { useAuth } from "./AuthContext";
-import { AuthProvider } from "./AuthProvider";
+import { useAuth } from "../../context/AuthContext";
+import { AuthProvider } from "../../context/AuthProvider";
 
 let latestAuth;
 

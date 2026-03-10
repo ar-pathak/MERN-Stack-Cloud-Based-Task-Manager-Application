@@ -12,7 +12,7 @@ vi.mock("react-router", async () => {
     };
 });
 
-import ErrorPage from "./ErrorPage.jsx";
+import ErrorPage from "../../../common/components/ErrorPage.jsx";
 
 beforeEach(() => {
     navigateMock.mockReset();

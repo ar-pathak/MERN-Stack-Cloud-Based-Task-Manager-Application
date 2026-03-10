@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi, test, expect } from "vitest";
 
-import { GhostButton, PrimaryButton } from "./Buttons.jsx";
+import { GhostButton, PrimaryButton } from "../../../../features/authentication/components/Buttons.jsx";
 
 test("PrimaryButton shows loading state and disables interaction", () => {
     render(<PrimaryButton loading>Submit</PrimaryButton>);

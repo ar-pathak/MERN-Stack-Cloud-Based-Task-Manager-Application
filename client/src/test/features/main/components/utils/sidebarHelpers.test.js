@@ -1,7 +1,7 @@
 import { test, expect } from "vitest";
 
-import { COLOR_THEMES } from "../../constants/sidebarConfig.js";
-import { getColorClasses, isActiveRoute } from "./sidebarHelpers.js";
+import { COLOR_THEMES } from "../../../../../features/main/constants/sidebarConfig.js";
+import { getColorClasses, isActiveRoute } from "../../../../../features/main/components/utils/sidebarHelpers.js";
 
 test("isActiveRoute handles dashboard exactness and nested routes", () => {
     expect(isActiveRoute("/dashboard", "/dashboard")).toBe(true);

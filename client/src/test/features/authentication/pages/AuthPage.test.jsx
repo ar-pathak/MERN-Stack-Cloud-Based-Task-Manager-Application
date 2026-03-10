@@ -22,8 +22,8 @@ vi.mock("sonner", () => ({
     },
 }));
 
-vi.mock("../../../service/auth.service", async () => {
-    const actual = await vi.importActual("../../../service/auth.service");
+vi.mock("../../../../service/auth.service", async () => {
+    const actual = await vi.importActual("../../../../service/auth.service");
     return {
         ...actual,
         forgotPassword: (...args) => forgotPasswordMock(...args),
@@ -31,8 +31,8 @@ vi.mock("../../../service/auth.service", async () => {
     };
 });
 
-import { AuthContext } from "../../../context/AuthContext";
-import AuthPage from "./AuthPage.jsx";
+import { AuthContext } from "../../../../context/AuthContext";
+import AuthPage from "../../../../features/authentication/pages/AuthPage.jsx";
 
 const renderAuthPage = ({ initialEntry, authValue, routePath = "/home/auth" }) => render(
     <AuthContext.Provider value={authValue}>

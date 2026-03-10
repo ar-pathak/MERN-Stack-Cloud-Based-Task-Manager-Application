@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { expect, test, vi } from "vitest";
 
-import { AuthContext } from "../../../context/AuthContext";
-import OAuthCallbackPage from "./OAuthCallbackPage.jsx";
+import { AuthContext } from "../../../../context/AuthContext";
+import OAuthCallbackPage from "../../../../features/authentication/pages/OAuthCallbackPage.jsx";
 
 const renderOAuthPage = ({ initialEntry, authValue }) => render(
     <AuthContext.Provider value={authValue}>

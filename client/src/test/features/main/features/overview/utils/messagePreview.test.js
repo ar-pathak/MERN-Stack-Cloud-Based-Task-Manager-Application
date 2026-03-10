@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 
-import { getMessagePreviewText } from "./messagePreview.js";
+import { getMessagePreviewText } from "../../../../../../features/main/features/overview/utils/messagePreview.js";
 
 test("getMessagePreviewText prioritizes trimmed content", () => {
     expect(getMessagePreviewText({ content: "  Hello Aurora  ", type: "image" })).toBe("Hello Aurora");

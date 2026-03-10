@@ -9,7 +9,7 @@ const { apiMock } = vi.hoisted(() => ({
     },
 }));
 
-vi.mock("../config/axios", () => ({
+vi.mock("../../config/axios", () => ({
     default: apiMock,
 }));
 
@@ -37,7 +37,7 @@ import {
     verify2FA,
     verify2FALogin,
     verifyEmail,
-} from "./auth.service.js";
+} from "../../service/auth.service.js";
 
 beforeEach(() => {
     localStorage.clear();

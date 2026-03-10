@@ -11,7 +11,7 @@ vi.mock("axios", () => ({
     },
 }));
 
-vi.mock("../service/auth.service", () => ({
+vi.mock("../../service/auth.service", () => ({
     refreshToken: (...args) => refreshTokenMock(...args),
 }));
 
@@ -42,7 +42,7 @@ const setupAxios = async ({ apiUrl } = {}) => {
 
     createMock.mockReturnValue(instance);
 
-    await import("./axios.js");
+    await import("../../config/axios.js");
 
     return { apiCallMock, responseRejected, responseFulfilled };
 };

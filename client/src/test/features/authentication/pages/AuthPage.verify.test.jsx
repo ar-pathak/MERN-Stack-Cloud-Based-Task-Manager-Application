@@ -16,7 +16,7 @@ vi.mock("sonner", () => ({
     },
 }));
 
-vi.mock("../utils/view", () => ({
+vi.mock("../../../../features/authentication/utils/view", () => ({
     views: {
         LOGIN: "login",
         SIGNUP: "signup",
@@ -26,8 +26,8 @@ vi.mock("../utils/view", () => ({
     },
 }));
 
-import { AuthContext } from "../../../context/AuthContext";
-import AuthPage from "./AuthPage.jsx";
+import { AuthContext } from "../../../../context/AuthContext";
+import AuthPage from "../../../../features/authentication/pages/AuthPage.jsx";
 
 test("email verification notice returns to login view", async () => {
     render(

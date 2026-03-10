@@ -2,9 +2,9 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { expect, test } from "vitest";
 
-import { AuthContext } from "../context/AuthContext";
-import ProtectedRoute from "./ProtectedRoute";
-import PublicRoute from "./PublicRoute";
+import { AuthContext } from "../../context/AuthContext";
+import ProtectedRoute from "../../router/ProtectedRoute";
+import PublicRoute from "../../router/PublicRoute";
 
 const renderProtectedRoute = (authValue) => render(
     <AuthContext.Provider value={authValue}>

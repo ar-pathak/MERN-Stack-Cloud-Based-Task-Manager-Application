@@ -3,12 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { expect, test, vi } from "vitest";
 
-import LoginForm from "./LoginForm.jsx";
-import SignupForm from "./SignupForm.jsx";
-import ForgotPasswordForm from "./ForgotPasswordForm.jsx";
-import ResetPasswordForm from "./ResetPasswordForm.jsx";
-import EmailVerificationNotice from "./EmailVerificationNotice.jsx";
-import { views } from "../utils/view.js";
+import LoginForm from "../../../../features/authentication/pages/LoginForm.jsx";
+import SignupForm from "../../../../features/authentication/pages/SignupForm.jsx";
+import ForgotPasswordForm from "../../../../features/authentication/pages/ForgotPasswordForm.jsx";
+import ResetPasswordForm from "../../../../features/authentication/pages/ResetPasswordForm.jsx";
+import EmailVerificationNotice from "../../../../features/authentication/pages/EmailVerificationNotice.jsx";
+import { views } from "../../../../features/authentication/utils/view.js";
 
 test("LoginForm validates required fields, toggles forgot flow, and submits credentials", async () => {
     const onSubmit = vi.fn();

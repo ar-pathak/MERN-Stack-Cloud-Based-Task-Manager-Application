@@ -5,12 +5,12 @@ import { beforeEach, expect, test, vi } from "vitest";
 
 const verifyEmailMock = vi.fn();
 
-vi.mock("../../../service/auth.service", () => ({
+vi.mock("../../../../service/auth.service", () => ({
     verifyEmail: (...args) => verifyEmailMock(...args),
 }));
 
-import { AuthContext } from "../../../context/AuthContext";
-import VerifyEmailPage from "./VerifyEmailPage.jsx";
+import { AuthContext } from "../../../../context/AuthContext";
+import VerifyEmailPage from "../../../../features/authentication/pages/VerifyEmailPage.jsx";
 
 const renderVerifyPage = ({
     initialEntry,
