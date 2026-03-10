@@ -62,3 +62,27 @@ test("falls back to /main when the redirect query is unsafe", async () => {
         "http://api.example.com/api/auth/oauth/github?redirect=%2Fmain"
     );
 });
+
+test("falls back to localhost when VITE_API_URL is empty", async () => {
+    const user = userEvent.setup();
+    const assignMock = vi.fn();
+
+    vi.stubEnv("VITE_API_URL", "");
+
+    Object.defineProperty(window, "location", {
+        configurable: true,
+        value: {
+            ...originalLocation,
+            search: "",
+            assign: assignMock,
+        },
+    });
+
+    render(<SocialAuthSection />);
+
+    await user.click(screen.getByRole("button", { name: "Google" }));
+
+    expect(assignMock).toHaveBeenCalledWith(
+        "http://localhost:3000/api/auth/oauth/google?redirect=%2Fmain"
+    );
+});

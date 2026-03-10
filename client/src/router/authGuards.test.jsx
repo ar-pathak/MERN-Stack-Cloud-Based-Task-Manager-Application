@@ -76,3 +76,12 @@ test("PublicRoute redirects authenticated users away from auth screens", () => {
 
     expect(screen.getByText("Main dashboard")).toBeInTheDocument();
 });
+
+test("PublicRoute renders public content when unauthenticated", () => {
+    renderPublicRoute({
+        isAuthenticated: false,
+        loading: false,
+    });
+
+    expect(screen.getByText("Public content")).toBeInTheDocument();
+});

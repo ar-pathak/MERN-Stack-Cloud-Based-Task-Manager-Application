@@ -31,10 +31,38 @@ test("renders the 404 state and navigates home", async () => {
     expect(navigateMock).toHaveBeenCalledWith("/");
 });
 
+test("renders the default not-found message when no message is provided", () => {
+    render(<ErrorPage code={404} message="" />);
+
+    expect(screen.getByText("The page you requested could not be found.")).toBeInTheDocument();
+});
+
 test("renders the server-error fallback copy", () => {
     render(<ErrorPage code={500} />);
 
     expect(screen.getByRole("heading", { name: /something went wrong/i })).toBeInTheDocument();
     expect(screen.getByText(/we could not complete your request right now/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+});
+
+test("try again triggers a page reload", async () => {
+    const user = userEvent.setup();
+    const originalLocation = window.location;
+    const reloadMock = vi.fn();
+
+    Object.defineProperty(window, "location", {
+        configurable: true,
+        value: { ...originalLocation, reload: reloadMock },
+    });
+
+    render(<ErrorPage code={500} />);
+
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(reloadMock).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(window, "location", {
+        configurable: true,
+        value: originalLocation,
+    });
 });

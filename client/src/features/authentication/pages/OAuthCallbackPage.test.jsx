@@ -91,3 +91,88 @@ test("surfaces a session-loading error after OAuth success", async () => {
         await screen.findByText(/authentication succeeded, but the session could not be loaded/i)
     ).toBeInTheDocument();
 });
+
+test("labels unknown providers as social", async () => {
+    const refreshUserMock = vi.fn().mockResolvedValue(undefined);
+
+    renderOAuthPage({
+        initialEntry: "/home/auth/oauth/callback?status=success&provider=custom",
+        authValue: {
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    expect(
+        await screen.findByText(/signed in with social\. redirecting/i)
+    ).toBeInTheDocument();
+});
+
+test("uses fallback message when OAuth status is not successful", async () => {
+    renderOAuthPage({
+        initialEntry: "/home/auth/oauth/callback?status=error&provider=google",
+        authValue: {
+            refreshUser: vi.fn(),
+        },
+    });
+
+    expect(
+        await screen.findByText(/unable to complete google sign-in/i)
+    ).toBeInTheDocument();
+});
+
+test("treats missing status and provider as a social sign-in error", async () => {
+    renderOAuthPage({
+        initialEntry: "/home/auth/oauth/callback",
+        authValue: {
+            refreshUser: vi.fn(),
+        },
+    });
+
+    expect(
+        await screen.findByText(/unable to complete social sign-in/i)
+    ).toBeInTheDocument();
+});
+
+test("ignores late OAuth success responses after unmount", async () => {
+    let resolveRefresh;
+    const refreshPromise = new Promise((resolve) => {
+        resolveRefresh = resolve;
+    });
+    const refreshUserMock = vi.fn().mockReturnValue(refreshPromise);
+
+    const { unmount } = renderOAuthPage({
+        initialEntry: "/home/auth/oauth/callback?status=success&provider=google",
+        authValue: {
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    unmount();
+    resolveRefresh();
+
+    await refreshPromise;
+
+    expect(refreshUserMock).toHaveBeenCalledTimes(1);
+});
+
+test("ignores late OAuth failures after unmount", async () => {
+    let rejectRefresh;
+    const refreshPromise = new Promise((_, reject) => {
+        rejectRefresh = reject;
+    });
+    const refreshUserMock = vi.fn().mockReturnValue(refreshPromise);
+
+    const { unmount } = renderOAuthPage({
+        initialEntry: "/home/auth/oauth/callback?status=success&provider=google",
+        authValue: {
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    unmount();
+    rejectRefresh(new Error("late failure"));
+
+    await refreshPromise.catch(() => {});
+
+    expect(refreshUserMock).toHaveBeenCalledTimes(1);
+});

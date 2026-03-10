@@ -36,6 +36,9 @@ test("LoginForm validates required fields, toggles forgot flow, and submits cred
 
     fireEvent.click(screen.getByRole("button", { name: /forgot password/i }));
     expect(onSwitch).toHaveBeenCalledWith(views.FORGOT);
+
+    fireEvent.click(screen.getByRole("button", { name: /sign up/i }));
+    expect(onSwitch).toHaveBeenCalledWith(views.SIGNUP);
 }, 10000);
 
 test("SignupForm validates password rules and submits valid registrations", async () => {
@@ -142,6 +145,9 @@ test("ResetPasswordForm validates token, password strength, and successful submi
             </Routes>
         </MemoryRouter>
     );
+
+    await user.click(screen.getByRole("button", { name: /update password/i }));
+    expect(screen.getByText("Both fields are required.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/new password/i), {
         target: { value: "weak" },

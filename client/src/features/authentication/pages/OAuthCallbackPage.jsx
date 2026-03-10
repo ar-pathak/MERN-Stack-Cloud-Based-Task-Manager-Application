@@ -37,7 +37,6 @@ function OAuthCallbackPage() {
 
         const completeAuth = async () => {
             if (oauthStatus !== "success") {
-                if (!active) return;
                 setStatus("error");
                 setMessage(oauthMessage || `Unable to complete ${providerLabel(oauthProvider)} sign-in.`);
                 return;

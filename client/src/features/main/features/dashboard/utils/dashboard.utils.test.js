@@ -25,6 +25,14 @@ test("formatDateTime and toLocalInputDateTime guard invalid dates", () => {
     expect(toLocalInputDateTime("2026-03-09T10:15:00.000Z")).toMatch(/^2026-03-09T/);
 });
 
+test("formatDateTime formats valid dates", () => {
+    expect(formatDateTime("2026-03-09T10:15:00.000Z")).toMatch(/2026/);
+});
+
+test("toLocalInputDateTime falls back to a future timestamp when value is missing", () => {
+    expect(toLocalInputDateTime()).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+});
+
 test("readLocalDrafts tolerates missing window and malformed storage", () => {
     expect(readLocalDrafts()).toEqual([]);
 
@@ -33,6 +41,21 @@ test("readLocalDrafts tolerates missing window and malformed storage", () => {
 
     window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify([{ id: 1 }]));
     expect(readLocalDrafts()).toEqual([{ id: 1 }]);
+});
+
+test("readLocalDrafts returns empty when storage is not an array", () => {
+    window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ id: 1 }));
+
+    expect(readLocalDrafts()).toEqual([]);
+});
+
+test("readLocalDrafts returns empty when window is unavailable", () => {
+    const originalWindow = globalThis.window;
+
+    globalThis.window = undefined;
+    expect(readLocalDrafts()).toEqual([]);
+
+    globalThis.window = originalWindow;
 });
 
 test("isPostWithinDateFilter applies supported windows", () => {
@@ -46,6 +69,32 @@ test("isPostWithinDateFilter applies supported windows", () => {
     expect(isPostWithinDateFilter(threeDaysAgo.toISOString(), "last7")).toBe(true);
     expect(isPostWithinDateFilter(fortyDaysAgo.toISOString(), "last30")).toBe(false);
     expect(isPostWithinDateFilter("bad", "today")).toBe(false);
+});
+
+test("isPostWithinDateFilter handles today filtering", () => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+
+    expect(isPostWithinDateFilter(now.toISOString(), "today")).toBe(true);
+    expect(isPostWithinDateFilter(yesterday.toISOString(), "today")).toBe(false);
+});
+
+test("isPostWithinDateFilter accepts dates within the last 30 days", () => {
+    const now = new Date();
+    const tenDaysAgo = new Date(now);
+    tenDaysAgo.setDate(now.getDate() - 10);
+
+    expect(isPostWithinDateFilter(tenDaysAgo.toISOString(), "last30")).toBe(true);
+});
+
+test("isPostWithinDateFilter defaults to today threshold for unknown filters", () => {
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+
+    expect(isPostWithinDateFilter(now.toISOString(), "unknown")).toBe(true);
+    expect(isPostWithinDateFilter(yesterday.toISOString(), "unknown")).toBe(false);
 });
 
 test("toInteractionEntry builds useful fallbacks", () => {
@@ -66,4 +115,14 @@ test("toInteractionEntry builds useful fallbacks", () => {
         createdAt: entry.createdAt,
     });
     expect(entry.createdAt).toBeTruthy();
+});
+
+test("toInteractionEntry falls back to default labels and ids", () => {
+    const entry = toInteractionEntry({});
+
+    expect(entry.actorName).toBe("Someone");
+    expect(entry.message).toBe("Someone interacted with your post");
+    expect(entry.postId).toBe("");
+    expect(entry.title).toBe("New interaction");
+    expect(entry.id).toEqual(expect.any(String));
 });

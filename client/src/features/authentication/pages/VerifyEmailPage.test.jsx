@@ -95,3 +95,89 @@ test("surfaces verification failures and routes unauthenticated users back to lo
 
     expect(screen.getByText("Login Page")).toBeInTheDocument();
 });
+
+test("ignores late verification responses after unmount", async () => {
+    let resolveVerify;
+    const verifyPromise = new Promise((resolve) => {
+        resolveVerify = resolve;
+    });
+    verifyEmailMock.mockReturnValue(verifyPromise);
+    const refreshUserMock = vi.fn();
+
+    const { unmount } = renderVerifyPage({
+        initialEntry: "/email-verification/verify-token",
+        routePath: "/email-verification/:token",
+        authValue: {
+            isAuthenticated: false,
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    unmount();
+
+    resolveVerify({ message: "Email verified successfully." });
+
+    await verifyPromise;
+
+    expect(refreshUserMock).not.toHaveBeenCalled();
+});
+
+test("ignores late verification errors after unmount", async () => {
+    let rejectVerify;
+    const verifyPromise = new Promise((_, reject) => {
+        rejectVerify = reject;
+    });
+    verifyEmailMock.mockReturnValue(verifyPromise);
+    const refreshUserMock = vi.fn();
+
+    const { unmount } = renderVerifyPage({
+        initialEntry: "/email-verification/verify-token",
+        routePath: "/email-verification/:token",
+        authValue: {
+            isAuthenticated: false,
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    unmount();
+    rejectVerify(new Error("late failure"));
+
+    await verifyPromise.catch(() => {});
+
+    expect(refreshUserMock).not.toHaveBeenCalled();
+});
+
+test("uses the default success message when verification response is empty", async () => {
+    const refreshUserMock = vi.fn().mockResolvedValue(undefined);
+    verifyEmailMock.mockResolvedValue({});
+
+    renderVerifyPage({
+        initialEntry: "/email-verification/verify-token",
+        routePath: "/email-verification/:token",
+        authValue: {
+            isAuthenticated: false,
+            refreshUser: refreshUserMock,
+        },
+    });
+
+    expect(
+        await screen.findByText("Email verified successfully.")
+    ).toBeInTheDocument();
+});
+
+test("uses the default error message when verification fails without details", async () => {
+    verifyEmailMock.mockRejectedValue({});
+
+    renderVerifyPage({
+        initialEntry: "/email-verification/verify-token",
+        routePath: "/email-verification/:token",
+        authValue: {
+            isAuthenticated: false,
+            refreshUser: vi.fn(),
+        },
+    });
+
+    expect(
+        await screen.findByText("Verification link is invalid or expired.")
+    ).toBeInTheDocument();
+});

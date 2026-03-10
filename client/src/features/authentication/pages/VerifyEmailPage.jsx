@@ -16,7 +16,6 @@ const VerifyEmailPage = () => {
 
         const runVerification = async () => {
             if (!token) {
-                if (!active) return;
                 setStatus("error");
                 setMessage("Invalid verification link.");
                 return;
