@@ -68,6 +68,67 @@ const authFeatureBlocks = [
     }
 ];
 
+export const createAuthSubmitHandler = ({
+    login,
+    register,
+    searchParams,
+    navigate,
+    setActiveView
+}) => async (payload, type) => {
+    try {
+        let result;
+
+        if (type === "login") {
+            result = await login(payload);
+
+            if (result?.success) {
+                const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
+                toast.success("Login successful. Redirecting...");
+                setTimeout(() => navigate(safeTarget), 450);
+            } else {
+                toast.error(result?.message || result?.error || "Login failed");
+            }
+        } else if (type === "signup") {
+            result = await register(payload);
+
+            if (result?.success) {
+                const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
+                toast.success("Account created successfully. Redirecting...");
+                setTimeout(() => navigate(safeTarget), 450);
+            } else {
+                toast.error(result?.message || result?.error || "Registration failed");
+            }
+        } else if (type === "forgot-password") {
+            const { forgotPassword } = await import("../../../service/auth.service");
+            result = await forgotPassword(payload);
+
+            if (result?.success || result?.message) {
+                toast.success(result.message || "Password reset link sent to your email.");
+                setTimeout(() => setActiveView(views.LOGIN), 1800);
+            } else {
+                toast.error(result?.error || "Failed to send reset email");
+            }
+        } else if (type === "reset-password") {
+            const { resetPassword } = await import("../../../service/auth.service");
+            result = await resetPassword(payload);
+
+            if (result?.success || result?.message) {
+                toast.success(result.message || "Password reset successfully.");
+                setTimeout(() => setActiveView(views.LOGIN), 1600);
+            } else {
+                toast.error(result?.error || "Failed to reset password");
+            }
+        }
+    } catch (err) {
+        console.error("Auth error:", err);
+        const errorMessage =
+            err?.message ||
+            err?.response?.data?.message ||
+            "An unexpected error occurred. Please try again.";
+        toast.error(errorMessage);
+    }
+};
+
 export default function AuthPage() {
     const { token } = useParams();
     const [activeView, setActiveView] = useState(views.LOGIN);
@@ -81,60 +142,13 @@ export default function AuthPage() {
         }
     }, [token]);
 
-    const handleSubmit = async (payload, type) => {
-        try {
-            let result;
-
-            if (type === "login") {
-                result = await login(payload);
-
-                if (result?.success) {
-                    const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
-                    toast.success("Login successful. Redirecting...");
-                    setTimeout(() => navigate(safeTarget), 450);
-                } else {
-                    toast.error(result?.message || result?.error || "Login failed");
-                }
-            } else if (type === "signup") {
-                result = await register(payload);
-
-                if (result?.success) {
-                    const safeTarget = sanitizeRedirectPath(searchParams.get("redirect"));
-                    toast.success("Account created successfully. Redirecting...");
-                    setTimeout(() => navigate(safeTarget), 450);
-                } else {
-                    toast.error(result?.message || result?.error || "Registration failed");
-                }
-            } else if (type === "forgot-password") {
-                const { forgotPassword } = await import("../../../service/auth.service");
-                result = await forgotPassword(payload);
-
-                if (result?.success || result?.message) {
-                    toast.success(result.message || "Password reset link sent to your email.");
-                    setTimeout(() => setActiveView(views.LOGIN), 1800);
-                } else {
-                    toast.error(result?.error || "Failed to send reset email");
-                }
-            } else if (type === "reset-password") {
-                const { resetPassword } = await import("../../../service/auth.service");
-                result = await resetPassword(payload);
-
-                if (result?.success || result?.message) {
-                    toast.success(result.message || "Password reset successfully.");
-                    setTimeout(() => setActiveView(views.LOGIN), 1600);
-                } else {
-                    toast.error(result?.error || "Failed to reset password");
-                }
-            }
-        } catch (err) {
-            console.error("Auth error:", err);
-            const errorMessage =
-                err?.message ||
-                err?.response?.data?.message ||
-                "An unexpected error occurred. Please try again.";
-            toast.error(errorMessage);
-        }
-    };
+    const handleSubmit = createAuthSubmitHandler({
+        login,
+        register,
+        searchParams,
+        navigate,
+        setActiveView
+    });
 
     return (
         <div className="relative min-h-screen overflow-x-hidden bg-slate-950 text-slate-100">

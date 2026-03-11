@@ -32,7 +32,7 @@ vi.mock("../../../../service/auth.service", async () => {
 });
 
 import { AuthContext } from "../../../../context/AuthContext";
-import AuthPage from "../../../../features/authentication/pages/AuthPage.jsx";
+import AuthPage, { createAuthSubmitHandler } from "../../../../features/authentication/pages/AuthPage.jsx";
 
 const renderAuthPage = ({ initialEntry, authValue, routePath = "/home/auth" }) => render(
     <AuthContext.Provider value={authValue}>
@@ -51,6 +51,21 @@ beforeEach(() => {
     resetPasswordMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+});
+
+test("auth submit handler ignores unknown submit types", async () => {
+    const handler = createAuthSubmitHandler({
+        login: vi.fn(),
+        register: vi.fn(),
+        searchParams: new URLSearchParams(),
+        navigate: vi.fn(),
+        setActiveView: vi.fn(),
+    });
+
+    await handler({ email: "aurora@example.com" }, "unknown");
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
 });
 
 test("login success uses a sanitized redirect target", async () => {
