@@ -26,6 +26,7 @@ const ChatPage = () => {
     const { user: currentUser, token } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const { id: targetUserId } = useParams();
 
     const [activeChatId, setActiveChatId] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -99,12 +100,19 @@ const ChatPage = () => {
             try {
                 let userProfile = targetUserProfile;
                 if (!userProfile) {
-                    const res = await getUserById(userProfile._id);
-                    userProfile = res.user || res;
+                    if (!targetUserId) {
+                        throw new Error("Missing chat target user id");
+                    }
+                    const res = await getUserById(targetUserId);
+                    userProfile = res?.user || res;
                     if (isMounted) setTargetUserProfile(userProfile);
                 }
 
-                const { exists, chatId } = await checkPrivateChatExists(userProfile._id);
+                const resolvedUserId = userProfile?._id || targetUserId;
+                if (!resolvedUserId) {
+                    throw new Error("Missing chat target user id");
+                }
+                const { exists, chatId } = await checkPrivateChatExists(resolvedUserId);
 
                 if (exists && chatId) {
                     if (isMounted) setActiveChatId(chatId);
@@ -132,7 +140,7 @@ const ChatPage = () => {
 
         initChat();
         return () => { isMounted = false; };
-    }, [targetUserProfile, scrollToBottom]);
+    }, [targetUserProfile, targetUserId, scrollToBottom]);
 
     // 3. Typing Indicator Emitter
     const handleInputChange = (e) => {
