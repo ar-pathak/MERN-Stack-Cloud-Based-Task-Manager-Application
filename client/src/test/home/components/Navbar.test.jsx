@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { vi, describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import Navbar from '../../../features/home/components/Navbar'
+
+vi.mock('react-router', () => ({
+    Link: ({ children, to, className, ...rest }) =>
+        <a href={to} className={className} {...rest}>{children}</a>,
+    useNavigate: () => () => { },
+    useLocation: () => ({ pathname: '/' }),
+}))
 
 describe('Navbar', () => {
     it('renders the Aurora brand name', () => {

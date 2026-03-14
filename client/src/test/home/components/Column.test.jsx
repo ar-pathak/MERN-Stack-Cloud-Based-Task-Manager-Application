@@ -1,6 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { vi,describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import Column from '../../../features/home/components/Column'
+
+vi.mock('framer-motion', () => ({
+  motion: new Proxy({}, {
+    get(_, tag) {
+      return ({ children, initial, animate, whileInView, viewport,
+                transition, whileHover, whileTap, exit, variants, ...rest }) =>
+        <div {...rest}>{children}</div>
+    }
+  }),
+  AnimatePresence: ({ children }) => children,
+}))
+
 
 describe('Column', () => {
   const defaultProps = {

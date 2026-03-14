@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import {vi, describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import Footer from '../../../features/home/components/Footer'
+
+vi.mock('react-router', () => ({
+  Link: ({ children, to, className, ...rest }) =>
+    <a href={to} className={className} {...rest}>{children}</a>,
+  useNavigate: () => () => {},
+  useLocation: () => ({ pathname: '/' }),
+}))
 
 describe('Footer', () => {
   it('renders Aurora brand name', () => {
