@@ -1,6 +1,6 @@
 import { vi, describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import Navbar from '../../../features/home/components/Navbar'
+import Navbar from '../../../../features/home/components/Navbar'
 
 vi.mock('react-router', () => ({
     Link: ({ children, to, className, ...rest }) =>

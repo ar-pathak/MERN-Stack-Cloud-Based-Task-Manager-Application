@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fadeUp, stagger } from '../../../features/home/components/AnimationHelpers'
+import { fadeUp, stagger } from '../../../../features/home/components/AnimationHelpers'
 
 describe('AnimationHelpers', () => {
   describe('fadeUp', () => {

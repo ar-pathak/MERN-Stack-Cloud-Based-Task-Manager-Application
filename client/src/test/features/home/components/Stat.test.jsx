@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import Stat from '../../../features/home/components/Stat'
+import Stat from '../../../../features/home/components/Stat'
 
 describe('Stat', () => {
   it('renders the label', () => {

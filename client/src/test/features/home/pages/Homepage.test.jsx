@@ -1,14 +1,14 @@
 import { vi, describe, it, expect } from 'vitest'
-vi.mock('../../../features/home/components/FeaturesSection',  () => ({ default: () => <div data-testid="features-section" /> }))
-vi.mock('../../../features/home/components/FlowSection',      () => ({ default: () => <div data-testid="flow-section" /> }))
-vi.mock('../../../features/home/components/UseCasesSection',  () => ({ default: () => <div data-testid="usecases-section" /> }))
-vi.mock('../../../features/home/components/SecuritySection',  () => ({ default: () => <div data-testid="security-section" /> }))
-vi.mock('../../../features/home/components/Footer',           () => ({ default: () => <div data-testid="footer" /> }))
-vi.mock('../../../features/home/components/Navbar',           () => ({ default: () => <div data-testid="navbar" /> }))
-vi.mock('../../../features/home/components/HeroSection',      () => ({ default: () => <div data-testid="hero-section" /> }))
+vi.mock('../../../../features/home/components/FeaturesSection',  () => ({ default: () => <div data-testid="features-section" /> }))
+vi.mock('../../../../features/home/components/FlowSection',      () => ({ default: () => <div data-testid="flow-section" /> }))
+vi.mock('../../../../features/home/components/UseCasesSection',  () => ({ default: () => <div data-testid="usecases-section" /> }))
+vi.mock('../../../../features/home/components/SecuritySection',  () => ({ default: () => <div data-testid="security-section" /> }))
+vi.mock('../../../../features/home/components/Footer',           () => ({ default: () => <div data-testid="footer" /> }))
+vi.mock('../../../../features/home/components/Navbar',           () => ({ default: () => <div data-testid="navbar" /> }))
+vi.mock('../../../../features/home/components/HeroSection',      () => ({ default: () => <div data-testid="hero-section" /> }))
 
 import { render, screen } from '@testing-library/react'
-import HomePage from '../../../features/home/pages/HomePage'
+import HomePage from '../../../../features/home/pages/HomePage'
 
 vi.mock('framer-motion', () => ({
   motion: new Proxy({}, {

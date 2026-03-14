@@ -1,6 +1,6 @@
 import {vi, describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import Footer from '../../../features/home/components/Footer'
+import Footer from '../../../../features/home/components/Footer'
 
 vi.mock('react-router', () => ({
   Link: ({ children, to, className, ...rest }) =>

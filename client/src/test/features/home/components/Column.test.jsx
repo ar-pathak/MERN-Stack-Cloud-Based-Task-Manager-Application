@@ -1,6 +1,6 @@
 import { vi,describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import Column from '../../../features/home/components/Column'
+import Column from '../../../../features/home/components/Column'
 
 vi.mock('framer-motion', () => ({
   motion: new Proxy({}, {
