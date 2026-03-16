@@ -25,12 +25,12 @@ describe('WorkspacePopup', () => {
   describe('visibility', () => {
     it('renders when isOpen=true', () => {
       render(<WorkspacePopup {...defaultProps} />)
-      expect(screen.getByText('Create Workspace')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Create Workspace' })).toBeInTheDocument()
     })
 
     it('renders nothing when isOpen=false', () => {
       render(<WorkspacePopup {...defaultProps} isOpen={false} />)
-      expect(screen.queryByText('Create Workspace')).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Create Workspace' })).not.toBeInTheDocument()
     })
   })
 
@@ -38,7 +38,7 @@ describe('WorkspacePopup', () => {
   describe('static content', () => {
     it('renders the Create Workspace heading', () => {
       render(<WorkspacePopup {...defaultProps} />)
-      expect(screen.getByText('Create Workspace')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Create Workspace' })).toBeInTheDocument()
     })
 
     it('renders the subtitle', () => {
@@ -223,7 +223,7 @@ describe('WorkspacePopup', () => {
     it('does not call onClose when modal content is clicked', () => {
       const onClose = vi.fn()
       render(<WorkspacePopup {...defaultProps} onClose={onClose} />)
-      fireEvent.click(screen.getByText('Create Workspace'))
+      fireEvent.click(screen.getByRole('heading', { name: 'Create Workspace' }))
       expect(onClose).not.toHaveBeenCalled()
     })
   })

@@ -122,7 +122,7 @@ describe('SubtaskInputs', () => {
 
   it('title input has autoFocus', () => {
     render(<SubtaskInputs {...defaultProps} />)
-    expect(screen.getByPlaceholderText('e.g., Create wireframes for login page')).toHaveAttribute('autofocus')
+    expect(screen.getByPlaceholderText('e.g., Create wireframes for login page')).toHaveFocus()
   })
 })
 

@@ -51,6 +51,8 @@ const NotificationsPage = () => {
     const handleNotificationClick = async (notification) => {
         try {
             await ensureRead(notification);
+        } catch {
+            // Allow navigation even when marking the notification as read fails.
         } finally {
             navigate(resolveNotificationPath(notification), {
                 state: { fromNotification: true, notificationId: notification?._id }
@@ -360,3 +362,4 @@ const NotificationsPage = () => {
 };
 
 export default NotificationsPage;
+

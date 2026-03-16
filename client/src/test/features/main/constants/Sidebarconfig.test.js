@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { NAV_ITEMS, COLOR_THEMES } from '../constants/sidebarConfig'
+import { NAV_ITEMS, COLOR_THEMES } from '../../../../features/main/constants/sidebarConfig'
 
 // ─── Pure data file — zero mocks needed ───────────────────────────────────────
 

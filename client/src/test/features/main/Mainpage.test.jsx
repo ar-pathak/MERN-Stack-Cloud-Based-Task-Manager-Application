@@ -42,7 +42,7 @@ vi.mock('../../../features/main/components/background/AnimatedBackground', () =>
   default: () => <div data-testid="animated-bg">Background</div>,
 }))
 
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, waitFor } from '@testing-library/react'
 import MainPage from '../../../features/main/MainPage'
 import { useScrollDirection } from '../../../features/main/hook/useScrollDirection'
 import { useToggle } from '../../../context/ToggleContext'
@@ -144,7 +144,9 @@ describe('MainPage', () => {
     it('hides header after scroll down event', () => {
       useScrollDirection.mockReturnValue('down')
       const { container } = render(<MainPage />)
-      // Re-render with down direction triggers the hide
+      act(() => {
+        vi.advanceTimersByTime(8000)
+      })
       expect(container.querySelector('.h-0')).toBeInTheDocument()
       expect(container.querySelector('.opacity-0')).toBeInTheDocument()
     })
@@ -276,3 +278,6 @@ describe('MainPage', () => {
     })
   })
 })
+
+
+

@@ -74,7 +74,7 @@ describe('ProjectPopup', () => {
 
     it('renders when isOpen=true', () => {
       render(<ProjectPopup isOpen={true} onClose={vi.fn()} onSubmit={vi.fn()} />)
-      expect(screen.getByText('Create Project')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Create Project' })).toBeInTheDocument()
     })
   })
 
@@ -82,7 +82,7 @@ describe('ProjectPopup', () => {
   describe('header', () => {
     it('renders Create Project heading', () => {
       render(<ProjectPopup isOpen={true} onClose={vi.fn()} onSubmit={vi.fn()} />)
-      expect(screen.getByText('Create Project')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Create Project' })).toBeInTheDocument()
     })
 
     it('renders workspace name when workspaceName is provided', () => {
@@ -194,14 +194,14 @@ describe('ProjectPopup', () => {
 
     it('renders Create Project button', () => {
       render(<ProjectPopup isOpen={true} onClose={vi.fn()} onSubmit={vi.fn()} />)
-      expect(screen.getByText('Create Project')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /^Create Project$/i })).toBeInTheDocument()
     })
 
     it('calls handleSubmit when Create Project is clicked', () => {
       const handleSubmit = vi.fn()
       mockUseProjectForm.mockReturnValue(buildHookReturn({ handleSubmit }))
       render(<ProjectPopup isOpen={true} onClose={vi.fn()} onSubmit={vi.fn()} />)
-      fireEvent.click(screen.getByText('Create Project'))
+      fireEvent.click(screen.getByRole('button', { name: /^Create Project$/i }))
       expect(handleSubmit).toHaveBeenCalledTimes(1)
     })
 
@@ -219,3 +219,5 @@ describe('ProjectPopup', () => {
     })
   })
 })
+
+

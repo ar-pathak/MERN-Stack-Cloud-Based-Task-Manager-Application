@@ -122,6 +122,6 @@ describe('ProjectBasicInfo', () => {
   it('name input has autoFocus attribute', () => {
     render(<ProjectBasicInfo {...defaultProps} />)
     const input = screen.getByPlaceholderText('e.g., Mobile App Redesign')
-    expect(input).toHaveAttribute('autofocus')
+    expect(input).toHaveFocus()
   })
 })
