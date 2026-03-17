@@ -59,6 +59,12 @@ const sampleActivity = {
   entity: { name: 'Sprint Planning' },
 }
 
+const flushActivityTimers = async () => {
+  await act(async () => {
+    vi.advanceTimersByTime(300)
+  })
+}
+
 describe('ActivityPage', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
@@ -84,26 +90,31 @@ describe('ActivityPage', () => {
 
     it('renders the Back button', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       expect(screen.getByText('Back')).toBeInTheDocument()
     })
 
     it('renders the Refresh button', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       expect(screen.getByText('Refresh')).toBeInTheDocument()
     })
 
     it('renders search input', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       expect(screen.getByPlaceholderText('Search by message or action')).toBeInTheDocument()
     })
 
     it('renders the level filter select', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       expect(screen.getByRole('combobox')).toBeInTheDocument()
     })
 
     it('renders all level filter options', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       const select = screen.getByRole('combobox')
       const options = select.querySelectorAll('option')
       expect(options).toHaveLength(6) // all, workspace, project, task, subtask, system
@@ -322,6 +333,7 @@ describe('ActivityPage', () => {
     })
 
     it('renders "0h 0m" when timeSpent is null', async () => {
+      getActivityDashboard.mockResolvedValue(emptyDashboardResponse)
       render(<ActivityPage />)
       await waitFor(() => {
         const zeros = screen.getAllByText('0h 0m')
@@ -330,6 +342,7 @@ describe('ActivityPage', () => {
     })
 
     it('renders empty state for likes when no liked items', async () => {
+      getActivityDashboard.mockResolvedValue(emptyDashboardResponse)
       render(<ActivityPage />)
       await waitFor(() =>
         expect(screen.getByText('You have not liked any post yet.')).toBeInTheDocument()
@@ -337,6 +350,7 @@ describe('ActivityPage', () => {
     })
 
     it('renders empty state for comments when no commented items', async () => {
+      getActivityDashboard.mockResolvedValue(emptyDashboardResponse)
       render(<ActivityPage />)
       await waitFor(() =>
         expect(screen.getByText('You have not commented on any post yet.')).toBeInTheDocument()
@@ -344,6 +358,7 @@ describe('ActivityPage', () => {
     })
 
     it('renders empty state for reposts when no reposted items', async () => {
+      getActivityDashboard.mockResolvedValue(emptyDashboardResponse)
       render(<ActivityPage />)
       await waitFor(() =>
         expect(screen.getByText('You have not reposted anything yet.')).toBeInTheDocument()
@@ -351,6 +366,7 @@ describe('ActivityPage', () => {
     })
 
     it('renders "No account history available yet." when events are empty', async () => {
+      getActivityDashboard.mockResolvedValue(emptyDashboardResponse)
       render(<ActivityPage />)
       await waitFor(() =>
         expect(screen.getByText('No account history available yet.')).toBeInTheDocument()
@@ -389,8 +405,9 @@ describe('ActivityPage', () => {
   // Back button
   // ────────────────────────────────────────────────────────────────────────────
   describe('Back button', () => {
-    it('calls navigate(-1) when Back button is clicked', () => {
+    it('calls navigate(-1) when Back button is clicked', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       fireEvent.click(screen.getByText('Back'))
       expect(mockNavigate).toHaveBeenCalledWith(-1)
     })
@@ -423,6 +440,7 @@ describe('ActivityPage', () => {
   describe('search and filter', () => {
     it('updates search term on input change', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       const input = screen.getByPlaceholderText('Search by message or action')
       fireEvent.change(input, { target: { value: 'task' } })
       expect(input.value).toBe('task')
@@ -441,6 +459,7 @@ describe('ActivityPage', () => {
 
     it('updates level filter on select change', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       const select = screen.getByRole('combobox')
       fireEvent.change(select, { target: { value: 'workspace' } })
       expect(select.value).toBe('workspace')
@@ -540,6 +559,7 @@ describe('ActivityPage', () => {
 
     it('does not render MobileBottomNav on desktop viewport', async () => {
       render(<ActivityPage />)
+      await flushActivityTimers()
       expect(screen.queryByTestId('mobile-bottom-nav')).not.toBeInTheDocument()
     })
 

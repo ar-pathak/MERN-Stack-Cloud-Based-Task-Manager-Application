@@ -11,7 +11,7 @@ vi.mock('framer-motion', () => ({
   AnimatePresence: ({ children }) => children,
 }))
 
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import WorkspacePopup from '../../../../../features/main/components/popup/WorkspacePopup'
 
 describe('WorkspacePopup', () => {
@@ -171,7 +171,10 @@ describe('WorkspacePopup', () => {
       fireEvent.click(screen.getByRole('button', { name: /Create Workspace/i }))
 
       await waitFor(() => expect(screen.getByText('Creating...')).toBeInTheDocument())
-      resolveSubmit()
+      await act(async () => {
+        resolveSubmit()
+        await Promise.resolve()
+      })
     })
   })
 

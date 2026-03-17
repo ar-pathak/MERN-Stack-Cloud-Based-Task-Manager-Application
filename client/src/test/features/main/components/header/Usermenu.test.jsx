@@ -10,9 +10,10 @@ vi.mock('framer-motion', () => ({
     {},
     {
       get(_, tag) {
-        return ({ children, ...rest }) => {
+        return ({ children, animate, transition, initial, exit, variants,
+          whileHover, whileTap, whileInView, viewport, layoutId, className, ...rest }) => {
           const Component = tag
-          return <Component {...rest}>{children}</Component>
+          return <Component className={className} {...rest}>{children}</Component>
         }
       },
     }
