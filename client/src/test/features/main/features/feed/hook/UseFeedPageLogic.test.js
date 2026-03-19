@@ -182,9 +182,17 @@ const initialFollowingPosts = () => [
 
 const renderFeedHook = () => renderHook(() => useFeedPageLogic());
 
-const waitForInitialLoad = async () => {
+const waitForInitialLoad = async (result) => {
     await waitFor(() => expect(getUserFeedMock).toHaveBeenCalled());
     await waitFor(() => expect(getStoryFeedMock).toHaveBeenCalled());
+
+    if (result) {
+        await waitFor(() => {
+            expect(result.current.feedLoading).toBe(false);
+            expect(result.current.storiesLoading).toBe(false);
+            expect(result.current.filteredPosts.length).toBeGreaterThan(0);
+        });
+    }
 };
 
 beforeEach(() => {
@@ -328,7 +336,7 @@ beforeEach(() => {
 test("loads initial feed/stories and supports filters with mobile resize", async () => {
     const { result } = renderFeedHook();
 
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     expect(getUserFeedMock).toHaveBeenCalledWith({ page: 1, limit: PAGE_SIZE });
     expect(result.current.filteredPosts).toHaveLength(2);
@@ -363,7 +371,7 @@ test("loads initial feed/stories and supports filters with mobile resize", async
 
 test("handles story open, navigation, view, react, inspect, and delete flows", async () => {
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     act(() => {
         result.current.handleOpenStoryGroup(0);
@@ -417,7 +425,7 @@ test("handles story open, navigation, view, react, inspect, and delete flows", a
 
 test("loads share targets and handles partial then successful share to chats", async () => {
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     const post = result.current.filteredPosts[0];
 
@@ -471,7 +479,7 @@ test("loads share targets and handles partial then successful share to chats", a
 
 test("toggles like/save/follow and handles bookmark unsave removal", async () => {
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     await act(async () => {
         await result.current.handleToggleLike(result.current.filteredPosts[0]);
@@ -528,7 +536,7 @@ test("toggles like/save/follow and handles bookmark unsave removal", async () =>
 
 test("loads comments, submits comment/reply, likes reply, loads more, and deletes comment thread", async () => {
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     await act(async () => {
         await result.current.handleToggleComments("post-1");
@@ -612,7 +620,7 @@ test("supports repost, load more, refresh, and feed-error fallback", async () =>
     });
 
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     act(() => {
         result.current.openRepostComposer(result.current.filteredPosts[0]);
@@ -680,7 +688,7 @@ test("supports repost, load more, refresh, and feed-error fallback", async () =>
 
 test("deletes post and clears comment-related local caches", async () => {
     const { result } = renderFeedHook();
-    await waitForInitialLoad();
+    await waitForInitialLoad(result);
 
     await act(async () => {
         await result.current.handleToggleComments("post-1");
@@ -701,3 +709,6 @@ test("deletes post and clears comment-related local caches", async () => {
     expect(result.current.commentDrafts["post-1"]).toBeFalsy();
     expect(result.current.toast.message).toBe("Post deleted");
 });
+
+
+

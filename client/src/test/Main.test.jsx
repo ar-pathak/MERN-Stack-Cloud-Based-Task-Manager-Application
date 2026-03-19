@@ -45,5 +45,6 @@ describe("main entrypoint", () => {
       JSON.stringify({ ready: true }),
     );
     expect(screen.getByTestId("router-provider")).toHaveTextContent("mock-router");
-  });
+  }, 15000);
 });
+

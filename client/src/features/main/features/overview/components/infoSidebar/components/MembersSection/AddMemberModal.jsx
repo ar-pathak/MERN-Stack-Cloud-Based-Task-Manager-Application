@@ -10,7 +10,7 @@ const AddMemberModal = ({item, isOpen, onClose, onAdd, isLoading }) => {
     // Auto-focus input when modal opens
     useEffect(() => {
         if (isOpen && inputRef.current) {
-            setTimeout(() => inputRef.current.focus(), 100);
+            setTimeout(() => inputRef.current?.focus(), 100);
         }
     }, [isOpen]);
 
