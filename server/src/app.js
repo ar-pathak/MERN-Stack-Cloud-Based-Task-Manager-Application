@@ -44,7 +44,7 @@ const { setIO } = require("./modules/utils/socketStore");
 // Express app
 // ---------------------------------------------------------------------------
 const app = express();
-const port = process.env.PORT || 3000;   // fallback so listen() never gets undefined
+const port = process.env.PORT;
 const SCHEDULED_POST_PUBLISH_INTERVAL_MS = 30 * 1000;
 let scheduledPostPublishTimer = null;
 
