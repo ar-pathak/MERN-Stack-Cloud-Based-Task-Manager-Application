@@ -21,7 +21,6 @@ const createAuthError = (message, statusCode = 400) => {
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
 const normalizeBaseUrl = (value) => String(value || "").trim().replace(/\/+$/, "");
 const getBackendBaseUrl = () => normalizeBaseUrl(process.env.BACKEND_URL)
-  || `http://localhost:${process.env.PORT || 3000}`;
 
 const OAUTH_PROVIDER_FIELDS = {
   google: "googleId",
