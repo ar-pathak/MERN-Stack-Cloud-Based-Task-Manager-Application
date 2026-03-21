@@ -72,7 +72,7 @@ export const getOverviewActivity = async () => {
 // Enrich timeline with aggregated counts (moved from frontend)
 export const enrichTimeline = async (timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId) => {
     try {
-        const response = await api.post('/overview/enrich-timeline', {
+        const response = await api.post('/api/overview/enrich-timeline', {
             timeline,
             activeCallsByChatId,
             mentionByChatId,
