@@ -1,3 +1,4 @@
+import React from "react";
 import {
     BellOff,
     ChevronRight,
@@ -29,7 +30,7 @@ const formatActivityTime = (dateString) => {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-const WorkspaceItem = ({
+const WorkspaceItem = React.memo(({
     workspaceId,
     workspace,
     handleCreate,
@@ -358,6 +359,12 @@ const WorkspaceItem = ({
             )}
         </div>
     );
-};
+}, (prevProps, nextProps) => {
+    return prevProps.workspaceId === nextProps.workspaceId &&
+           prevProps.workspace === nextProps.workspace &&
+           prevProps.selectedItem?.id === nextProps.selectedItem?.id &&
+           prevProps.expandedItems.has(prevProps.workspaceId) === nextProps.expandedItems.has(nextProps.workspaceId) &&
+           prevProps.isMobile === nextProps.isMobile;
+});
 
 export default WorkspaceItem;

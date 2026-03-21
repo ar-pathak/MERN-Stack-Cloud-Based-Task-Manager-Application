@@ -1,6 +1,96 @@
+import React from "react";
 import { Loader2, Lock, Trash2 } from "lucide-react";
 
 import { toId } from "../utils/profile.helpers";
+
+const PostItem = React.memo(({
+    post,
+    onOpenPost,
+    onDeletePost,
+    onOpenLikes,
+    isOwnProfile,
+    currentUserId,
+    postActionLoadingId,
+    getPostDateLabel
+}) => {
+    const postId = toId(post);
+    const canDeletePost =
+        isOwnProfile ||
+        String(currentUserId || "") ===
+            String(toId(post?.author) || "");
+
+    return (
+        <article
+            key={postId}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenPost?.(post)}
+            onKeyDown={(event) => {
+                if (event.currentTarget !== event.target) return;
+                if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenPost?.(post);
+                }
+            }}
+            className="group rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition hover:border-slate-700 hover:bg-slate-900/80"
+        >
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-[11px] text-slate-500">
+                        {getPostDateLabel?.(post?.createdAt)}
+                    </p>
+                    {post?.content && (
+                        <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-200">
+                            {post.content}
+                        </p>
+                    )}
+                </div>
+                {canDeletePost && (
+                    <button
+                        type="button"
+                        onClick={(event) => onDeletePost?.(post, event)}
+                        disabled={postActionLoadingId === postId}
+                        className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {postActionLoadingId === postId ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                            <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete
+                    </button>
+                )}
+            </div>
+
+            {(post?.media || []).length > 0 && (
+                <div className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+                    <img
+                        src={post.media[0]?.url}
+                        alt="Post media"
+                        className="h-56 w-full object-cover"
+                    />
+                </div>
+            )}
+
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                <button
+                    type="button"
+                    onClick={(event) => onOpenLikes?.(post, event)}
+                    className="rounded px-1 py-0.5 text-slate-400 hover:bg-slate-800 hover:text-sky-300"
+                >
+                    {Number(post?.likesCount || 0)} likes
+                </button>
+                <span>{Number(post?.commentsCount || 0)} comments</span>
+                <span>{Number(post?.repostsCount || 0)} reposts</span>
+            </div>
+        </article>
+    );
+}, (prevProps, nextProps) => {
+    return prevProps.post._id === nextProps.post._id &&
+           prevProps.postActionLoadingId === nextProps.postActionLoadingId &&
+           prevProps.isOwnProfile === nextProps.isOwnProfile &&
+           prevProps.currentUserId === nextProps.currentUserId;
+});
 
 const ProfilePostsTab = ({
     canViewProtectedContent,
@@ -38,80 +128,19 @@ const ProfilePostsTab = ({
                 </p>
             ) : (
                 <>
-                    {posts.map((post) => {
-                        const postId = toId(post);
-                        const canDeletePost =
-                            isOwnProfile ||
-                            String(currentUserId || "") ===
-                                String(toId(post?.author) || "");
-
-                        return (
-                            <article
-                                key={postId}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => onOpenPost?.(post)}
-                                onKeyDown={(event) => {
-                                    if (event.currentTarget !== event.target) return;
-                                    if (event.key === "Enter" || event.key === " ") {
-                                        event.preventDefault();
-                                        onOpenPost?.(post);
-                                    }
-                                }}
-                                className="group rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition hover:border-slate-700 hover:bg-slate-900/80"
-                            >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] text-slate-500">
-                                            {getPostDateLabel?.(post?.createdAt)}
-                                        </p>
-                                        {post?.content && (
-                                            <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                                                {post.content}
-                                            </p>
-                                        )}
-                                    </div>
-                                    {canDeletePost && (
-                                        <button
-                                            type="button"
-                                            onClick={(event) => onDeletePost?.(post, event)}
-                                            disabled={postActionLoadingId === postId}
-                                            className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            {postActionLoadingId === postId ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            )}
-                                            Delete
-                                        </button>
-                                    )}
-                                </div>
-
-                                {(post?.media || []).length > 0 && (
-                                    <div className="mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-                                        <img
-                                            src={post.media[0]?.url}
-                                            alt="Post media"
-                                            className="h-56 w-full object-cover"
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                                    <button
-                                        type="button"
-                                        onClick={(event) => onOpenLikes?.(post, event)}
-                                        className="rounded px-1 py-0.5 text-slate-400 hover:bg-slate-800 hover:text-sky-300"
-                                    >
-                                        {Number(post?.likesCount || 0)} likes
-                                    </button>
-                                    <span>{Number(post?.commentsCount || 0)} comments</span>
-                                    <span>{Number(post?.repostsCount || 0)} reposts</span>
-                                </div>
-                            </article>
-                        );
-                    })}
+                    {posts.map((post) => (
+                        <PostItem
+                            key={toId(post)}
+                            post={post}
+                            onOpenPost={onOpenPost}
+                            onDeletePost={onDeletePost}
+                            onOpenLikes={onOpenLikes}
+                            isOwnProfile={isOwnProfile}
+                            currentUserId={currentUserId}
+                            postActionLoadingId={postActionLoadingId}
+                            getPostDateLabel={getPostDateLabel}
+                        />
+                    ))}
 
                     {Boolean(postsPagination?.hasMore) && (
                         <button

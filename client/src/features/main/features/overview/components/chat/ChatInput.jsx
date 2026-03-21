@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Reply, Loader2, Paperclip, Smile, Send, FileText, Image as ImageIcon, AtSign } from "lucide-react";
 import { searchMentionCandidates } from "../../../../../../service/user.service";
@@ -54,6 +54,13 @@ const ChatInput = ({
     const [mentionCandidates, setMentionCandidates] = useState([]);
     const [mentionLoading, setMentionLoading] = useState(false);
     const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+
+    const handleEmojiSelect = useCallback((emoji) => {
+        const nextValue = `${chatMessage}${emoji}`;
+        setChatMessage(nextValue);
+        setShowEmojiPicker(false);
+        textareaRef.current?.focus();
+    }, [chatMessage, setChatMessage]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -409,12 +416,7 @@ const ChatInput = ({
                     <AnimatePresence>
                         {showEmojiPicker && (
                             <EmojiPicker
-                                onSelect={(emoji) => {
-                                    const nextValue = `${chatMessage}${emoji}`;
-                                    setChatMessage(nextValue);
-                                    setShowEmojiPicker(false);
-                                    textareaRef.current?.focus();
-                                }}
+                                onSelect={handleEmojiSelect}
                             />
                         )}
                     </AnimatePresence>

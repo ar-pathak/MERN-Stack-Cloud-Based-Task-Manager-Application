@@ -1,4 +1,5 @@
 import { Loader2, Send, Ticket, Upload } from "lucide-react";
+import { useMemo } from "react";
 import {
     CATEGORY_OPTIONS,
     PRIORITY_CLASS_MAP,
@@ -41,6 +42,11 @@ const TicketsSection = ({
     commentSubmitting,
     handleAddComment
 }) => {
+    const filteredCategories = useMemo(
+        () => CATEGORY_OPTIONS.filter((option) => option.value !== "all"),
+        []
+    );
+
     return (
         <section className="mb-4 grid gap-4 xl:grid-cols-3">
             <div className="rounded-2xl border border-slate-800/80 bg-slate-900/55 p-4">
@@ -78,7 +84,7 @@ const TicketsSection = ({
                             }
                             className="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300 outline-none focus:border-sky-500/60"
                         >
-                            {CATEGORY_OPTIONS.filter((option) => option.value !== "all").map((option) => (
+                            {filteredCategories.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
                                 </option>

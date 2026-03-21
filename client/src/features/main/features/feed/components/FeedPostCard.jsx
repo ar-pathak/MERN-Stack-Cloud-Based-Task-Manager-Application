@@ -1,3 +1,4 @@
+import React from "react";
 import {
     Bookmark,
     BookmarkCheck,
@@ -222,7 +223,7 @@ const CommentItem = ({
     );
 };
 
-const FeedPostCard = ({
+const FeedPostCard = React.memo(({
     post,
     navigateToProfile,
     formatRelativeTime,
@@ -524,6 +525,11 @@ const FeedPostCard = ({
             )}
         </article>
     );
-};
+}, (prevProps, nextProps) => {
+    return prevProps.post._id === nextProps.post._id &&
+           prevProps.isCommentsOpen === nextProps.isCommentsOpen &&
+           prevProps.actionState === nextProps.actionState &&
+           prevProps.currentUserId === nextProps.currentUserId;
+});
 
 export default FeedPostCard;

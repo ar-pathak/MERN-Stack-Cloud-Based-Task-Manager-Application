@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Reply, Pin, Edit2, Trash2, FileText, Download,
@@ -21,26 +21,52 @@ const ChatMessage = ({
     const navigate = useNavigate();
     const currentUserId = user?._id || user?.id;
 
-    // --- DATA NORMALIZATION ---
-    const messageId = message._id || message.id;
-    const sender = message.senderId || message.sender || {};
-    const senderIdString = typeof sender === 'object' ? (sender._id || sender.id) : sender;
+    // --- DATA NORMALIZATION (Memoized) ---
+    const normalizedMessage = useMemo(() => {
+        const messageId = message._id || message.id;
+        const sender = message.senderId || message.sender || {};
+        const senderIdString = typeof sender === 'object' ? (sender._id || sender.id) : sender;
 
-    const isOwnMessage = message.isOwn !== undefined
-        ? message.isOwn
-        : String(senderIdString) === String(currentUserId);
+        const isOwnMessage = message.isOwn !== undefined
+            ? message.isOwn
+            : String(senderIdString) === String(currentUserId);
 
-    const content = message.content || message.text || '';
-    const sharedPostId =
-        (typeof message.sharedPost === "object" && (message.sharedPost?._id || message.sharedPost?.id)) ||
-        (typeof message.sharedPost === "string" ? message.sharedPost : "");
-    const sharedPost = typeof message.sharedPost === "object" ? message.sharedPost : null;
-    const isPostShare = Boolean(message.type === "post" || sharedPostId);
-    const isSystemMessage = Boolean(
-        message.isSystem ||
-        message.type === "system" ||
-        message.meta?.isActivity
-    );
+        const content = message.content || message.text || '';
+        const sharedPostId =
+            (typeof message.sharedPost === "object" && (message.sharedPost?._id || message.sharedPost?.id)) ||
+            (typeof message.sharedPost === "string" ? message.sharedPost : "");
+        const sharedPost = typeof message.sharedPost === "object" ? message.sharedPost : null;
+        const isPostShare = Boolean(message.type === "post" || sharedPostId);
+        const isSystemMessage = Boolean(
+            message.isSystem ||
+            message.type === "system" ||
+            message.meta?.isActivity
+        );
+
+        return {
+            messageId,
+            sender,
+            senderIdString,
+            isOwnMessage,
+            content,
+            sharedPostId,
+            sharedPost,
+            isPostShare,
+            isSystemMessage
+        };
+    }, [message, currentUserId]);
+
+    const {
+        messageId,
+        sender,
+        senderIdString,
+        isOwnMessage,
+        content,
+        sharedPostId,
+        sharedPost,
+        isPostShare,
+        isSystemMessage
+    } = normalizedMessage;
 
     // State
     const [showActions, setShowActions] = useState(false);
