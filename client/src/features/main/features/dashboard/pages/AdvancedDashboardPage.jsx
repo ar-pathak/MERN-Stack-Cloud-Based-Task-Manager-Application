@@ -1,17 +1,66 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, lazy, Suspense } from "react";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
 import { useAuth } from "../../../../../context/AuthContext";
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
-import AudienceInsightsSection from "../components/AudienceInsightsSection";
-import CoreMetricsSection from "../components/CoreMetricsSection";
+
+// Lazy-load dashboard section components (loaded progressively as user scrolls)
+const CoreMetricsSection = lazy(() => import("../components/CoreMetricsSection"));
+const GrowthStatsSection = lazy(() => import("../components/GrowthStatsSection"));
+const PostAnalyticsSection = lazy(() => import("../components/PostAnalyticsSection"));
+const AudienceInsightsSection = lazy(() => import("../components/AudienceInsightsSection"));
+const PostManagementSection = lazy(() => import("../components/PostManagementSection"));
+
 import DashboardHeader from "../components/DashboardHeader";
-import GrowthStatsSection from "../components/GrowthStatsSection";
-import PostAnalyticsSection from "../components/PostAnalyticsSection";
-import PostManagementSection from "../components/PostManagementSection";
 import { MOBILE_BREAKPOINT } from "../constants/dashboard.constants";
 import useAdvancedDashboard from "../hooks/useAdvancedDashboard";
+
+// Skeleton loaders for lazy-loaded sections
+const CoreMetricsSkeleton = () => (
+  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="h-6 w-32 bg-slate-800 rounded animate-pulse" />
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="h-24 bg-slate-800 rounded animate-pulse" />
+      ))}
+    </div>
+  </div>
+);
+
+const GrowthStatsSkeleton = () => (
+  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="h-6 w-32 bg-slate-800 rounded animate-pulse" />
+    <div className="h-64 bg-slate-800 rounded animate-pulse" />
+  </div>
+);
+
+const PostAnalyticsSkeleton = () => (
+  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="h-6 w-32 bg-slate-800 rounded animate-pulse" />
+    <div className="h-10 bg-slate-800 rounded animate-pulse mb-2" />
+    {Array.from({ length: 5 }).map((_, i) => (
+      <div key={i} className="h-12 bg-slate-800 rounded animate-pulse mb-2" />
+    ))}
+  </div>
+);
+
+const AudienceInsightsSkeleton = () => (
+  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="h-6 w-32 bg-slate-800 rounded animate-pulse" />
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="h-64 bg-slate-800 rounded animate-pulse" />
+      <div className="h-64 bg-slate-800 rounded animate-pulse" />
+    </div>
+  </div>
+);
+
+const PostManagementSkeleton = () => (
+  <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-900/60 p-4">
+    <div className="h-6 w-32 bg-slate-800 rounded animate-pulse" />
+    <div className="h-32 bg-slate-800 rounded animate-pulse" />
+  </div>
+);
 
 const AdvancedDashboardPage = () => {
     const navigate = useNavigate();
@@ -112,44 +161,58 @@ const AdvancedDashboardPage = () => {
 
                 {!loading && !error ? (
                     <>
-                        <CoreMetricsSection totals={totals} />
-                        <GrowthStatsSection
-                            growthRows={growthRows}
-                            followerGrowth={followerGrowth}
-                            likesCommentsTrend={likesCommentsTrend}
-                            topPerforming={topPerforming}
-                        />
-                        <PostAnalyticsSection
-                            posts={posts}
-                            sortBy={sortBy}
-                            statusFilter={statusFilter}
-                            dateFilter={dateFilter}
-                            busyPostId={busyPostId}
-                            onSortChange={setSortBy}
-                            onStatusFilterChange={setStatusFilter}
-                            onDateFilterChange={setDateFilter}
-                            onEdit={handleEdit}
-                            onDelete={deleteOnePost}
-                        />
-                        <AudienceInsightsSection
-                            countryRows={countryRows}
-                            hourlyRows={hourlyRows}
-                            userMix={userMix}
-                            bestPostingHour={bestPostingHour}
-                        />
-                        <PostManagementSection
-                            composer={composer}
-                            setComposer={setComposer}
-                            composerError={composerError}
-                            saving={saving}
-                            scheduledPosts={scheduledPosts}
-                            drafts={drafts}
-                            onSubmit={submitComposer}
-                            onSaveDraft={saveDraft}
-                            onResetComposer={resetComposer}
-                            onLoadDraft={loadDraft}
-                            onRemoveDraft={removeDraft}
-                        />
+                        <Suspense fallback={<CoreMetricsSkeleton />}>
+                            <CoreMetricsSection totals={totals} />
+                        </Suspense>
+                        
+                        <Suspense fallback={<GrowthStatsSkeleton />}>
+                            <GrowthStatsSection
+                                growthRows={growthRows}
+                                followerGrowth={followerGrowth}
+                                likesCommentsTrend={likesCommentsTrend}
+                                topPerforming={topPerforming}
+                            />
+                        </Suspense>
+                        
+                        <Suspense fallback={<PostAnalyticsSkeleton />}>
+                            <PostAnalyticsSection
+                                posts={posts}
+                                sortBy={sortBy}
+                                statusFilter={statusFilter}
+                                dateFilter={dateFilter}
+                                busyPostId={busyPostId}
+                                onSortChange={setSortBy}
+                                onStatusFilterChange={setStatusFilter}
+                                onDateFilterChange={setDateFilter}
+                                onEdit={handleEdit}
+                                onDelete={deleteOnePost}
+                            />
+                        </Suspense>
+                        
+                        <Suspense fallback={<AudienceInsightsSkeleton />}>
+                            <AudienceInsightsSection
+                                countryRows={countryRows}
+                                hourlyRows={hourlyRows}
+                                userMix={userMix}
+                                bestPostingHour={bestPostingHour}
+                            />
+                        </Suspense>
+                        
+                        <Suspense fallback={<PostManagementSkeleton />}>
+                            <PostManagementSection
+                                composer={composer}
+                                setComposer={setComposer}
+                                composerError={composerError}
+                                saving={saving}
+                                scheduledPosts={scheduledPosts}
+                                drafts={drafts}
+                                onSubmit={submitComposer}
+                                onSaveDraft={saveDraft}
+                                onResetComposer={resetComposer}
+                                onLoadDraft={loadDraft}
+                                onRemoveDraft={removeDraft}
+                            />
+                        </Suspense>
                     </>
                 ) : null}
             </div>
