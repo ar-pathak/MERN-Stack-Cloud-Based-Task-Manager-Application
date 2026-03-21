@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -23,10 +23,11 @@ import NoResultsState from "../components/sidebar/NoResultsState";
 import TimelineItemsList from "../components/sidebar/TimelineItemsList";
 import TimelineSkeleton from "../components/sidebar/TimelineSkeleton";
 
-import WorkspacePopup from "../../../components/popup/WorkspacePopup";
-import TaskPopup from "../../../components/popup/TaskPopup";
-import SubtaskPopup from "../../../components/popup/SubtaskPopup";
-import ProjectPopup from "../../../components/popup/ProjectPopup";
+// Lazy-load popup components (loaded only when opened)
+const WorkspacePopup = lazy(() => import("../../../components/popup/WorkspacePopup"));
+const TaskPopup = lazy(() => import("../../../components/popup/TaskPopup"));
+const SubtaskPopup = lazy(() => import("../../../components/popup/SubtaskPopup"));
+const ProjectPopup = lazy(() => import("../../../components/popup/ProjectPopup"));
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
 import { useChatLogic } from "../hook/useChatLogic";
@@ -638,45 +639,58 @@ const OverviewLayout = () => {
         teams={teams}
       />
 
-      <WorkspacePopup
-        isOpen={workspacePopupOpen}
-        onClose={() => dispatch(setWorkspacePopupOpen(false))}
-        onSubmit={async (data) => {
-          await createWorkspace(data);
-          await refreshTimeline();
-          showToast("Workspace created successfully");
-        }}
-      />
+      {/* Lazy-loaded popups with Suspense - loaded only when opened */}
+      {workspacePopupOpen && (
+        <Suspense fallback={null}>
+          <WorkspacePopup
+            isOpen={workspacePopupOpen}
+            onClose={() => dispatch(setWorkspacePopupOpen(false))}
+            onSubmit={async (data) => {
+              await createWorkspace(data);
+              await refreshTimeline();
+              showToast("Workspace created successfully");
+            }}
+          />
+        </Suspense>
+      )}
 
-      <ProjectPopup
-        isOpen={isProjectPopupOpen}
-        onClose={() => dispatch(setIsProjectPopupOpen(false))}
-        onSubmit={async (projectData) => {
-          if (!selectedWorkspace?.id) {
-            showToast("Please select a workspace first");
-            return;
-          }
+      {isProjectPopupOpen && (
+        <Suspense fallback={null}>
+          <ProjectPopup
+            isOpen={isProjectPopupOpen}
+            onClose={() => dispatch(setIsProjectPopupOpen(false))}
+            onSubmit={async (projectData) => {
+              if (!selectedWorkspace?.id) {
+                showToast("Please select a workspace first");
+                return;
+              }
 
-          await createProject(selectedWorkspace.id, projectData);
-          await refreshTimeline();
-          showToast("Project created successfully");
-        }}
-        workspaceId={selectedWorkspace?.id}
-        workspaceName={selectedWorkspace?.name}
-        teams={teams}
-      />
+              await createProject(selectedWorkspace.id, projectData);
+              await refreshTimeline();
+              showToast("Project created successfully");
+            }}
+            workspaceId={selectedWorkspace?.id}
+            workspaceName={selectedWorkspace?.name}
+            teams={teams}
+          />
+        </Suspense>
+      )}
 
-      <SubtaskPopup
-        isOpen={isSubtaskPopupOpen}
-        onClose={() => dispatch(setIsSubtaskPopupOpen(false))}
-        onSubmit={async (data) => {
-          await createSubtask(data);
-          await refreshTimeline();
-          showToast("Subtask created successfully");
-        }}
-        taskId={selectedTask?.id || selectedTask?._id}
-        taskTitle={selectedTask?.title}
-      />
+      {isSubtaskPopupOpen && (
+        <Suspense fallback={null}>
+          <SubtaskPopup
+            isOpen={isSubtaskPopupOpen}
+            onClose={() => dispatch(setIsSubtaskPopupOpen(false))}
+            onSubmit={async (data) => {
+              await createSubtask(data);
+              await refreshTimeline();
+              showToast("Subtask created successfully");
+            }}
+            taskId={selectedTask?.id || selectedTask?._id}
+            taskTitle={selectedTask?.title}
+          />
+        </Suspense>
+      )}
 
       <AnimatePresence>
         {toast && (

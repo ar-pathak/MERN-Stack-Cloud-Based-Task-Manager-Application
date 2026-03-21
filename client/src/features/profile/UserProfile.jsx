@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useNavigate, useParams } from "react-router";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -44,10 +44,11 @@ import {
     unfollowUser
 } from "../../service/follow.service";
 import ProfileEditModal from "./components/ProfileEditModal";
-import PostDetailModal from "./components/PostDetailModal";
-import PostLikesModal from "./components/PostLikesModal";
+// Lazy-load modals - loaded only when opened
+const PostDetailModal = lazy(() => import("./components/PostDetailModal"));
+const PostLikesModal = lazy(() => import("./components/PostLikesModal"));
+const RelationshipModal = lazy(() => import("./components/RelationshipModal"));
 import ProfilePostsTab from "./components/ProfilePostsTab";
-import RelationshipModal from "./components/RelationshipModal";
 import {
     FOLLOW_LIST_PAGE_SIZE,
     MOBILE_BREAKPOINT,
@@ -967,30 +968,39 @@ const UserProfile = () => {
                 </div>
             </div>
 
-            <PostDetailModal
-                open={Boolean(selectedPost)}
-                post={selectedPost}
-                onClose={() => setSelectedPost(null)}
-                isOwnProfile={isOwnProfile}
-                currentUserId={currentUserId}
-                postActionLoadingId={postActionLoadingId}
-                onDeletePost={handleDeleteProfilePost}
-                onOpenLikes={handleOpenLikesModal}
-                getPostDateLabel={getPostDateLabel}
-            />
+            {/* Lazy-loaded modals - only load when opened */}
+            {Boolean(selectedPost) && (
+                <Suspense fallback={null}>
+                    <PostDetailModal
+                        open={Boolean(selectedPost)}
+                        post={selectedPost}
+                        onClose={() => setSelectedPost(null)}
+                        isOwnProfile={isOwnProfile}
+                        currentUserId={currentUserId}
+                        postActionLoadingId={postActionLoadingId}
+                        onDeletePost={handleDeleteProfilePost}
+                        onOpenLikes={handleOpenLikesModal}
+                        getPostDateLabel={getPostDateLabel}
+                    />
+                </Suspense>
+            )}
 
-            <PostLikesModal
-                open={likesModal.open}
-                postAuthorId={likesModal.postAuthorId}
-                likedUsers={likedUsers}
-                likesLoading={likesLoading}
-                likesPagination={likesPagination}
-                onClose={handleCloseLikesModal}
-                onLoadMore={handleLoadMoreLikes}
-                onUserClick={handleOpenLikedUserProfile}
-                getUserInitial={getUserInitial}
-                getPostDateLabel={getPostDateLabel}
-            />
+            {likesModal.open && (
+                <Suspense fallback={null}>
+                    <PostLikesModal
+                        open={likesModal.open}
+                        postAuthorId={likesModal.postAuthorId}
+                        likedUsers={likedUsers}
+                        likesLoading={likesLoading}
+                        likesPagination={likesPagination}
+                        onClose={handleCloseLikesModal}
+                        onLoadMore={handleLoadMoreLikes}
+                        onUserClick={handleOpenLikedUserProfile}
+                        getUserInitial={getUserInitial}
+                        getPostDateLabel={getPostDateLabel}
+                    />
+                </Suspense>
+            )}
 
             <AnimatePresence>
                 {flashMessage && (
@@ -1000,24 +1010,28 @@ const UserProfile = () => {
                 )}
             </AnimatePresence>
 
-            <RelationshipModal
-                open={graphModal.open}
-                title={graphModal.type === "followers" ? "Followers" : "Following"}
-                users={graphUsers}
-                loading={graphLoading}
-                pagination={graphPagination}
-                actionLoadingId={graphActionLoadingId}
-                currentUserId={currentUserId}
-                onClose={() => setGraphModal((previous) => ({ ...previous, open: false }))}
-                onToggleFollow={handleToggleGraphConnection}
-                onLoadMore={() => loadGraphUsers(graphModal.type, Number(graphPagination?.page || 1) + 1, true)}
-                onUserClick={(entry) => {
-                    const targetId = toId(entry);
-                    if (!targetId) return;
-                    setGraphModal((previous) => ({ ...previous, open: false }));
-                    navigate(`/profile/${targetId}`);
-                }}
-            />
+            {graphModal.open && (
+                <Suspense fallback={null}>
+                    <RelationshipModal
+                        open={graphModal.open}
+                        title={graphModal.type === "followers" ? "Followers" : "Following"}
+                        users={graphUsers}
+                        loading={graphLoading}
+                        pagination={graphPagination}
+                        actionLoadingId={graphActionLoadingId}
+                        currentUserId={currentUserId}
+                        onClose={() => setGraphModal((previous) => ({ ...previous, open: false }))}
+                        onToggleFollow={handleToggleGraphConnection}
+                        onLoadMore={() => loadGraphUsers(graphModal.type, Number(graphPagination?.page || 1) + 1, true)}
+                        onUserClick={(entry) => {
+                            const targetId = toId(entry);
+                            if (!targetId) return;
+                            setGraphModal((previous) => ({ ...previous, open: false }));
+                            navigate(`/profile/${targetId}`);
+                        }}
+                    />
+                </Suspense>
+            )}
 
             <ProfileEditModal
                 open={isEditModalOpen}

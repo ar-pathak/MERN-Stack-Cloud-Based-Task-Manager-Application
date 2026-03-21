@@ -26,8 +26,17 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // Recharts & D3 libraries - used for dashboard analytics
           if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
             return 'vendor-charts';
+          }
+          // Framer Motion - used throughout the app for animations
+          if (id.includes('node_modules/framer-motion')) {
+            return 'vendor-motion';
+          }
+          // Socket.io - used for real-time chat and presence
+          if (id.includes('node_modules/socket.io-client')) {
+            return 'vendor-socket';
           }
           // Baaki sab kuch default chunking par chhod dein
         }

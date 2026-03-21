@@ -1,4 +1,5 @@
 import { Loader2 } from "lucide-react";
+import { lazy, Suspense } from "react";
 
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { FEED_TABS, SORT_OPTIONS } from "../constants/feed.constants";
@@ -9,10 +10,11 @@ import FeedSidebar from "../components/FeedSidebar";
 import FeedSkeletonList from "../components/FeedSkeletonList";
 import FeedToast from "../components/FeedToast";
 import FeedTopBar from "../components/FeedTopBar";
-import RepostComposerModal from "../components/RepostComposerModal";
-import SharePostModal from "../components/SharePostModal";
+// Lazy-load modals (loaded only when opened)
+const RepostComposerModal = lazy(() => import("../components/RepostComposerModal"));
+const SharePostModal = lazy(() => import("../components/SharePostModal"));
+const StoryViewerModal = lazy(() => import("../components/StoryViewerModal"));
 import StoryRail from "../components/StoryRail";
-import StoryViewerModal from "../components/StoryViewerModal";
 import useFeedPageLogic from "../hook/useFeedPageLogic";
 import { formatRelativeTime } from "../utils/feed.helpers";
 
@@ -197,55 +199,66 @@ const FeedPage = () => {
                 />
             )}
 
+            {/* Lazy-loaded modals - only load when opened */}
             {repostComposer?.postId && (
-                <RepostComposerModal
-                    post={repostTargetPost}
-                    value={repostComposer?.quoteText}
-                    visibility={repostComposer?.visibility}
-                    submitting={Boolean(repostComposer?.submitting)}
-                    onChange={(value) =>
-                        setRepostComposer((previous) => ({ ...previous, quoteText: value }))
-                    }
-                    onVisibilityChange={(value) =>
-                        setRepostComposer((previous) => ({ ...previous, visibility: value }))
-                    }
-                    onClose={closeRepostComposer}
-                    onQuickRepost={() => submitRepost("repost")}
-                    onQuoteRepost={() => submitRepost("quote")}
-                />
+                <Suspense fallback={null}>
+                    <RepostComposerModal
+                        post={repostTargetPost}
+                        value={repostComposer?.quoteText}
+                        visibility={repostComposer?.visibility}
+                        submitting={Boolean(repostComposer?.submitting)}
+                        onChange={(value) =>
+                            setRepostComposer((previous) => ({ ...previous, quoteText: value }))
+                        }
+                        onVisibilityChange={(value) =>
+                            setRepostComposer((previous) => ({ ...previous, visibility: value }))
+                        }
+                        onClose={closeRepostComposer}
+                        onQuickRepost={() => submitRepost("repost")}
+                        onQuoteRepost={() => submitRepost("quote")}
+                    />
+                </Suspense>
             )}
 
-            <SharePostModal
-                isOpen={Boolean(shareComposer?.postId)}
-                postId={shareComposer?.postId}
-                postPreview={shareComposer?.postPreview}
-                targets={shareComposer?.targets || []}
-                loadingTargets={Boolean(shareComposer?.loadingTargets)}
-                selectedChatIds={shareComposer?.selectedChatIds || []}
-                expandedNodeIds={shareComposer?.expandedNodeIds || {}}
-                note={shareComposer?.note || ""}
-                submitting={Boolean(shareComposer?.sending)}
-                onClose={closeShareComposer}
-                onTargetPress={handleShareTargetPress}
-                onToggleExpand={toggleShareNodeExpanded}
-                onNoteChange={handleShareNoteChange}
-                onSubmit={submitShareToChat}
-            />
+            {Boolean(shareComposer?.postId) && (
+                <Suspense fallback={null}>
+                    <SharePostModal
+                        isOpen={Boolean(shareComposer?.postId)}
+                        postId={shareComposer?.postId}
+                        postPreview={shareComposer?.postPreview}
+                        targets={shareComposer?.targets || []}
+                        loadingTargets={Boolean(shareComposer?.loadingTargets)}
+                        selectedChatIds={shareComposer?.selectedChatIds || []}
+                        expandedNodeIds={shareComposer?.expandedNodeIds || {}}
+                        note={shareComposer?.note || ""}
+                        submitting={Boolean(shareComposer?.sending)}
+                        onClose={closeShareComposer}
+                        onTargetPress={handleShareTargetPress}
+                        onToggleExpand={toggleShareNodeExpanded}
+                        onNoteChange={handleShareNoteChange}
+                        onSubmit={submitShareToChat}
+                    />
+                </Suspense>
+            )}
 
-            <StoryViewerModal
-                viewer={storyViewer}
-                groups={storyGroups}
-                currentUserId={profileId}
-                onClose={() => setStoryViewer(null)}
-                onNavigate={handleNavigateStory}
-                onMarkViewed={handleMarkStoryViewed}
-                onReact={handleReactToStory}
-                onInspectAudience={handleInspectStoryAudience}
-                audienceLoading={storyAudienceLoading}
-                onDeleteStory={handleDeleteStory}
-                deletingStoryId={storyDeletingId}
-                onOpenProfile={(id) => navigate(`/profile/${id}`)}
-            />
+            {Boolean(storyViewer) && (
+                <Suspense fallback={null}>
+                    <StoryViewerModal
+                        viewer={storyViewer}
+                        groups={storyGroups}
+                        currentUserId={profileId}
+                        onClose={() => setStoryViewer(null)}
+                        onNavigate={handleNavigateStory}
+                        onMarkViewed={handleMarkStoryViewed}
+                        onReact={handleReactToStory}
+                        onInspectAudience={handleInspectStoryAudience}
+                        audienceLoading={storyAudienceLoading}
+                        onDeleteStory={handleDeleteStory}
+                        deletingStoryId={storyDeletingId}
+                        onOpenProfile={(id) => navigate(`/profile/${id}`)}
+                    />
+                </Suspense>
+            )}
 
             <FeedToast toast={toast} mobile={shouldShowBottomNav} />
         </div>
