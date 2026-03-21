@@ -81,6 +81,7 @@ const OverviewLayout = () => {
   const [mobilePane, setMobilePane] = useState("overview");
   const [chatMetaById, setChatMetaById] = useState({});
   const [presenceByUserId, setPresenceByUserId] = useState({});
+  const [enrichedTimeline, setEnrichedTimeline] = useState([]);
 
   const { user } = useAuth();
 
@@ -98,6 +99,7 @@ const OverviewLayout = () => {
 
   const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
+
   const timelineRef = useRef(timeline);
 
   useEffect(() => {
@@ -271,6 +273,19 @@ const OverviewLayout = () => {
   });
 
   useEffect(() => {
+    const enrich = async () => {
+      try {
+        const result = await enrichTimeline(timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId);
+        setEnrichedTimeline(result);
+      } catch (error) {
+        console.error('Error enriching timeline:', error);
+        setEnrichedTimeline(timeline); // fallback
+      }
+    };
+    enrich();
+  }, [timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId]);
+
+  useEffect(() => {
     if (selectedItem) {
       const chatId = selectedItem.id || selectedItem._id;
       handleUnreadUpdate({ chatId, reset: true });
@@ -361,11 +376,6 @@ const OverviewLayout = () => {
       refreshUnreadCallInvites();
     },
     [refreshUnreadMentions, refreshUnreadCallInvites]
-  );
-
-  const enrichedTimeline = useMemo(
-    () => enrichTimeline(timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId),
-    [timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId]
   );
 
   const filteredItems = useMemo(
