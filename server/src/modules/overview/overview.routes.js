@@ -6,6 +6,7 @@ const router = express.Router();
 router.use(authMiddleware)
 
 router.get('/activity', overviewController.activity);
+router.post('/enrich-timeline', overviewController.enrichTimeline);
 
 
 module.exports = router;

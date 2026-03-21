@@ -3,7 +3,7 @@ import { toast } from "sonner";
 
 import { connectSocket, onNotificationNew } from "../../../../../service/Chat.socket.service";
 import { getAdvancedDashboard } from "../../../../../service/activity.service";
-import { createPost, deletePost, updatePost } from "../../../../../service/post.service";
+import { createPost, deletePost, updatePost, getAnalytics } from "../../../../../service/post.service";
 import {
     DEFAULT_DAYS,
     DRAFT_STORAGE_KEY,
@@ -18,6 +18,41 @@ import {
     toLocalInputDateTime,
     toNumber
 } from "../utils/dashboard.utils";
+
+// Use backend analytics instead of frontend computation
+const useAdvancedDashboardBackend = () => {
+    const [analytics, setAnalytics] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const fetchAnalytics = async (statusFilter = 'all', dateFilter = 'all', sortBy = 'date_desc') => {
+        try {
+            setLoading(true);
+            const result = await getAnalytics({
+                statusFilter,
+                dateFilter,
+                sortBy,
+                limit: 100
+            });
+            setAnalytics(result.posts || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAnalytics();
+    }, []);
+
+    return {
+        analytics,
+        loading,
+        error,
+        refetch: fetchAnalytics
+    };
+};
 
 const buildDefaultComposerState = () => ({
     mode: "create",

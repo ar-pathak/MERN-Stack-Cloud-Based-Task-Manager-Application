@@ -421,6 +421,28 @@ const postController = {
         } catch (error) {
             return handleError(error, res);
         }
+    },
+
+    /**
+     * Get analytics with filtering and sorting
+     * GET /posts/analytics?statusFilter=published&dateFilter=last30&sortBy=likes_desc
+     */
+    getAnalytics: async (req, res) => {
+        try {
+            const { statusFilter = 'all', dateFilter = 'all', sortBy = 'date_desc', limit = 100 } = req.query;
+
+            const result = await postService.getAnalyticsWithFiltering(req.user._id, {
+                statusFilter,
+                dateFilter,
+                sortBy,
+                limit: Math.min(parseInt(limit) || 100, 500)
+            });
+
+            res.set("Cache-Control", "private, max-age=30");
+            return sendSuccess(res, result, 'Analytics retrieved successfully');
+        } catch (error) {
+            return handleError(error, res);
+        }
     }
 };
 

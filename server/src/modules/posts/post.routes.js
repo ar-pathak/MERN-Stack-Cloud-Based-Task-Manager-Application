@@ -246,4 +246,11 @@ router.delete(
     postController.unlikeComment
 );
 
+// Get analytics with filtering and sorting
+router.get(
+    '/analytics',
+    authMiddleware,
+    postController.getAnalytics
+);
+
 module.exports = router;

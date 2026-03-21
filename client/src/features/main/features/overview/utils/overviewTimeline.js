@@ -1,3 +1,5 @@
+import { enrichTimeline as enrichTimelineFromBackend } from '../../../../../service/overview.service';
+
 const toIdString = (value) => String(value || "");
 
 export const getItemId = (item) => toIdString(item?.id || item?._id);
@@ -154,7 +156,34 @@ export const applyUnreadUpdate = (timeline, data) => {
   return recurse(timeline);
 };
 
-export const enrichTimeline = (
+export const enrichTimeline = async (
+  timeline,
+  activeCallsByChatId,
+  mentionByChatId,
+  callInviteByChatId = {}
+) => {
+  try {
+    // Call backend service instead of doing computation in frontend
+    return await enrichTimelineFromBackend(
+      timeline,
+      activeCallsByChatId,
+      mentionByChatId,
+      callInviteByChatId
+    );
+  } catch (error) {
+    console.error('Backend enrichTimeline failed, using fallback:', error);
+    // Fallback to original logic if backend fails
+    return enrichTimelineFallback(
+      timeline,
+      activeCallsByChatId,
+      mentionByChatId,
+      callInviteByChatId
+    );
+  }
+};
+
+// Keep original logic as fallback
+const enrichTimelineFallback = (
   timeline,
   activeCallsByChatId,
   mentionByChatId,

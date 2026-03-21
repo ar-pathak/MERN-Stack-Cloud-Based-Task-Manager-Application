@@ -94,5 +94,38 @@ module.exports = {
         } catch (error) {
             return handleError(error, res);
         }
+    },
+
+    buildCommentTree: async (req, res) => {
+        try {
+            const { comments = [] } = req.body;
+
+            if (!Array.isArray(comments)) {
+                return sendSuccess(res, { tree: [] }, "Comments must be an array");
+            }
+
+            const tree = await supportService.buildCommentTree(comments);
+            res.set("Cache-Control", "private, max-age=10");
+            return sendSuccess(res, { tree }, "Comment tree built successfully");
+        } catch (error) {
+            return handleError(error, res);
+        }
+    },
+
+    getCommentWithReplies: async (req, res) => {
+        try {
+            const { commentId } = req.params;
+            const { page = 1, limit = 5 } = req.query;
+
+            const result = await supportService.getCommentWithPaginatedReplies(commentId, {
+                page: parseInt(page),
+                limit: Math.min(parseInt(limit) || 5, 20)
+            });
+
+            res.set("Cache-Control", "private, max-age=10");
+            return sendSuccess(res, result);
+        } catch (error) {
+            return handleError(error, res);
+        }
     }
 };

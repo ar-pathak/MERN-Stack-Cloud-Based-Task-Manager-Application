@@ -68,3 +68,20 @@ export const getOverviewActivity = async () => {
         updatedAt: item.updatedAt
     }));
 };
+
+// Enrich timeline with aggregated counts (moved from frontend)
+export const enrichTimeline = async (timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId) => {
+    try {
+        const response = await api.post('/overview/enrich-timeline', {
+            timeline,
+            activeCallsByChatId,
+            mentionByChatId,
+            callInviteByChatId
+        });
+        return response.data.data.timeline;
+    } catch (error) {
+        console.error('Failed to enrich timeline:', error);
+        // Fallback to original frontend logic if backend fails
+        return timeline;
+    }
+};

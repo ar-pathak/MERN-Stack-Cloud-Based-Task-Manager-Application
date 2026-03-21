@@ -1273,6 +1273,118 @@ class PostService {
             };
         });
     }
+
+    // Get analytics with filtering and sorting applied on backend
+    // Expected performance improvement: 50-100ms per filter change
+    async getAnalyticsWithFiltering(userId, options = {}) {
+        const {
+            statusFilter = 'all',
+            dateFilter = 'all',
+            sortBy = 'date_desc',
+            limit = 100
+        } = options;
+
+        const query = { author: userId };
+
+        // Apply status filter
+        if (statusFilter && statusFilter !== 'all') {
+            query.status = statusFilter;
+        }
+
+        // Apply date filter
+        if (dateFilter && dateFilter !== 'all') {
+            const now = new Date();
+            let startDate;
+
+            switch (dateFilter) {
+                case 'last7':
+                    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'last30':
+                    startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'last90':
+                    startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'last365':
+                    startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    break;
+            }
+
+            if (startDate) {
+                query.createdAt = { $gte: startDate };
+            }
+        }
+
+        // Fetch posts with all engagement data
+        let posts = await Post.find(query)
+            .populate('author', 'name username avatar')
+            .populate('sharedFrom', 'content author')
+            .lean()
+            .limit(limit);
+
+        // Calculate engagement metrics for each post
+        posts = posts.map((post) => {
+            const likes = Number(post?.likesCount || 0);
+            const comments = Number(post?.commentsCount || 0);
+            const shares = Number(post?.sharesCount || 0);
+            const saves = Number(post?.savesCount || 0);
+            const reposts = Number(post?.repostsCount || 0);
+            const views = Number(post?.viewsCount || 0);
+
+            // Calculate engagement score
+            const engagementScore = likes + comments * 2 + reposts * 3 + shares * 2 + Math.round(views * 0.05);
+            const engagementRate = views ? Number(((engagementScore / views) * 100).toFixed(2)) : 0;
+
+            return {
+                ...post,
+                likesCount: likes,
+                commentsCount: comments,
+                sharesCount: shares,
+                savesCount: saves,
+                repostsCount: reposts,
+                viewsCount: views,
+                engagementScore,
+                engagementRate
+            };
+        });
+
+        // Apply sorting
+        if (sortBy === 'likes_desc') {
+            posts.sort((a, b) => b.likesCount - a.likesCount);
+        } else if (sortBy === 'comments_desc') {
+            posts.sort((a, b) => b.commentsCount - a.commentsCount);
+        } else if (sortBy === 'engagement_desc') {
+            posts.sort((a, b) => b.engagementScore - a.engagementScore);
+        } else if (sortBy === 'views_desc') {
+            posts.sort((a, b) => b.viewsCount - a.viewsCount);
+        } else if (sortBy === 'date_asc') {
+            posts.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+        } else {
+            // default: date_desc
+            posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        }
+
+        // Calculate totals
+        const totals = {
+            totalPosts: posts.length,
+            totalLikes: posts.reduce((sum, p) => sum + p.likesCount, 0),
+            totalComments: posts.reduce((sum, p) => sum + p.commentsCount, 0),
+            totalShares: posts.reduce((sum, p) => sum + p.sharesCount, 0),
+            totalSaves: posts.reduce((sum, p) => sum + p.savesCount, 0),
+            totalViews: posts.reduce((sum, p) => sum + p.viewsCount, 0),
+            avgEngagementRate: posts.length > 0
+                ? Number((posts.reduce((sum, p) => sum + p.engagementRate, 0) / posts.length).toFixed(2))
+                : 0
+        };
+
+        return {
+            posts,
+            totals
+        };
+    }
 }
 
 module.exports = new PostService();

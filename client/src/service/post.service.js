@@ -458,3 +458,25 @@ export const unlikeComment = async (commentId) => {
         };
     }
 };
+
+/**
+ * Get analytics with filtering and sorting (moved from frontend)
+ * @param {Object} options - { statusFilter, dateFilter, sortBy, limit }
+ */
+export const getAnalytics = async (options = {}) => {
+    try {
+        const params = new URLSearchParams();
+        if (options.statusFilter) params.append('statusFilter', options.statusFilter);
+        if (options.dateFilter) params.append('dateFilter', options.dateFilter);
+        if (options.sortBy) params.append('sortBy', options.sortBy);
+        if (options.limit) params.append('limit', options.limit);
+
+        const response = await api.get(`${BASE_URL}/analytics?${params}`);
+        return response.data.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to get analytics",
+            status: error.response?.status,
+        };
+    }
+};

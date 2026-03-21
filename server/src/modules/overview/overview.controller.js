@@ -13,6 +13,31 @@ const overviewController = {
         } catch (err) {
             handleError(err, res)
         }
+    },
+
+    // Enrich timeline with aggregated counts
+    // Moves the recursive tree traversal from frontend to backend
+    enrichTimeline: async (req, res) => {
+        try {
+            const { timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId } = req.body;
+
+            // Validate input
+            if (!Array.isArray(timeline)) {
+                return sendSuccess(res, { timeline: [] }, "Timeline must be an array");
+            }
+
+            const enrichedTimeline = overviewService.enrichTimeline(
+                timeline,
+                activeCallsByChatId || {},
+                mentionByChatId || {},
+                callInviteByChatId || {}
+            );
+
+            res.set("Cache-Control", "private, max-age=5");
+            return sendSuccess(res, { timeline: enrichedTimeline });
+        } catch (err) {
+            handleError(err, res);
+        }
     }
 }
 

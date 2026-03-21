@@ -67,4 +67,17 @@ router.post(
     controller.submitFeedback
 );
 
+// Build comment tree from array of comments
+router.post(
+    "/comments/build-tree",
+    controller.buildCommentTree
+);
+
+// Get comment with paginated replies
+router.get(
+    "/comments/:commentId/replies",
+    validate(validation.ticketParamSchema, "params"),
+    controller.getCommentWithReplies
+);
+
 module.exports = router;

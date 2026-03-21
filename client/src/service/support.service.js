@@ -87,3 +87,34 @@ export const getMySupportFeedback = async (params = {}) => {
         pagination: normalizePagination(payload?.pagination)
     };
 };
+
+// Build comment tree (moved from frontend)
+export const buildCommentTree = async (comments) => {
+    try {
+        const response = await api.post(`${BASE}/comments/build-tree`, {
+            comments
+        });
+        return response.data.data.tree;
+    } catch (error) {
+        console.error('Failed to build comment tree:', error);
+        // Fallback to empty array if backend fails
+        return [];
+    }
+};
+
+// Get comment with paginated replies
+export const getCommentWithReplies = async (commentId, options = {}) => {
+    try {
+        const params = new URLSearchParams();
+        if (options.page) params.append('page', options.page);
+        if (options.limit) params.append('limit', options.limit);
+
+        const response = await api.get(`${BASE}/comments/${commentId}/replies?${params}`);
+        return response.data.data;
+    } catch (error) {
+        throw {
+            message: error.response?.data?.message || "Failed to get comment replies",
+            status: error.response?.status,
+        };
+    }
+};

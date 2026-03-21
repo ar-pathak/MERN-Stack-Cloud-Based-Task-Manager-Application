@@ -1,3 +1,5 @@
+import { buildCommentTree as buildCommentTreeFromBackend } from '../../../../../service/support.service';
+
 export const toIdString = (value) => String(value?._id || value?.id || value || "");
 
 export const normalizeErrorMessage = (error, fallback) => {
@@ -56,7 +58,20 @@ export const formatDateTime = (value) => {
     });
 };
 
-export const buildCommentTree = (comments = []) => {
+// Comment tree building moved to backend
+export const buildCommentTree = async (comments = []) => {
+  try {
+    // Call backend service instead of doing computation in frontend
+    return await buildCommentTreeFromBackend(comments);
+  } catch (error) {
+    console.error('Backend buildCommentTree failed, using fallback:', error);
+    // Fallback to original logic if backend fails
+    return buildCommentTreeFallback(comments);
+  }
+};
+
+// Keep original logic as fallback
+const buildCommentTreeFallback = (comments = []) => {
     const normalizedComments = Array.isArray(comments) ? comments : [];
     const commentIds = new Set(
         normalizedComments.map((comment) => toIdString(comment?._id))

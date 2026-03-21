@@ -37,13 +37,20 @@ export const formatRelativeTime = (value) => {
     return date.toLocaleDateString();
 };
 
+// Post scoring moved to backend - posts now include engagement_score
 export const scorePost = (post) => {
-    const likes = Number(post?.likesCount || 0);
-    const comments = Number(post?.commentsCount || 0);
-    const reposts = Number(post?.repostsCount || 0);
-    const shares = Number(post?.sharesCount || 0);
-    const views = Number(post?.viewsCount || 0);
-    return likes + comments * 2 + reposts * 3 + shares * 2 + Math.round(views * 0.05);
+  // Use pre-calculated score from backend, fallback to frontend calculation
+  if (post.engagement_score !== undefined) {
+    return post.engagement_score;
+  }
+
+  // Fallback calculation if backend score not available
+  const likes = Number(post?.likesCount || 0);
+  const comments = Number(post?.commentsCount || 0);
+  const reposts = Number(post?.repostsCount || 0);
+  const shares = Number(post?.sharesCount || 0);
+  const views = Number(post?.viewsCount || 0);
+  return likes + comments * 2 + reposts * 3 + shares * 2 + Math.round(views * 0.05);
 };
 
 export const getInitial = (user) => {
