@@ -197,18 +197,29 @@ const StoryViewerModal = ({
         }
 
         imageStartedAtRef.current = Date.now() - imageElapsedRef.current;
-        const interval = setInterval(() => {
+        
+        // Use requestAnimationFrame instead of setInterval for smoother, less CPU-intensive updates
+        let animationFrameId;
+        const updateProgress = () => {
             const elapsed = Date.now() - imageStartedAtRef.current;
             imageElapsedRef.current = elapsed;
             const nextProgress = Math.min(100, (elapsed / STORY_IMAGE_DURATION_MS) * 100);
             setProgress(nextProgress);
+            
             if (nextProgress >= 100) {
-                clearInterval(interval);
                 onNavigate?.(1);
+            } else {
+                animationFrameId = requestAnimationFrame(updateProgress);
             }
-        }, 70);
+        };
+        
+        animationFrameId = requestAnimationFrame(updateProgress);
 
-        return () => clearInterval(interval);
+        return () => {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+        };
     }, [activeStory?._id, audienceLoading, isAudienceOpen, mediaType, onNavigate, paused, viewer]);
 
     useEffect(() => {
@@ -427,7 +438,7 @@ const StoryViewerModal = ({
                             </button>
 
                             {isAudienceOpen && (
-                                <div className="max-h-40 space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-900/70 p-2">
+                                <div className="max-h-40 space-y-2 overflow-y-auto scroll-smooth rounded-xl border border-slate-800 bg-slate-900/70 p-2">
                                     {audienceLoading && (
                                         <p className="text-xs text-slate-500">Loading viewers...</p>
                                     )}

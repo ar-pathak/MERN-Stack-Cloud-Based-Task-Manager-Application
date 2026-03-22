@@ -3,15 +3,22 @@ import TaskItem from "../TaskItem";
 import UserChatItem from "../UserChatItem";
 import WorkspaceItem from "../WorkspaceItem";
 
-const AnimatedItem = ({ delay, children, itemId }) => {
+// Reduced animation variant - no layout="position" to avoid thrashing
+const AnimatedItem = ({ delay, children, itemId, index }) => {
+  // Only animate first 3 items to reduce render blocking
+  const shouldAnimate = index < 3;
+  
+  if (!shouldAnimate) {
+    return <div key={itemId}>{children}</div>;
+  }
+  
   return (
     <motion.div
       key={itemId}
-      layout="position"
-      initial={{ opacity: 0, y: 10 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ delay }}
+      transition={{ delay, duration: 0.2 }}
     >
       {children}
     </motion.div>
@@ -39,7 +46,7 @@ const TimelineItemsList = ({
 
           if (item.type === "task") {
             return (
-              <AnimatedItem key={itemId} itemId={itemId} delay={delay}>
+              <AnimatedItem key={itemId} itemId={itemId} delay={delay} index={index}>
                 <TaskItem
                   task={item}
                   selectedItem={selectedItem}
@@ -57,7 +64,7 @@ const TimelineItemsList = ({
 
           if (item.type === "chat") {
             return (
-              <AnimatedItem key={itemId} itemId={itemId} delay={delay}>
+              <AnimatedItem key={itemId} itemId={itemId} delay={delay} index={index}>
                 <UserChatItem
                   chat={item}
                   selectedItem={selectedItem}
@@ -70,7 +77,7 @@ const TimelineItemsList = ({
           }
 
           return (
-            <AnimatedItem key={itemId} itemId={itemId} delay={delay}>
+            <AnimatedItem key={itemId} itemId={itemId} delay={delay} index={index}>
               <WorkspaceItem
                 workspaceId={item.id}
                 workspace={item}

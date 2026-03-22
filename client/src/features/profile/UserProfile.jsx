@@ -772,7 +772,7 @@ const UserProfile = () => {
             <div className="mx-auto w-full max-w-5xl px-3 pt-3 sm:px-4 sm:pt-4">
                 <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900">
                     {profile?.coverImage ? (
-                        <img src={profile.coverImage} alt="Cover" className="h-40 w-full object-cover sm:h-56" />
+                        <img loading="lazy" src={profile.coverImage} alt="Cover" className="h-40 w-full object-cover sm:h-56" />
                     ) : (
                         <div className="h-40 w-full bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.25),_rgba(15,23,42,1)_60%)] sm:h-56" />
                     )}
@@ -781,7 +781,7 @@ const UserProfile = () => {
                         <div className="flex items-end gap-3">
                             <div className="h-20 w-20 overflow-hidden rounded-full border-4 border-slate-950 bg-slate-800 sm:h-28 sm:w-28">
                                 {profile?.avatar ? (
-                                    <img src={profile.avatar} alt={toDisplayName(profile)} className="h-full w-full object-cover" />
+                                    <img loading="lazy" src={profile.avatar} alt={toDisplayName(profile)} className="h-full w-full object-cover" />
                                 ) : (
                                     <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-slate-200">
                                         {toDisplayName(profile).charAt(0)}

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Plus, ChevronRight, ChevronDown, CheckSquare, Flag, Check, MessageSquare, AtSign } from 'lucide-react';
+import { memo, useMemo } from "react";
 import { useDispatch } from "react-redux";
 import { setIsSubtaskPopupOpen } from "../../../../../store/slice/overviewSlice";
 import { usePermissions } from "../hook/usePermissions";
@@ -407,4 +408,13 @@ const TaskItem = ({
     );
 };
 
-export default TaskItem;
+export default memo(TaskItem, (prevProps, nextProps) => {
+  // Custom comparison function - faster than shallow comparison
+  return (
+    prevProps.task?.id === nextProps.task?.id &&
+    prevProps.selectedItem?.id === nextProps.selectedItem?.id &&
+    prevProps.expandedItems === nextProps.expandedItems &&
+    prevProps.variant === nextProps.variant &&
+    prevProps.isMobile === nextProps.isMobile
+  );
+});

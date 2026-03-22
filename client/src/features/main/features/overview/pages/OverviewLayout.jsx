@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -64,7 +64,7 @@ const mergePresenceIntoMembers = (members = [], presenceByUserId = {}) =>
     };
   });
 
-const OverviewLayout = () => {
+const OverviewLayout = memo(() => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -718,6 +718,6 @@ const OverviewLayout = () => {
       </AnimatePresence>
     </div>
   );
-};
+});
 
 export default OverviewLayout;

@@ -107,7 +107,7 @@ const ProfileEditModal = ({ open, profile, saving, onClose, onSave }) => {
                             <div className="mt-2 flex items-center gap-3">
                                 <div className="h-16 w-16 overflow-hidden rounded-full border border-slate-700 bg-slate-900">
                                     {form.avatar ? (
-                                        <img src={form.avatar} alt="Avatar preview" className="h-full w-full object-cover" />
+                                        <img loading="lazy" src={form.avatar} alt="Avatar preview" className="h-full w-full object-cover" />
                                     ) : (
                                         <div className="flex h-full w-full items-center justify-center text-slate-500">
                                             <ImagePlus className="h-5 w-5" />
@@ -137,7 +137,7 @@ const ProfileEditModal = ({ open, profile, saving, onClose, onSave }) => {
                             <div className="mt-2 space-y-2">
                                 <div className="h-20 w-full overflow-hidden rounded-lg border border-slate-700 bg-slate-900">
                                     {form.coverImage ? (
-                                        <img src={form.coverImage} alt="Cover preview" className="h-full w-full object-cover" />
+                                        <img loading="lazy" src={form.coverImage} alt="Cover preview" className="h-full w-full object-cover" />
                                     ) : (
                                         <div className="flex h-full w-full items-center justify-center text-slate-500">
                                             <ImagePlus className="h-5 w-5" />

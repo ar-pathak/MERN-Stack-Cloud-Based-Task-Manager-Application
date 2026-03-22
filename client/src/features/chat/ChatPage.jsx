@@ -48,9 +48,9 @@ const ChatPage = () => {
 
     // 1. Socket Connection & Listeners
     useEffect(() => {
-        if (token) {
-            connectSocket(token);
-        }
+        if (!token) return;
+        
+        connectSocket(token);
 
         const unsubscribeMsg = onReceiveMessage(({ chatId, message }) => {
             if (chatId === activeChatId) {
@@ -89,7 +89,7 @@ const ChatPage = () => {
             unsubscribeTyping();
             unsubscribeStopTyping();
         };
-    }, [token, activeChatId, currentUser._id, scrollToBottom]);
+    }, [token, activeChatId, currentUser._id]);
 
 
     // 2. Initialization
@@ -237,7 +237,7 @@ const ChatPage = () => {
                             <div className="relative">
                                 <div className="h-10 w-10 rounded-full bg-slate-800 overflow-hidden flex items-center justify-center text-slate-200">
                                     {targetUserProfile.avatar ? (
-                                        <img src={targetUserProfile.avatar} alt={targetUserProfile.name} className="h-full w-full object-cover" />
+                                        <img loading="lazy" src={targetUserProfile.avatar} alt={targetUserProfile.name} className="h-full w-full object-cover" />
                                     ) : (
                                         <span className="font-bold text-lg">{targetUserProfile.name?.charAt(0).toUpperCase()}</span>
                                     )}

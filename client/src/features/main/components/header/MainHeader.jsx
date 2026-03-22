@@ -319,7 +319,7 @@ const MainHeader = () => {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden max-h-[80vh] overflow-y-auto custom-scrollbar"
+                    className="absolute right-0 top-full mt-2 w-80 rounded-2xl border border-slate-800/70 bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden max-h-[80vh] overflow-y-auto custom-scrollbar scroll-smooth"
                   >
                     {/* Empty State */}
                     {searchResults.users.length === 0 &&

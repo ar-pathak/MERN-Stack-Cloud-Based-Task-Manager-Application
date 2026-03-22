@@ -376,7 +376,7 @@ const CreatePostPage = () => {
                                         >
                                             <div className="h-8 w-8 overflow-hidden rounded-full border border-slate-700 bg-slate-800">
                                                 {candidate?.avatar ? (
-                                                    <img src={candidate.avatar} alt={candidate?.username} className="h-full w-full object-cover" />
+                                                    <img loading="lazy" src={candidate.avatar} alt={candidate?.username} className="h-full w-full object-cover" />
                                                 ) : (
                                                     <div className="flex h-full w-full items-center justify-center text-xs text-slate-300">
                                                         {(candidate?.name || candidate?.username || "U").charAt(0)}
@@ -414,7 +414,7 @@ const CreatePostPage = () => {
                                             {isVideo ? (
                                                 <video src={entry.url} className="h-32 w-full object-cover" />
                                             ) : (
-                                                <img src={entry.url} alt={entry.file?.name} className="h-32 w-full object-cover" />
+                                                <img loading="lazy" src={entry.url} alt={entry.file?.name} className="h-32 w-full object-cover" />
                                             )}
                                             <button
                                                 type="button"
@@ -495,7 +495,7 @@ const CreatePostPage = () => {
                                 {storyFile?.type?.startsWith("video/") ? (
                                     <video src={previewStoryUrl} controls className="h-64 w-full object-cover" />
                                 ) : (
-                                    <img src={previewStoryUrl} alt="Story preview" className="h-64 w-full object-cover" />
+                                    <img loading="lazy" src={previewStoryUrl} alt="Story preview" className="h-64 w-full object-cover" />
                                 )}
                             </div>
                         )}

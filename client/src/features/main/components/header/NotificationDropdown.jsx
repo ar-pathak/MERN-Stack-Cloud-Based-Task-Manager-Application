@@ -89,7 +89,7 @@ const NotificationDropdown = () => {
                         </button>
                     </div>
 
-                    <div className="custom-scrollbar max-h-[420px] overflow-y-auto">
+                    <div className="custom-scrollbar max-h-[420px] overflow-y-auto scroll-smooth">
                         {loading && (
                             <div className="px-4 py-4 text-sm text-slate-400">
                                 Loading notifications...

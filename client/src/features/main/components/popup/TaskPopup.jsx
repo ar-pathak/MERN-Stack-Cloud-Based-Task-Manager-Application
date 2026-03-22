@@ -55,7 +55,7 @@ const TaskPopup = (props) => {
                         disabled={uiState.isSubmitting}
                     />
 
-                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    <div className="flex-1 overflow-y-auto scroll-smooth p-6 space-y-5">
                         <BasicInputs
                             formData={formData}
                             handleChange={handlers.handleChange}

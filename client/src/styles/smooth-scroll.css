@@ -1,0 +1,141 @@
+/**
+ * Smooth Scrolling Optimization
+ * Applied to all scroll containers for consistent, smooth scrolling behavior
+ * Uses CSS containment and GPU acceleration for better performance
+ */
+
+/* === GLOBAL SMOOTH SCROLL BEHAVIOR === */
+html {
+  scroll-behavior: smooth;
+}
+
+/* === SCROLL CONTAINER BASE STYLES === */
+.scroll-smooth,
+[class*="overflow-y-auto"],
+[class*="overflow-x-auto"] {
+  scroll-behavior: smooth;
+}
+
+/* === MESSAGE & CHAT SCROLLING === */
+.message-list-container,
+.chat-messages-container,
+.chat-panel-messages {
+  scroll-behavior: smooth;
+  contain: layout style paint;
+  will-change: scroll-position;
+}
+
+/* Smooth scrolling for message containers */
+div[class*="overflow-y-auto"] {
+  scroll-behavior: smooth;
+  /* GPU acceleration for smooth scrolling */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* === FEED SCROLLING === */
+.feed-container,
+.feed-page,
+.post-feed {
+  scroll-behavior: smooth;
+  contain: layout style paint;
+}
+
+/* === TIMELINE & TASK SCROLLING === */
+.timeline-container,
+.tasks-list,
+.sidebar-items {
+  scroll-behavior: smooth;
+  contain: layout style paint;
+}
+
+/* === DROPDOWN & MENU SCROLLING === */
+.dropdown-content,
+.notification-dropdown,
+.user-menu,
+.mentions-dropdown {
+  scroll-behavior: smooth;
+  max-height: inherit;
+}
+
+/* === MODAL & POPUP SCROLLING === */
+.modal-content,
+.popup-content,
+[class*="modal"][class*="overflow-y-auto"] {
+  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
+}
+
+/* === CUSTOM SCROLLBAR STYLING FOR SMOOTH EXPERIENCE === */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #64748b #1e293b;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #64748b;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* === PERFORMANCE OPTIMIZATIONS === */
+
+/* Prevent jank during scroll */
+*:where([class*="scroll"]) {
+  scroll-behavior: smooth;
+}
+
+/* Use momentum scrolling on mobile */
+@supports (scroll-behavior: smooth) {
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Smooth overflow scrolling on iOS */
+.scroll-smooth,
+[class*="overflow-y-auto"],
+[class*="overflow-x-auto"] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* === OVERSCROLL BEHAVIOR FOR BETTER UX === */
+.chat-panel-messages,
+.message-list-container,
+.feed-container {
+  overscroll-behavior-y: contain;
+}
+
+/* Prevent rubber-band effect on edge browsers */
+@supports (overscroll-behavior: contain) {
+  div[class*="scroll"],
+  div[class*="overflow-y-auto"] {
+    overscroll-behavior-y: auto;
+  }
+}
+
+/* === REDUCED MOTION FOR ACCESSIBILITY === */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

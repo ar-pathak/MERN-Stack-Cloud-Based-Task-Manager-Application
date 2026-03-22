@@ -134,7 +134,7 @@ const ChatHeader = ({
                                     className="relative h-10 w-10 overflow-hidden rounded-full border-2 border-slate-800 shadow-lg max-[300px]:h-8 max-[300px]:w-8 sm:h-11 sm:w-11 md:h-12 md:w-12"
                                 >
                                     {item?.avatar ? (
-                                        <img src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
+                                        <img loading="lazy" src={item.avatar} alt={item.name} className="h-full w-full object-cover" />
                                     ) : (
                                         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-500 to-purple-600 text-lg font-bold text-white max-[300px]:text-sm">
                                             {item?.name?.charAt(0)?.toUpperCase() || "U"}

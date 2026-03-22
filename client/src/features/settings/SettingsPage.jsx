@@ -528,7 +528,7 @@ const SettingsPage = () => {
                                         >
                                             <div className="h-9 w-9 overflow-hidden rounded-full border border-slate-700 bg-slate-800">
                                                 {entry?.avatar ? (
-                                                    <img src={entry.avatar} alt={entry?.name || "User"} className="h-full w-full object-cover" />
+                                                    <img loading="lazy" src={entry.avatar} alt={entry?.name || "User"} className="h-full w-full object-cover" />
                                                 ) : (
                                                     <div className="flex h-full w-full items-center justify-center text-slate-500">
                                                         <UserRound className="h-4 w-4" />

@@ -51,7 +51,7 @@ const UserChatItem = ({ chat, selectedItem, setSelectedItem, onOpenChat, onOpenM
             <div className="relative flex-shrink-0 h-10 w-10 ml-4.5">
                 <div className="h-10 w-10 rounded-full bg-slate-800 border border-slate-700/50 flex items-center justify-center overflow-hidden">
                     {chat.avatar ? (
-                        <img src={chat.avatar} alt={chat.title} className="h-full w-full object-cover" />
+                        <img loading="lazy" src={chat.avatar} alt={chat.title} className="h-full w-full object-cover" />
                     ) : (
                         <span className="text-sm font-bold text-slate-400">
                             {chat.title?.charAt(0).toUpperCase() || "?"}

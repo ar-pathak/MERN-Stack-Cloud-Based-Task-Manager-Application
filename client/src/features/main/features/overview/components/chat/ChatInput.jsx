@@ -272,7 +272,7 @@ const ChatInput = ({
                     >
                         <div className="p-2 bg-slate-800/50 border border-slate-700 rounded-xl flex items-center gap-3 w-fit max-w-full max-[300px]:gap-2 max-[300px]:p-1.5">
                             {previewUrl ? (
-                                <img src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-700 max-[300px]:h-12 max-[300px]:w-12" />
+                                <img loading="lazy" src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-700 max-[300px]:h-12 max-[300px]:w-12" />
                             ) : (
                                 <div className="h-16 w-16 rounded-lg bg-slate-700/60 flex items-center justify-center border border-slate-700 max-[300px]:h-12 max-[300px]:w-12">
                                     {selectedFile.type.startsWith("image/") ? (
@@ -364,7 +364,7 @@ const ChatInput = ({
                                     </p>
                                 </div>
 
-                                <div className="max-h-56 overflow-y-auto custom-scrollbar max-[300px]:max-h-44">
+                                <div className="max-h-56 overflow-y-auto custom-scrollbar scroll-smooth max-[300px]:max-h-44">
                                     {mentionLoading && (
                                         <div className="px-3 py-3 text-xs text-slate-400 max-[300px]:px-2 max-[300px]:py-2 max-[300px]:text-[11px]">Searching users...</div>
                                     )}

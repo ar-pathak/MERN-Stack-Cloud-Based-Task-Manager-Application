@@ -61,7 +61,7 @@ const StoryRail = ({
                     >
                         <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-slate-800">
                             {userAvatar ? (
-                                <img src={userAvatar} alt={userLabel} className="h-full w-full object-cover" />
+                                <img loading="lazy" src={userAvatar} alt={userLabel} className="h-full w-full object-cover" />
                             ) : (
                                 <span className="text-xs font-semibold text-slate-300">
                                     {userLabel.charAt(0)}

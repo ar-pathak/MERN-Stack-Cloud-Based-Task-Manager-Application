@@ -313,7 +313,7 @@ const InfoSidebar = ({
             </div>
 
             {/* Scrollable Content */}
-            <div className="flex-1 basis-0 min-h-0 overflow-y-auto custom-scrollbar p-3.5 space-y-5 sm:p-6 sm:space-y-6">
+            <div className="flex-1 basis-0 min-h-0 overflow-y-auto custom-scrollbar scroll-smooth p-3.5 space-y-5 sm:p-6 sm:space-y-6">
                 <AnimatePresence mode="wait">
                     {activeTab === "overview" && (
                         <motion.div

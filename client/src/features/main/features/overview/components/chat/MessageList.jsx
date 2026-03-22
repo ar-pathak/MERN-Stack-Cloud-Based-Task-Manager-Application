@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, ChevronDown } from "lucide-react";
 import ChatMessage from "./ChatMessage";
+import { addPassiveScrollListener, createDebouncedScrollHandler } from "../../../../../../utils/scrollOptimization";
 
 const SCROLL_THRESHOLD = 120;
 const isSystemMessage = (msg) => Boolean(
@@ -103,6 +104,20 @@ const MessageList = ({
     return () => clearTimeout(timer);
   }, [jumpToMessageId, messages, handleJumpToMessage, onJumpHandled]);
 
+  // ---- Setup passive scroll listener for better performance ----
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Create debounced scroll handler
+    const debouncedScroll = createDebouncedScrollHandler(handleScroll, 100);
+
+    // Add passive scroll listener (doesn't block scrolling)
+    const cleanup = addPassiveScrollListener(container, debouncedScroll);
+
+    return cleanup;
+  }, [handleScroll]);
+
   // ---- Group messages by date + Improved Sequence Logic ----
   const messageGroups = useMemo(() => {
     const groups = [];
@@ -177,10 +192,9 @@ const MessageList = ({
     <div className="relative h-full min-h-0 overflow-hidden bg-slate-950">
       <div
         ref={containerRef}
-        onScroll={handleScroll}
-        className="h-full overflow-y-auto overflow-x-hidden px-2.5 py-4 max-[300px]:px-1.5 sm:px-4 md:px-8"
+        className="h-full overflow-y-auto overflow-x-hidden px-2.5 py-4 max-[300px]:px-1.5 sm:px-4 md:px-8 custom-scrollbar scroll-smooth"
       >
-        <div className="min-h-full flex flex-col justify-end pb-4">
+        <div className="flex flex-col justify-end">
           {messageGroups.map((group) => (
             <div key={group.date}>
               {/* Date Divider */}
@@ -190,7 +204,7 @@ const MessageList = ({
                 </span>
               </div>
 
-              {/* Messages Container - Removed space-y-0.5 to let ChatMessage handle its own spacing */}
+              {/* Messages Container - Optimized without excessive reflows */}
               <div>
                 {group.messages.map((msg) => (
                   <div key={msg.id || msg._id} id={`message-${msg.id || msg._id}`}>
