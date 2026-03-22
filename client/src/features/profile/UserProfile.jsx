@@ -1,66 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLoaderData } from "react-router"; // 🔥 IMPORTED useLoaderData
 import { AnimatePresence, motion } from "framer-motion";
 import {
-    Activity,
-    ArrowLeft,
-    BarChart3,
-    Calendar,
-    Check,
-    Copy,
-    ExternalLink,
-    LifeBuoy,
-    Loader2,
-    Lock,
-    MapPin,
-    MessageSquare,
-    MoreHorizontal,
-    Settings,
-    ShieldCheck,
-    UserX,
-    UserPlus2,
-    UserRound,
-    Users
+    Activity, ArrowLeft, BarChart3, Calendar, Check, Copy, ExternalLink, LifeBuoy, Loader2, Lock, MapPin, MessageSquare, MoreHorizontal, Settings, ShieldCheck, UserX, UserPlus2, UserRound, Users
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
 
 import {
-    blockUser as blockUserRequest,
-    getUserById,
-    unblockUser as unblockUserRequest,
-    updateProfile as updateProfileRequest
+    blockUser as blockUserRequest, getUserById, unblockUser as unblockUserRequest, updateProfile as updateProfileRequest
 } from "../../service/user.service";
 import { deletePost, getPostLikes, getUserPosts } from "../../service/post.service";
 import {
-    approveFollowRequest,
-    followUser,
-    getFollowers,
-    getFollowing,
-    getFollowSuggestions,
-    getMutualFollowers,
-    getPendingRequests,
-    rejectFollowRequest,
-    unfollowUser
+    approveFollowRequest, followUser, getFollowers, getFollowing, getFollowSuggestions, getMutualFollowers, getPendingRequests, rejectFollowRequest, unfollowUser
 } from "../../service/follow.service";
 import ProfileEditModal from "./components/ProfileEditModal";
-// Lazy-load modals - loaded only when opened
+// Lazy-load modals
 const PostDetailModal = lazy(() => import("./components/PostDetailModal"));
 const PostLikesModal = lazy(() => import("./components/PostLikesModal"));
 const RelationshipModal = lazy(() => import("./components/RelationshipModal"));
 import ProfilePostsTab from "./components/ProfilePostsTab";
 import {
-    FOLLOW_LIST_PAGE_SIZE,
-    MOBILE_BREAKPOINT,
-    POSTS_PAGE_SIZE,
-    PROFILE_TABS,
-    getFollowButtonState,
-    getJoinedLabel,
-    mergeConnections,
-    normalizeConnection,
-    normalizePagination,
-    toDisplayName,
-    toId
+    FOLLOW_LIST_PAGE_SIZE, MOBILE_BREAKPOINT, POSTS_PAGE_SIZE, PROFILE_TABS, getFollowButtonState, getJoinedLabel, mergeConnections, normalizeConnection, normalizePagination, toDisplayName, toId
 } from "./utils/profile.helpers";
 
 const MotionDiv = motion.div;
@@ -70,13 +31,19 @@ const UserProfile = () => {
     const navigate = useNavigate();
     const { user: currentUser, refreshUser } = useAuth();
 
-    const [profile, setProfile] = useState(null);
+    // 🔥 SWR Logic: Router loader se instantly initial data lein
+    const initialProfileData = useLoaderData();
+
+    const [profile, setProfile] = useState(initialProfileData || null);
+
+    // 🔥 Agar cache/loader mein data hai, toh loading screen nahi dikhegi!
+    const [isLoading, setIsLoading] = useState(!initialProfileData);
+
     const [posts, setPosts] = useState([]);
     const [postsPagination, setPostsPagination] = useState(normalizePagination({}, 1, POSTS_PAGE_SIZE));
     const [postsLoadingMore, setPostsLoadingMore] = useState(false);
     const [postsAccessMessage, setPostsAccessMessage] = useState("");
 
-    const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState("");
     const [flashMessage, setFlashMessage] = useState("");
     const [activeTab, setActiveTab] = useState("posts");
@@ -88,7 +55,6 @@ const UserProfile = () => {
 
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
-
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [editSaving, setEditSaving] = useState(false);
     const [blockActionLoading, setBlockActionLoading] = useState(false);
@@ -139,25 +105,20 @@ const UserProfile = () => {
         ? PROFILE_TABS
         : PROFILE_TABS.filter((tab) => tab.id === "posts");
 
-    const mediaPosts = useMemo(
-        () =>
-            posts.flatMap((post) =>
-                (post?.media || []).map((mediaEntry, index) => ({
-                    key: `${toId(post)}:${index}`,
-                    url: mediaEntry?.url
-                }))
-            ),
+    const mediaPosts = useMemo(() =>
+        posts.flatMap((post) =>
+            (post?.media || []).map((mediaEntry, index) => ({
+                key: `${toId(post)}:${index}`,
+                url: mediaEntry?.url
+            }))
+        ),
         [posts]
     );
 
     const profileCompletion = useMemo(() => {
         const checks = [
-            Boolean(profile?.avatar),
-            Boolean(profile?.coverImage),
-            Boolean(profile?.bio),
-            Boolean(profile?.headline),
-            Boolean(profile?.location),
-            Boolean(profile?.website)
+            Boolean(profile?.avatar), Boolean(profile?.coverImage), Boolean(profile?.bio),
+            Boolean(profile?.headline), Boolean(profile?.location), Boolean(profile?.website)
         ];
         return Math.round((checks.filter(Boolean).length / checks.length) * 100);
     }, [profile]);
@@ -212,7 +173,6 @@ const UserProfile = () => {
 
     useEffect(() => {
         if (!selectedPost && !likesModal.open) return undefined;
-
         const onKeyDown = (event) => {
             if (event.key !== "Escape") return;
             if (likesModal.open) {
@@ -221,7 +181,6 @@ const UserProfile = () => {
             }
             setSelectedPost(null);
         };
-
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [likesModal.open, selectedPost]);
@@ -264,30 +223,32 @@ const UserProfile = () => {
         await loadPosts(Number(postsPagination?.page || 1) + 1, true);
     }, [loadPosts, postsLoadingMore, postsPagination?.page]);
 
+    // 🔥 FIX: Stale-While-Revalidate (SWR) Profile Loading
     const loadProfile = useCallback(async () => {
         if (!id) return;
-        setIsLoading(true);
         setErrorMessage("");
         try {
             const payload = await getUserById(id);
-            setProfile(payload?.user || payload);
+            const data = payload?.user || payload;
+
+            // Background Revalidation: Automatically update UI silently
+            setProfile(data);
             setPostsAccessMessage("");
             await loadPosts(1, false);
         } catch (error) {
-            setErrorMessage(error?.message || "Failed to load profile");
+            // Agar cache mein data nahi tha aur load fail ho gaya
+            if (!profile) setErrorMessage(error?.message || "Failed to load profile");
         } finally {
             setIsLoading(false);
         }
-    }, [id, loadPosts]);
+    }, [id, loadPosts, profile]);
 
     const loadSuggestions = useCallback(async () => {
         setSuggestionsLoading(true);
         try {
             const payload = await getFollowSuggestions(8);
             const raw = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
-            setSuggestions(
-                raw.map((entry) => normalizeConnection(entry)).filter((entry) => entry._id !== currentUserId)
-            );
+            setSuggestions(raw.map((entry) => normalizeConnection(entry)).filter((entry) => entry._id !== currentUserId));
         } catch {
             setSuggestions([]);
         } finally {
@@ -371,28 +332,25 @@ const UserProfile = () => {
         }
     }, []);
 
-    const loadPostLikesList = useCallback(
-        async (postId, page = 1, append = false) => {
-            if (!postId) return;
-            setLikesLoading(true);
-            try {
-                const payload = await getPostLikes(postId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
-                const rawLikes = Array.isArray(payload?.likes) ? payload.likes : [];
-                const normalizedLikes = rawLikes.map((entry) => ({
-                    ...normalizeConnection(entry),
-                    likedAt: entry?.likedAt || entry?.createdAt || ""
-                }));
-                setLikedUsers((previous) =>
-                    append ? mergeConnections(previous, normalizedLikes) : normalizedLikes
-                );
-                setLikesPagination(normalizePagination(payload?.pagination, page));
-            } catch (error) {
-                if (!append) setLikedUsers([]);
-                setFlash(error?.message || "Could not load likes list");
-            } finally {
-                setLikesLoading(false);
-            }
-        },
+    const loadPostLikesList = useCallback(async (postId, page = 1, append = false) => {
+        if (!postId) return;
+        setLikesLoading(true);
+        try {
+            const payload = await getPostLikes(postId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
+            const rawLikes = Array.isArray(payload?.likes) ? payload.likes : [];
+            const normalizedLikes = rawLikes.map((entry) => ({
+                ...normalizeConnection(entry),
+                likedAt: entry?.likedAt || entry?.createdAt || ""
+            }));
+            setLikedUsers((previous) => append ? mergeConnections(previous, normalizedLikes) : normalizedLikes);
+            setLikesPagination(normalizePagination(payload?.pagination, page));
+        } catch (error) {
+            if (!append) setLikedUsers([]);
+            setFlash(error?.message || "Could not load likes list");
+        } finally {
+            setLikesLoading(false);
+        }
+    },
         [setFlash]
     );
 
@@ -401,16 +359,15 @@ const UserProfile = () => {
         setSelectedPost(post);
     }, []);
 
-    const handleOpenLikesModal = useCallback(
-        async (post, event) => {
-            event?.stopPropagation?.();
-            const postId = toId(post);
-            if (!postId) return;
-            setLikesModal({ open: true, postId, postAuthorId: toId(post?.author) });
-            setLikedUsers([]);
-            setLikesPagination(normalizePagination({}, 1));
-            await loadPostLikesList(postId, 1, false);
-        },
+    const handleOpenLikesModal = useCallback(async (post, event) => {
+        event?.stopPropagation?.();
+        const postId = toId(post);
+        if (!postId) return;
+        setLikesModal({ open: true, postId, postAuthorId: toId(post?.author) });
+        setLikedUsers([]);
+        setLikesPagination(normalizePagination({}, 1));
+        await loadPostLikesList(postId, 1, false);
+    },
         [loadPostLikesList]
     );
 
@@ -425,115 +382,85 @@ const UserProfile = () => {
         await loadPostLikesList(likesModal.postId, Number(likesPagination?.page || 1) + 1, true);
     }, [likesLoading, likesModal, likesPagination, loadPostLikesList]);
 
-    const handleDeleteProfilePost = useCallback(
-        async (post, event) => {
-            event?.stopPropagation?.();
-            const postId = toId(post);
-            const postAuthorId = toId(post?.author);
-            const canDelete = Boolean(
-                postId &&
-                currentUserId &&
-                (isOwnProfile || String(currentUserId) === String(postAuthorId))
-            );
-            if (!canDelete || postActionLoadingId === postId) return;
-            if (!window.confirm("Delete this post?")) return;
+    const handleDeleteProfilePost = useCallback(async (post, event) => {
+        event?.stopPropagation?.();
+        const postId = toId(post);
+        const postAuthorId = toId(post?.author);
+        const canDelete = Boolean(postId && currentUserId && (isOwnProfile || String(currentUserId) === String(postAuthorId)));
+        if (!canDelete || postActionLoadingId === postId) return;
+        if (!window.confirm("Delete this post?")) return;
 
-            setPostActionLoadingId(postId);
-            try {
-                await deletePost(postId);
-                setPosts((previous) => previous.filter((entry) => toId(entry) !== postId));
-                setPostsPagination((previous) => ({
-                    ...previous,
-                    total: Math.max(0, Number(previous?.total || 0) - 1)
-                }));
-                setProfile((previous) =>
-                    previous
-                        ? {
-                            ...previous,
-                            postsCount: Math.max(0, Number(previous?.postsCount || 0) - 1)
-                        }
-                        : previous
-                );
-                setSelectedPost((previous) => (toId(previous) === postId ? null : previous));
-                setLikesModal((previous) =>
-                    previous.postId === postId
-                        ? { open: false, postId: "", postAuthorId: "" }
-                        : previous
-                );
-                setFlash("Post deleted");
-            } catch (error) {
-                setFlash(error?.message || "Could not delete post");
-            } finally {
-                setPostActionLoadingId("");
-            }
-        },
+        setPostActionLoadingId(postId);
+        try {
+            await deletePost(postId);
+            setPosts((previous) => previous.filter((entry) => toId(entry) !== postId));
+            setPostsPagination((previous) => ({ ...previous, total: Math.max(0, Number(previous?.total || 0) - 1) }));
+            setProfile((previous) => previous ? { ...previous, postsCount: Math.max(0, Number(previous?.postsCount || 0) - 1) } : previous);
+            setSelectedPost((previous) => (toId(previous) === postId ? null : previous));
+            setLikesModal((previous) => previous.postId === postId ? { open: false, postId: "", postAuthorId: "" } : previous);
+            setFlash("Post deleted");
+        } catch (error) {
+            setFlash(error?.message || "Could not delete post");
+        } finally {
+            setPostActionLoadingId("");
+        }
+    },
         [currentUserId, isOwnProfile, postActionLoadingId, setFlash]
     );
 
-    const handleOpenLikedUserProfile = useCallback(
-        (entry) => {
-            const targetId = toId(entry);
-            if (!targetId) return;
-            handleCloseLikesModal();
-            setSelectedPost(null);
-            navigate(`/profile/${targetId}`);
-        },
+    const handleOpenLikedUserProfile = useCallback((entry) => {
+        const targetId = toId(entry);
+        if (!targetId) return;
+        handleCloseLikesModal();
+        setSelectedPost(null);
+        navigate(`/profile/${targetId}`);
+    },
         [handleCloseLikesModal, navigate]
     );
 
-    const loadGraphUsers = useCallback(
-        async (type, page = 1, append = false) => {
-            if (!profileId || !canViewProtectedContent) return;
-            setGraphLoading(true);
-            try {
-                const payload =
-                    type === "followers"
-                        ? await getFollowers(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE })
-                        : await getFollowing(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
+    const loadGraphUsers = useCallback(async (type, page = 1, append = false) => {
+        if (!profileId || !canViewProtectedContent) return;
+        setGraphLoading(true);
+        try {
+            const payload = type === "followers"
+                ? await getFollowers(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE })
+                : await getFollowing(profileId, { page, limit: FOLLOW_LIST_PAGE_SIZE });
 
-                const raw = type === "followers" ? payload?.followers || [] : payload?.following || [];
-                const normalized = raw.map((entry) => normalizeConnection(entry));
-                setGraphUsers((previous) => (append ? mergeConnections(previous, normalized) : normalized));
-                setGraphPagination(normalizePagination(payload?.pagination, page));
-            } catch {
-                if (!append) setGraphUsers([]);
-            } finally {
-                setGraphLoading(false);
-            }
-        },
+            const raw = type === "followers" ? payload?.followers || [] : payload?.following || [];
+            const normalized = raw.map((entry) => normalizeConnection(entry));
+            setGraphUsers((previous) => (append ? mergeConnections(previous, normalized) : normalized));
+            setGraphPagination(normalizePagination(payload?.pagination, page));
+        } catch {
+            if (!append) setGraphUsers([]);
+        } finally {
+            setGraphLoading(false);
+        }
+    },
         [canViewProtectedContent, profileId]
     );
 
     const updateProfileRelationship = useCallback((patch, followersDelta = 0) => {
-        setProfile((previous) =>
-            previous
-                ? {
-                    ...previous,
-                    followersCount: Math.max(0, Number(previous?.followersCount || 0) + followersDelta),
-                    relationship: { ...(previous?.relationship || {}), ...patch }
-                }
-                : previous
+        setProfile((previous) => previous ? {
+            ...previous,
+            followersCount: Math.max(0, Number(previous?.followersCount || 0) + followersDelta),
+            relationship: { ...(previous?.relationship || {}), ...patch }
+        } : previous
         );
     }, []);
 
-    const toggleFollowTarget = useCallback(
-        async (targetId, relationship = {}) => {
-            const nextId = toId(targetId);
-            if (!nextId || nextId === currentUserId) return null;
+    const toggleFollowTarget = useCallback(async (targetId, relationship = {}) => {
+        const nextId = toId(targetId);
+        if (!nextId || nextId === currentUserId) return null;
 
-            if (relationship?.isFollowing || relationship?.isPending) {
-                await unfollowUser(nextId);
-                return {
-                    isFollowing: false,
-                    isPending: false,
-                    followersDelta: relationship?.isFollowing ? -1 : 0
-                };
-            }
+        if (relationship?.isFollowing || relationship?.isPending) {
+            await unfollowUser(nextId);
+            return { isFollowing: false, isPending: false, followersDelta: relationship?.isFollowing ? -1 : 0 };
+        }
 
-            const result = await followUser(nextId);
-            const isPending = Boolean(result?.isPending);
-            return { isFollowing: !isPending, isPending, followersDelta: isPending ? 0 : 1 };
-        },
+        const result = await followUser(nextId);
+        const isPending = Boolean(result?.isPending);
+        return { isFollowing: !isPending, isPending, followersDelta: isPending ? 0 : 1 };
+    },
         [currentUserId]
     );
 
@@ -547,17 +474,8 @@ const UserProfile = () => {
         try {
             const next = await toggleFollowTarget(id, profile?.relationship || {});
             if (!next) return;
-            updateProfileRelationship(
-                { isFollowing: next.isFollowing, isPending: next.isPending },
-                next.followersDelta
-            );
-            setFlash(
-                next.isFollowing
-                    ? "Now following user"
-                    : next.isPending
-                        ? "Follow request sent"
-                        : "Unfollowed"
-            );
+            updateProfileRelationship({ isFollowing: next.isFollowing, isPending: next.isPending }, next.followersDelta);
+            setFlash(next.isFollowing ? "Now following user" : next.isPending ? "Follow request sent" : "Unfollowed");
             loadMutualFollowers();
             loadSuggestions();
         } catch (error) {
@@ -574,9 +492,7 @@ const UserProfile = () => {
         try {
             const next = await toggleFollowTarget(targetId, entry);
             if (!next) return;
-            setGraphUsers((previous) =>
-                previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user))
-            );
+            setGraphUsers((previous) => previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user)));
         } catch (error) {
             setFlash(error?.message || "Action failed");
         } finally {
@@ -591,9 +507,7 @@ const UserProfile = () => {
         try {
             const next = await toggleFollowTarget(targetId, entry);
             if (!next) return;
-            setSuggestions((previous) =>
-                previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user))
-            );
+            setSuggestions((previous) => previous.map((user) => (toId(user) === targetId ? { ...user, ...next } : user)));
         } catch (error) {
             setFlash(error?.message || "Could not update follow state");
         } finally {
@@ -649,10 +563,20 @@ const UserProfile = () => {
         }
     };
 
+    // 🔥 FIX: Smooth Non-Blocking Skeleton Fallback
     if (isLoading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-slate-950">
-                <Loader2 className="h-8 w-8 animate-spin text-sky-500" />
+            <div className={`min-h-screen bg-slate-950 ${isOwnProfile && isMobileViewport ? "pb-[5.25rem]" : "pb-10"}`}>
+                <div className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/90 h-[53px]"></div>
+                <div className="mx-auto w-full max-w-5xl px-3 pt-3 sm:px-4 sm:pt-4">
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 h-40 sm:h-56 animate-pulse">
+                        <div className="absolute bottom-3 left-3 h-20 w-20 sm:h-28 sm:w-28 rounded-full bg-slate-800 border-4 border-slate-950"></div>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900/55 p-4 animate-pulse">
+                        <div className="h-4 w-1/3 bg-slate-800 rounded mb-2"></div>
+                        <div className="h-3 w-2/3 bg-slate-800 rounded"></div>
+                    </div>
+                </div>
             </div>
         );
     }
@@ -826,10 +750,10 @@ const UserProfile = () => {
                                                 onClick={handleFollowAction}
                                                 disabled={followLoading}
                                                 className={`inline-flex min-w-[6.8rem] items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold ${followButtonState.tone === "following"
-                                                        ? "border-slate-700 bg-slate-900/85 text-slate-200"
-                                                        : followButtonState.tone === "pending"
-                                                            ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
-                                                            : "border-sky-500/50 bg-sky-500/20 text-sky-200"
+                                                    ? "border-slate-700 bg-slate-900/85 text-slate-200"
+                                                    : followButtonState.tone === "pending"
+                                                        ? "border-amber-500/40 bg-amber-500/15 text-amber-200"
+                                                        : "border-sky-500/50 bg-sky-500/20 text-sky-200"
                                                     }`}
                                             >
                                                 {followLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : followButtonState.label}
@@ -968,7 +892,6 @@ const UserProfile = () => {
                 </div>
             </div>
 
-            {/* Lazy-loaded modals - only load when opened */}
             {Boolean(selectedPost) && (
                 <Suspense fallback={null}>
                     <PostDetailModal
@@ -1041,7 +964,7 @@ const UserProfile = () => {
                 onSave={handleSaveProfile}
             />
 
-       </div>
+        </div>
     );
 };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, lazy, Suspense, memo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useLoaderData } from "react-router";
 
 import { useDispatch, useSelector } from "react-redux";
 import { getOverviewActivity } from "../../../../../service/overview.service";
@@ -24,7 +25,7 @@ import NoResultsState from "../components/sidebar/NoResultsState";
 import TimelineItemsList from "../components/sidebar/TimelineItemsList";
 import TimelineSkeleton from "../components/sidebar/TimelineSkeleton";
 
-// Lazy-load popup components (loaded only when opened)
+// Lazy-load popup components
 const WorkspacePopup = lazy(() => import("../../../components/popup/WorkspacePopup"));
 const TaskPopup = lazy(() => import("../../../components/popup/TaskPopup"));
 const SubtaskPopup = lazy(() => import("../../../components/popup/SubtaskPopup"));
@@ -65,12 +66,13 @@ const mergePresenceIntoMembers = (members = [], presenceByUserId = {}) =>
   });
 
 const OverviewLayout = memo(() => {
+  const initialPayload = useLoaderData();
+
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [overview] = useState(null);
-  const [loadingTimeline, setLoadingTimeline] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [selectedWorkspace, setSelectedWorkspace] = useState(null);
@@ -92,14 +94,25 @@ const OverviewLayout = memo(() => {
   });
 
   const dispatch = useDispatch();
+
   const timelineRaw = useSelector((state) => state.overview.overviewData?.timeline);
+
+  const normalizedInitial = useMemo(() => {
+    if (timelineRaw && timelineRaw.length > 0) return timelineRaw;
+    return (Array.isArray(initialPayload) ? initialPayload : []).map(normalizeOverviewNode);
+  }, [initialPayload, timelineRaw]);
+
+  const timeline = useMemo(() => timelineRaw || normalizedInitial || [], [timelineRaw, normalizedInitial]);
+
+  const [loadingTimeline, setLoadingTimeline] = useState(
+    !timelineRaw && (!initialPayload || initialPayload.length === 0)
+  );
+
   const { workspacePopupOpen, taskPopupOpen, isSubtaskPopupOpen, isProjectPopupOpen } = useSelector(
     (state) => state.overview
   );
 
-  const timeline = useMemo(() => timelineRaw || [], [timelineRaw]);
   const chat = useChatLogic(selectedItem);
-
   const timelineRef = useRef(timeline);
 
   useEffect(() => {
@@ -120,6 +133,7 @@ const OverviewLayout = memo(() => {
       setMobilePane("overview");
     }
   }, [isMobileViewport]);
+
   useEffect(() => {
     if (isMobileViewport) {
       if (mobilePane === "chat") {
@@ -135,6 +149,7 @@ const OverviewLayout = memo(() => {
       dispatch(setIsBottomNavVisible(true));
     };
   }, [isMobileViewport, mobilePane, dispatch]);
+
   useEffect(() => {
     if (isMobileViewport && mobilePane === "chat" && !selectedItem) {
       setMobilePane("overview");
@@ -205,7 +220,6 @@ const OverviewLayout = memo(() => {
       const payload = res?.data?.data || res?.data || res;
 
       if (!Array.isArray(payload)) {
-        console.error("Timeline refresh: expected array, got:", payload);
         return;
       }
 
@@ -214,9 +228,8 @@ const OverviewLayout = memo(() => {
       await refreshChatMetadata();
     } catch (error) {
       console.error("Failed to refresh timeline", error);
-      showToast("Something went wrong while refreshing");
     }
-  }, [dispatch, refreshChatMetadata, showToast]);
+  }, [dispatch, refreshChatMetadata]);
 
   const handleSidebarActivity = useCallback(
     (chatId, messageData) => {
@@ -260,7 +273,6 @@ const OverviewLayout = memo(() => {
         dispatch(setOverviewData({ timeline: normalized }));
         return;
       }
-
       refreshTimeline();
     },
     [dispatch, refreshTimeline]
@@ -292,8 +304,7 @@ const OverviewLayout = memo(() => {
         const result = await enrichTimeline(timeline, activeCallsByChatId, mentionByChatId, callInviteByChatId);
         setEnrichedTimeline(result);
       } catch (error) {
-        console.error('Error enriching timeline:', error);
-        setEnrichedTimeline(timeline); // fallback
+        setEnrichedTimeline(timeline);
       }
     };
     enrich();
@@ -333,10 +344,28 @@ const OverviewLayout = memo(() => {
     }
   };
 
+  // 🔥 YAHAN FIX KIYA GAYA HAI 🔥 
+
+  // 1. Loader (Skeleton) hatane ka logic alag kar diya
   useEffect(() => {
-    setLoadingTimeline(true);
-    refreshTimeline().finally(() => setLoadingTimeline(false));
+    if (timeline && timeline.length > 0) {
+      setLoadingTimeline(false);
+    }
+  }, [timeline]);
+
+  // 2. Sirf ek baar mount hone par background fetch (SWR) karega
+  // Isme koi Redux array dependency nahi hai, isliye loop nahi banega!
+  useEffect(() => {
+    let isMounted = true;
+
+    refreshTimeline().finally(() => {
+      if (isMounted) setLoadingTimeline(false);
+    });
+
+    return () => { isMounted = false; };
   }, [refreshTimeline]);
+
+  // ------------------------------
 
   useEffect(() => {
     refreshChatMetadata();
@@ -516,8 +545,8 @@ const OverviewLayout = memo(() => {
       : null;
   const showOverviewPane = !isMobileViewport || mobilePane === "overview";
   const showChatPane = !isMobileViewport || mobilePane === "chat";
-  const profileId = user?._id || user?.id;
   const shouldShowBottomMenu = isMobileViewport && mobilePane !== "chat";
+
   const handleLeaveChatSuccess = useCallback(async () => {
     setSelectedItem(null);
     setPendingMentionJump(null);
@@ -654,7 +683,7 @@ const OverviewLayout = memo(() => {
         teams={teams}
       />
 
-      {/* Lazy-loaded popups with Suspense - loaded only when opened */}
+      {/* Lazy-loaded popups with Suspense */}
       {workspacePopupOpen && (
         <Suspense fallback={null}>
           <WorkspacePopup

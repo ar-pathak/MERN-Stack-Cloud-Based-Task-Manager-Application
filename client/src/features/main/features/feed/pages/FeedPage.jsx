@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";
+import { useLoaderData } from "react-router"; // 🔥 Imported useLoaderData
 
 import { FEED_TABS, SORT_OPTIONS } from "../constants/feed.constants";
 import FeedEmptyState from "../components/FeedEmptyState";
@@ -9,15 +10,20 @@ import FeedSidebar from "../components/FeedSidebar";
 import FeedSkeletonList from "../components/FeedSkeletonList";
 import FeedToast from "../components/FeedToast";
 import FeedTopBar from "../components/FeedTopBar";
+
 // Lazy-load modals (loaded only when opened)
 const RepostComposerModal = lazy(() => import("../components/RepostComposerModal"));
 const SharePostModal = lazy(() => import("../components/SharePostModal"));
 const StoryViewerModal = lazy(() => import("../components/StoryViewerModal"));
+
 import StoryRail from "../components/StoryRail";
 import useFeedPageLogic from "../hook/useFeedPageLogic";
 import { formatRelativeTime } from "../utils/feed.helpers";
 
 const FeedPage = () => {
+    // 🔥 1. Turant loader se cached data get karein
+    const initialData = useLoaderData();
+
     const {
         navigate,
         user,
@@ -88,6 +94,15 @@ const FeedPage = () => {
         handleRefresh
     } = useFeedPageLogic();
 
+    // 🔥 2. Stale-While-Revalidate (SWR) Logic
+    // Jab tak custom hook fetch kar raha hai, loader ka cached data dikhayein
+    const displayPosts = (feedLoading && filteredPosts.length === 0)
+        ? (initialData || [])
+        : filteredPosts;
+
+    // 🔥 3. Skeleton sirf tab aayega jab initialData bhi null ho (Pehli baar app open hone par)
+    const showSkeleton = feedLoading && displayPosts.length === 0;
+
     return (
         <div className={`min-h-full bg-slate-950 ${shouldShowBottomNav ? "pb-[5.25rem]" : "pb-8"}`}>
             <div className="mx-auto w-full max-w-6xl px-3 pt-3 sm:px-4 sm:pt-4">
@@ -117,9 +132,11 @@ const FeedPage = () => {
                             currentUser={user}
                         />
 
-                        {feedLoading && <FeedSkeletonList />}
+                        {/* 🔥 Updated Skeleton Logic */}
+                        {showSkeleton && <FeedSkeletonList />}
 
-                        {!feedLoading && filteredPosts.length === 0 && (
+                        {/* 🔥 Updated Empty State Logic */}
+                        {!showSkeleton && displayPosts.length === 0 && (
                             <FeedEmptyState
                                 activeTab={activeTab}
                                 hasSearch={Boolean(String(searchTerm || "").trim())}
@@ -127,7 +144,8 @@ const FeedPage = () => {
                         )}
 
                         <div className="space-y-3">
-                            {filteredPosts.map((post) => {
+                            {/* 🔥 Render displayPosts instead of filteredPosts */}
+                            {displayPosts.map((post) => {
                                 const postId = String(post?._id || "");
                                 const isCommentsOpen = expandedCommentsPostId === postId;
 
@@ -189,7 +207,6 @@ const FeedPage = () => {
                     />
                 </div>
             </div>
-
 
             {/* Lazy-loaded modals - only load when opened */}
             {repostComposer?.postId && (

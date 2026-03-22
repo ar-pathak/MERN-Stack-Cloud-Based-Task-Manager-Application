@@ -1,5 +1,8 @@
 import api from "../config/axios";
 
+// 🔥 NEW: Cache for Overview
+const pendingOverviewReqs = new Map();
+
 const unwrap = (res, fallback) =>
     res?.data?.data ?? res?.data ?? fallback;
 
@@ -56,17 +59,30 @@ export const getOverview = async (workspaceId) => {
 };
 
 export const getOverviewActivity = async () => {
-    const response = await api.get("/api/overview/activity");
+    const cacheKey = "overview_activity";
 
-    const items = response.data?.data || response.data || [];
+    if (pendingOverviewReqs.has(cacheKey)) {
+        return pendingOverviewReqs.get(cacheKey);
+    }
 
-    return items.map(item => ({
-        ...item,
-        id: item.id || item._id,
-        name: item.title || item.name,
-        type: item.type,
-        updatedAt: item.updatedAt
-    }));
+    const requestPromise = api.get("/api/overview/activity")
+        .then(response => {
+            const items = response.data?.data || response.data || [];
+            return items.map(item => ({
+                ...item,
+                id: item.id || item._id,
+                name: item.title || item.name,
+                type: item.type,
+                updatedAt: item.updatedAt
+            }));
+        })
+        .finally(() => {
+            // 🔥 2-Second Cooldown Lock
+            setTimeout(() => pendingOverviewReqs.delete(cacheKey), 2000);
+        });
+
+    pendingOverviewReqs.set(cacheKey, requestPromise);
+    return requestPromise;
 };
 
 // Enrich timeline with aggregated counts (moved from frontend)

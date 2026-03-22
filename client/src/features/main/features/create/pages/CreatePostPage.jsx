@@ -41,6 +41,12 @@ const getDefaultScheduleValue = () => {
     return toDateTimeLocalValue(date);
 };
 
+// 🔥 FIX: Exit Preloading Function
+// Jab user publish karne wala hoga, hum pehle se hi feed page ready rakhenge
+const preloadFeedPage = () => {
+    import("../../feed/pages/FeedPage.jsx").catch(() => { });
+};
+
 const CreatePostPage = () => {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -251,7 +257,6 @@ const CreatePostPage = () => {
     };
 
     const hashtags = useMemo(() => extractHashtags(mode === "post" ? content : storyCaption), [mode, content, storyCaption]);
-    const profileId = user?._id || user?.id;
     const shouldShowBottomNav = isMobileViewport;
 
     return (
@@ -266,22 +271,20 @@ const CreatePostPage = () => {
                     <button
                         type="button"
                         onClick={() => setMode("post")}
-                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                            mode === "post"
-                                ? "bg-sky-500/20 text-sky-300"
-                                : "text-slate-400 hover:bg-slate-800/70"
-                        }`}
+                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${mode === "post"
+                            ? "bg-sky-500/20 text-sky-300"
+                            : "text-slate-400 hover:bg-slate-800/70"
+                            }`}
                     >
                         Create Post
                     </button>
                     <button
                         type="button"
                         onClick={() => setMode("story")}
-                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                            mode === "story"
-                                ? "bg-sky-500/20 text-sky-300"
-                                : "text-slate-400 hover:bg-slate-800/70"
-                        }`}
+                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${mode === "story"
+                            ? "bg-sky-500/20 text-sky-300"
+                            : "text-slate-400 hover:bg-slate-800/70"
+                            }`}
                     >
                         Create Story
                     </button>
@@ -313,22 +316,20 @@ const CreatePostPage = () => {
                                 <button
                                     type="button"
                                     onClick={() => setPublishMode("now")}
-                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                        publishMode === "now"
-                                            ? "bg-sky-500/20 text-sky-300"
-                                            : "text-slate-400 hover:bg-slate-800"
-                                    }`}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${publishMode === "now"
+                                        ? "bg-sky-500/20 text-sky-300"
+                                        : "text-slate-400 hover:bg-slate-800"
+                                        }`}
                                 >
                                     Now
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setPublishMode("schedule")}
-                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                        publishMode === "schedule"
-                                            ? "bg-sky-500/20 text-sky-300"
-                                            : "text-slate-400 hover:bg-slate-800"
-                                    }`}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${publishMode === "schedule"
+                                        ? "bg-sky-500/20 text-sky-300"
+                                        : "text-slate-400 hover:bg-slate-800"
+                                        }`}
                                 >
                                     Schedule
                                 </button>
@@ -441,6 +442,8 @@ const CreatePostPage = () => {
                         <button
                             type="button"
                             onClick={publishPost}
+                            onMouseEnter={preloadFeedPage} // 🔥 Mouse hover preloading
+                            onTouchStart={preloadFeedPage} // 🔥 Mobile touch preloading
                             disabled={publishing}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-600 disabled:cursor-not-allowed disabled:bg-sky-700/70"
                         >
@@ -512,6 +515,8 @@ const CreatePostPage = () => {
                         <button
                             type="button"
                             onClick={publishStory}
+                            onMouseEnter={preloadFeedPage} // 🔥 Mouse hover preloading
+                            onTouchStart={preloadFeedPage} // 🔥 Mobile touch preloading
                             disabled={publishing}
                             className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-emerald-700/70"
                         >
@@ -522,12 +527,10 @@ const CreatePostPage = () => {
                 )}
             </div>
 
-           
             {toast && (
                 <div
-                    className={`fixed right-6 z-50 rounded-xl bg-emerald-500/90 px-4 py-2 text-sm text-white ${
-                        shouldShowBottomNav ? "bottom-24 left-6" : "bottom-6"
-                    }`}
+                    className={`fixed right-6 z-50 rounded-xl bg-emerald-500/90 px-4 py-2 text-sm text-white ${shouldShowBottomNav ? "bottom-24 left-6" : "bottom-6"
+                        }`}
                 >
                     {toast}
                 </div>

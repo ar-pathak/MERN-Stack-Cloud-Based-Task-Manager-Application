@@ -1,6 +1,6 @@
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bell, Grid2x2, Newspaper, SquarePen, UserRound, Loader2 } from "lucide-react";
+import { Bell, Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { getUnreadNotificationCount } from "../../../../service/notification.service";
@@ -13,12 +13,27 @@ const ITEMS = [
     { id: "notifications", label: "Alerts", icon: Bell, path: "/main/notifications" }
 ];
 
+// "Intent to Navigate" Preloading Map
+const preloadPage = (path) => {
+    if (path.includes("/feed")) import("../../features/feed/pages/FeedPage.jsx");
+    else if (path.includes("/create")) import("../../features/create/pages/CreatePostPage.jsx");
+    else if (path.includes("/notifications")) import("../../features/notifications/pages/NotificationsPage.jsx");
+    else if (path.includes("/profile")) import("../../../profile/UserProfile.jsx");
+    else if (path === "/main") import("../../features/overview/pages/OverviewLayout.jsx");
+};
+
 const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) => {
     const navigate = useNavigate();
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // 🔥 FIX 2: useTransition ensures UI doesn't freeze during lazy chunk loading
-    const [isPending, startTransition] = useTransition();
+    // 🔥 OPTIMISTIC UI STATE: Turant active dikhane ke liye
+    const [optimisticTab, setOptimisticTab] = useState(null);
+
+    // Jaise hi actual page load ho jayega, prop wala activeTab change hoga,
+    // tab hum apne temporary state ko reset kar denge.
+    useEffect(() => {
+        setOptimisticTab(null);
+    }, [activeTab]);
 
     useEffect(() => {
         let mounted = true;
@@ -46,43 +61,39 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
 
     if (hidden) return null;
 
-    const handleNavigation = (path) => {
-        // 🔥 This prevents the "stuck" feeling by keeping the current page interactive
-        // while the next page loads in the background.
-        startTransition(() => {
-            navigate(path);
-        });
+    const handleNavigation = (path, id) => {
+        setOptimisticTab(id); // 🔥 Click karte hi turant highlight karo (No Wait)
+        navigate(path);
     };
 
     const handleMeNavigation = () => {
         if (!profileId) return;
-        handleNavigation(`/profile/${profileId}`);
+        setOptimisticTab("me"); // 🔥 Click karte hi turant highlight karo (No Wait)
+        navigate(`/profile/${profileId}`);
     };
+
+    // 🔥 Konsa tab active manana hai uska decision (Priority optimistic state ko milegi)
+    const displayTab = optimisticTab || activeTab;
 
     const navContent = (
         <div
-            // 🔥 z-[100] ensures it's above absolutely everything
             className="fixed inset-x-0 bottom-0 z-[100] border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-xl"
             style={{ paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))" }}
         >
-            {/* Optional: Show a tiny loading bar at top of nav if a page is loading */}
-            {isPending && (
-                <div className="absolute top-0 left-0 h-[2px] w-full bg-slate-800 overflow-hidden">
-                    <div className="h-full bg-sky-500 w-1/3 animate-[loading_1s_ease-in-out_infinite]" />
-                </div>
-            )}
-
             <div className="mx-auto grid w-full max-w-3xl grid-cols-5 gap-1 px-2 pt-1.5 sm:px-3 md:px-4">
                 {ITEMS.map((item) => {
                     const Icon = item.icon;
-                    const isActive = activeTab === item.id;
+                    // 🔥 Use displayTab insted of activeTab
+                    const isActive = displayTab === item.id;
                     const isNotifications = item.id === "notifications";
 
                     return (
                         <button
                             key={item.id}
                             type="button"
-                            onClick={() => handleNavigation(item.path)}
+                            onClick={() => handleNavigation(item.path, item.id)} // 🔥 Pass ID here
+                            onMouseEnter={() => preloadPage(item.path)}
+                            onTouchStart={() => preloadPage(item.path)}
                             className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] md:py-2.5 ${isActive
                                 ? "bg-sky-500/15 text-sky-300"
                                 : "text-slate-400 hover:bg-slate-800/70"
@@ -104,7 +115,9 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
                 <button
                     type="button"
                     onClick={handleMeNavigation}
-                    className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] md:py-2.5 ${activeTab === "me"
+                    onMouseEnter={() => profileId && preloadPage(`/profile/${profileId}`)}
+                    onTouchStart={() => profileId && preloadPage(`/profile/${profileId}`)}
+                    className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] md:py-2.5 ${displayTab === "me" // 🔥 Use displayTab here
                         ? "bg-sky-500/15 text-sky-300"
                         : "text-slate-400 hover:bg-slate-800/70"
                         }`}
@@ -116,8 +129,6 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
         </div>
     );
 
-    // 🔥 FIX 1: createPortal attaches this directly to the HTML body. 
-    // It will NEVER scroll, even if FeedPage has transforms or overflow issues.
     if (typeof document !== "undefined") {
         return createPortal(navContent, document.body);
     }

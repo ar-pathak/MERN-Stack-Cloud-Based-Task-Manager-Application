@@ -1,10 +1,25 @@
 import api from "../config/axios";
 
 const BASE = "/api/notifications";
+// 🔥 NEW: Cache for Notifications
+const pendingNotifReqs = new Map();
 
 export const getNotifications = async (params = {}) => {
-    const response = await api.get(BASE, { params });
-    return response.data?.data || response.data || { notifications: [], unreadCount: 0 };
+    const cacheKey = `notifs_${JSON.stringify(params)}`;
+
+    if (pendingNotifReqs.has(cacheKey)) {
+        return pendingNotifReqs.get(cacheKey);
+    }
+
+    const requestPromise = api.get("/api/notifications", { params })
+        .then(response => response.data?.data || response.data || { notifications: [], unreadCount: 0 })
+        .finally(() => {
+            // 🔥 2-Second Cooldown Lock
+            setTimeout(() => pendingNotifReqs.delete(cacheKey), 2000);
+        });
+
+    pendingNotifReqs.set(cacheKey, requestPromise);
+    return requestPromise;
 };
 
 export const getUnreadNotificationCount = async () => {

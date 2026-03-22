@@ -99,9 +99,11 @@ const MainPage = () => {
         <div className="flex h-screen min-h-0 overflow-hidden relative">
             <ScrollBar />
             <AnimatedBackground />
-            <Suspense fallback={null}>
-                <MainSidebar />
-            </Suspense>
+            {!isMobileViewport && (
+                <Suspense fallback={null}>
+                    <MainSidebar />
+                </Suspense>
+            )}
 
             {/* Right Column */}
             <div className="flex flex-col h-full min-h-0 flex-1 w-full relative">

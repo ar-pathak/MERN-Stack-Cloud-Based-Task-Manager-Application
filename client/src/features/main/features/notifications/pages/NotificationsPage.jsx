@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLoaderData } from "react-router"; // 🔥 Imported useLoaderData
 import { ArrowLeft, CheckCheck, Trash2 } from "lucide-react";
 
 import { useAuth } from "../../../../../context/AuthContext";
@@ -12,9 +12,24 @@ import {
 
 const MOBILE_BREAKPOINT = 1024;
 
+// Smooth Skeleton for Notifications
+const NotificationSkeleton = () => (
+    <div className="flex items-start gap-3 border-b border-slate-800/40 px-4 py-4 animate-pulse">
+        <div className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-slate-800" />
+        <div className="min-w-0 flex-1 space-y-2.5">
+            <div className="h-3.5 w-3/4 rounded-md bg-slate-800" />
+            <div className="h-3 w-full rounded-md bg-slate-800" />
+            <div className="h-2 w-1/4 rounded-md bg-slate-800/70" />
+        </div>
+    </div>
+);
+
 const NotificationsPage = () => {
     const navigate = useNavigate();
     const { user } = useAuth();
+    
+    // 🔥 1. Turant loader data get karein
+    const initialData = useLoaderData(); 
 
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
@@ -43,6 +58,15 @@ const NotificationsPage = () => {
         return () => window.removeEventListener("resize", onResize);
     }, []);
 
+    // 🔥 2. Stale-While-Revalidate (SWR) Logic
+    // Jab tak real-time hook data la raha hai, purana cached data dikhayein
+    const displayNotifications = (loading && notifications.length === 0) 
+        ? (initialData || []) 
+        : notifications;
+
+    // 🔥 3. Skeleton sirf tab dikhega jab dono (cache + hook) khali honge
+    const showSkeleton = loading && displayNotifications.length === 0;
+
     const profileId = toIdString(user?._id || user?.id || user);
     const shouldShowBottomNav = isMobileViewport && Boolean(profileId);
     const badgeCount = unreadCount || unreadInList;
@@ -66,6 +90,8 @@ const NotificationsPage = () => {
             }`}
         >
             <div className="mx-auto w-full max-w-3xl px-3 pt-3 sm:px-4 sm:pt-4">
+                
+                {/* Header (Always Visible Instantly) */}
                 <div className="mb-3 flex items-center justify-between rounded-xl border border-slate-800/80 bg-slate-900/60 px-3 py-2.5">
                     <div className="flex items-center gap-2">
                         <button
@@ -83,7 +109,7 @@ const NotificationsPage = () => {
 
                     <button
                         onClick={markAllRead}
-                        disabled={badgeCount === 0}
+                        disabled={badgeCount === 0 || loading}
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <CheckCheck className="h-3.5 w-3.5" />
@@ -91,21 +117,29 @@ const NotificationsPage = () => {
                     </button>
                 </div>
 
+                {/* Notifications List Container */}
                 <div className="overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-900/55">
-                    {loading && (
-                        <div className="px-4 py-4 text-sm text-slate-400">
-                            Loading notifications...
+                    
+                    {/* Render Skeletons if no data and loading */}
+                    {showSkeleton && (
+                        <div>
+                            <NotificationSkeleton />
+                            <NotificationSkeleton />
+                            <NotificationSkeleton />
+                            <NotificationSkeleton />
+                            <NotificationSkeleton />
+                            <NotificationSkeleton />
                         </div>
                     )}
 
-                    {!loading && notifications.length === 0 && (
+                    {!showSkeleton && displayNotifications.length === 0 && (
                         <div className="px-4 py-8 text-center text-sm text-slate-500">
                             No notifications yet.
                         </div>
                     )}
 
-                    {!loading &&
-                        notifications.map((notification) => (
+                    {!showSkeleton &&
+                        displayNotifications.map((notification) => (
                             <div
                                 key={notification._id}
                                 className={`border-b border-slate-800/40 px-4 py-3 ${
@@ -118,7 +152,7 @@ const NotificationsPage = () => {
                                 >
                                     <div className="flex items-start gap-2">
                                         <div
-                                            className={`mt-1 h-2.5 w-2.5 rounded-full ${
+                                            className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
                                                 notification.read
                                                     ? "bg-slate-700"
                                                     : "bg-sky-400"
@@ -352,11 +386,8 @@ const NotificationsPage = () => {
                         ))}
                 </div>
             </div>
-
-            
         </div>
     );
 };
 
 export default NotificationsPage;
-

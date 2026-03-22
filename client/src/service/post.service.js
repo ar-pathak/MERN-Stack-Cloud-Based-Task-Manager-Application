@@ -4,6 +4,9 @@ import api from "../config/axios";
 // Base path based on your route structure
 const BASE_URL = "/api/posts";
 
+// 🔥 NEW: In-Flight Request Cache
+const pendingRequests = new Map();
+
 /**
  * Post Service
  * Handles all social feed, post, like, and comment interactions.
@@ -143,15 +146,27 @@ export const createPost = async (postData) => {
  * @param {Object} params - { page, limit }
  */
 export const getUserFeed = async (params = {}) => {
-    try {
-        const response = await api.get(`${BASE_URL}/feed`, { params });
-        return response.data?.data || response.data;
-    } catch (error) {
-        throw {
-            message: error.response?.data?.message || "Failed to load feed",
-            status: error.response?.status,
-        };
+    const cacheKey = `feed_${JSON.stringify(params)}`;
+
+    if (pendingRequests.has(cacheKey)) {
+        return pendingRequests.get(cacheKey); // Returns existing promise
     }
+
+    const requestPromise = api.get(`${BASE_URL}/feed`, { params })
+        .then(response => response.data?.data || response.data)
+        .catch(error => {
+            throw {
+                message: error.response?.data?.message || "Failed to load feed",
+                status: error.response?.status,
+            };
+        })
+        .finally(() => {
+            // 🔥 2-Second Cooldown Lock to prevent double-firing loops
+            setTimeout(() => pendingRequests.delete(cacheKey), 2000);
+        });
+
+    pendingRequests.set(cacheKey, requestPromise);
+    return requestPromise;
 };
 
 /**

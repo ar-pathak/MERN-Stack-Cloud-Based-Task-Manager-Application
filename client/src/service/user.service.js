@@ -3,6 +3,8 @@ import api from "../config/axios";
 
 // Assumes the user routes are mounted at /api/users
 const BASE_URL = "/api/user";
+// 🔥 NEW: Cache for User Profiles
+const pendingUserReqs = new Map();
 
 /**
  * User Service
@@ -242,15 +244,27 @@ export const checkUsernameAvailability = async (username) => {
  * @param {String} userId 
  */
 export const getUserById = async (userId) => {
-    try {
-        const response = await api.get(`${BASE_URL}/${userId}`);
-        return response.data?.data?.user || response.data?.data || response.data;
-    } catch (error) {
-        throw {
-            message: error.response?.data?.message || "Failed to load user",
-            status: error.response?.status,
-        };
+    const cacheKey = `user_${userId}`;
+
+    if (pendingUserReqs.has(cacheKey)) {
+        return pendingUserReqs.get(cacheKey);
     }
+
+    const requestPromise = api.get(`${BASE_URL}/${userId}`)
+        .then(response => response.data?.data?.user || response.data?.data || response.data)
+        .catch(error => {
+            throw {
+                message: error.response?.data?.message || "Failed to load user",
+                status: error.response?.status,
+            };
+        })
+        .finally(() => {
+            // 🔥 2-Second Cooldown Lock
+            setTimeout(() => pendingUserReqs.delete(cacheKey), 2000);
+        });
+
+    pendingUserReqs.set(cacheKey, requestPromise);
+    return requestPromise;
 };
 
 /**
