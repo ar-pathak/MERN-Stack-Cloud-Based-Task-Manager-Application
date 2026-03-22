@@ -390,6 +390,8 @@ const StoryViewerModal = ({
                             src={activeStory?.media?.url}
                             autoPlay
                             controls
+                            preload="metadata"
+                            poster={activeStory?.media?.poster || ""}
                             className="h-full w-full object-cover"
                             onTimeUpdate={handleVideoTimeUpdate}
                             onEnded={() => onNavigate?.(1)}
@@ -399,6 +401,7 @@ const StoryViewerModal = ({
                             key={activeStory?._id}
                             src={activeStory?.media?.url}
                             alt="Story"
+                            loading="lazy"
                             className="h-full w-full object-cover"
                         />
                     )}

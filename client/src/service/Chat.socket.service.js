@@ -6,6 +6,8 @@ const normalizeBaseUrl = (value) =>
 const SOCKET_URL = normalizeBaseUrl(import.meta.env?.VITE_API_URL);
 
 let socket = null;
+let heartbeatTimer = null;
+let reconnectAttempt = 0;
 
 export const getSocket = () => socket;
 
@@ -18,14 +20,70 @@ export const connectSocket = (token = null) => {
         auth: authPayload,
         withCredentials: true,
         reconnection: true,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 2000,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 10000,
+        randomizationFactor: 0.5,
         transports: ["websocket", "polling"],
+        autoConnect: true,
+        timeout: 20000,
     });
 
-    socket.on("connect", () => console.log("[socket] connected —", socket.id));
-    socket.on("disconnect", (r) => console.log("[socket] disconnected —", r));
-    socket.on("error", (err) => console.error("[socket] error —", err));
+    const resetBackoff = () => {
+        reconnectAttempt = 0;
+    };
+
+    const cleanupHeartbeat = () => {
+        if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+        }
+    };
+
+    const startHeartbeat = () => {
+        cleanupHeartbeat();
+
+        heartbeatTimer = setInterval(() => {
+            try {
+                if (socket?.connected) {
+                    socket.emit('ping', { clientTime: Date.now() });
+                }
+            } catch (err) {
+                console.warn('[socket] heartbeat ping failed', err);
+            }
+        }, 30000);
+    };
+
+    socket.on('connect', () => {
+        console.log('[socket] connected —', socket.id);
+        resetBackoff();
+        startHeartbeat();
+    });
+
+    socket.on('disconnect', (reason) => {
+        console.log('[socket] disconnected —', reason);
+        cleanupHeartbeat();
+
+        if (reason === 'io server disconnect') {
+            socket.connect();
+        }
+    });
+
+    socket.on('reconnect_attempt', (attempt) => {
+        reconnectAttempt = attempt;
+        console.log(`[socket] reconnect attempt ${attempt}`);
+    });
+
+    socket.on('reconnect_failed', () => {
+        console.warn('[socket] reconnect failed (max attempts reached)');
+        cleanupHeartbeat();
+    });
+
+    socket.on('error', (err) => console.error('[socket] error —', err));
+
+    socket.on('pong', (data) => {
+        console.log('[socket] pong received', data);
+    });
 
     return socket;
 };

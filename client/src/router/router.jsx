@@ -8,12 +8,15 @@ import PublicRoute from "./PublicRoute";
 import AdminProtectedRoute from "../features/admin/components/AdminProtectedRoute";
 import AdminPublicRoute from "../features/admin/components/AdminPublicRoute";
 
+// Critical routes - load immediately
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
-const OAuthCallbackPage = lazy(() => import("../features/authentication/pages/OAuthCallbackPage"));
-const VerifyEmailPage = lazy(() => import("../features/authentication/pages/VerifyEmailPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));
 const MainPage = lazy(() => import("../features/main/MainPage.jsx"));
 const OverviewLayout = lazy(() => import("../features/main/features/overview/pages/OverviewLayout.jsx"));
+
+// Secondary routes - load on demand
+const OAuthCallbackPage = lazy(() => import("../features/authentication/pages/OAuthCallbackPage"));
+const VerifyEmailPage = lazy(() => import("../features/authentication/pages/VerifyEmailPage"));
 const FeedPage = lazy(() => import("../features/main/features/feed/pages/FeedPage.jsx"));
 const PostDetailPage = lazy(() => import("../features/main/features/feed/pages/PostDetailPage.jsx"));
 const NotificationsPage = lazy(() => import("../features/main/features/notifications/pages/NotificationsPage.jsx"));
@@ -40,6 +43,42 @@ const withSuspense = (Component) => {
     </Suspense>
   );
 };
+
+// Preload critical routes on app start
+const preloadCriticalRoutes = () => {
+  // Preload main app routes that users are likely to visit
+  import("../features/main/features/feed/pages/FeedPage.jsx");
+  import("../features/main/features/notifications/pages/NotificationsPage.jsx");
+  import("../features/main/features/create/pages/CreatePostPage.jsx");
+};
+
+// Preload on first user interaction
+let preloaded = false;
+const preloadOnInteraction = () => {
+  if (preloaded) return;
+  preloaded = true;
+
+  // Preload less critical routes
+  setTimeout(() => {
+    import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx");
+    import("../features/main/features/activity/pages/ActivityPage.jsx");
+    import("../features/chat/ChatPage.jsx");
+  }, 2000);
+};
+
+// Add interaction listeners
+if (typeof window !== 'undefined') {
+  const handleInteraction = () => {
+    preloadOnInteraction();
+    window.removeEventListener('click', handleInteraction);
+    window.removeEventListener('keydown', handleInteraction);
+    window.removeEventListener('touchstart', handleInteraction);
+  };
+
+  window.addEventListener('click', handleInteraction);
+  window.addEventListener('keydown', handleInteraction);
+  window.addEventListener('touchstart', handleInteraction);
+}
 
 const router = createBrowserRouter([
   {
@@ -155,5 +194,8 @@ const router = createBrowserRouter([
     ],
   },
 ]);
+
+// Preload critical routes immediately
+preloadCriticalRoutes();
 
 export default router;

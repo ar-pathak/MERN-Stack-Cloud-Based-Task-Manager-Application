@@ -1,13 +1,34 @@
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router";
 import { AuthProvider } from "./context/AuthProvider";
 import { Toaster } from "sonner";
 import { ToggleProvider } from "./context/ToggleProvider";
 
 function App() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   return (
     <AuthProvider>
       <ToggleProvider>
         <div className="App">
+          {!isOnline && (
+            <div className="fixed inset-x-0 top-0 z-50 mx-auto w-full bg-amber-700 text-white text-center py-2 text-xs font-semibold">
+              You are offline. Some features may not work. Trying to reconnect...
+            </div>
+          )}
           <Outlet />
         </div>
         <Toaster

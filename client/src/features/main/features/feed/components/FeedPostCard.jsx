@@ -400,7 +400,11 @@ const FeedPostCard = React.memo(({
                         hasLiked ? "bg-rose-500/15 text-rose-300" : "text-slate-400 hover:bg-slate-800/80"
                     }`}
                 >
-                    <Heart className={`h-3.5 w-3.5 ${hasLiked ? "fill-current" : ""}`} />
+                    {Boolean(actionState[`like:${postId}`]) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                        <Heart className={`h-3.5 w-3.5 ${hasLiked ? "fill-current" : ""}`} />
+                    )}
                     {Number(post?.likesCount || 0)}
                 </button>
 
@@ -438,7 +442,11 @@ const FeedPostCard = React.memo(({
                         hasSaved ? "bg-amber-500/15 text-amber-300" : "text-slate-400 hover:bg-slate-800/80"
                     }`}
                 >
-                    {hasSaved ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+                    {Boolean(actionState[`save:${postId}`]) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                        hasSaved ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />
+                    )}
                 </button>
 
                 <button
@@ -447,7 +455,11 @@ const FeedPostCard = React.memo(({
                     disabled={Boolean(actionState[`share:${postId}`])}
                     className="flex items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs text-slate-400 hover:bg-slate-800/80"
                 >
-                    <SendHorizontal className="h-3.5 w-3.5" />
+                    {Boolean(actionState[`share:${postId}`]) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                        <SendHorizontal className="h-3.5 w-3.5" />
+                    )}
                     {Number(post?.sharesCount || 0)}
                 </button>
             </div>
@@ -526,10 +538,27 @@ const FeedPostCard = React.memo(({
         </article>
     );
 }, (prevProps, nextProps) => {
-    return prevProps.post._id === nextProps.post._id &&
-           prevProps.isCommentsOpen === nextProps.isCommentsOpen &&
-           prevProps.actionState === nextProps.actionState &&
-           prevProps.currentUserId === nextProps.currentUserId;
+    // Check core post identity
+    if (prevProps.post._id !== nextProps.post._id) return false;
+    if (prevProps.isCommentsOpen !== nextProps.isCommentsOpen) return false;
+    if (prevProps.currentUserId !== nextProps.currentUserId) return false;
+
+    // Check action state for this post
+    const postId = prevProps.post._id;
+    if (prevProps.actionState[`like:${postId}`] !== nextProps.actionState[`like:${postId}`]) return false;
+    if (prevProps.actionState[`save:${postId}`] !== nextProps.actionState[`save:${postId}`]) return false;
+    if (prevProps.actionState[`share:${postId}`] !== nextProps.actionState[`share:${postId}`]) return false;
+
+    // Check comment-related props only if comments are open for this post
+    if (prevProps.isCommentsOpen) {
+        const commentId = String(prevProps.post._id);
+        if (JSON.stringify(prevProps.commentsByPost?.[commentId]) !== JSON.stringify(nextProps.commentsByPost?.[commentId])) return false;
+        if (prevProps.commentsLoadingByPost?.[commentId] !== nextProps.commentsLoadingByPost?.[commentId]) return false;
+        if (prevProps.commentsSubmittingByPost?.[commentId] !== nextProps.commentsSubmittingByPost?.[commentId]) return false;
+        if (prevProps.commentDrafts?.[commentId] !== nextProps.commentDrafts?.[commentId]) return false;
+    }
+
+    return true;
 });
 
 export default FeedPostCard;

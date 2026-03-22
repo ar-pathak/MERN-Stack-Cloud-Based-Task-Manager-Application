@@ -19,28 +19,28 @@ export default defineConfig({
     css: true,
     restoreMocks: true,
   },
-  // Build configuration ko default par chhod dein
   build: {
-    // Agar recharts jaisi heavy library ko alag karna hi hai, to sirf use karein,
-    // baaki state aur router ko default chunk mein rehne dein.
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          // Recharts & D3 libraries - used for dashboard analytics
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
-            return 'vendor-charts';
-          }
-          // Framer Motion - used throughout the app for animations
-          if (id.includes('node_modules/framer-motion')) {
-            return 'vendor-motion';
-          }
-          // Socket.io - used for real-time chat and presence
-          if (id.includes('node_modules/socket.io-client')) {
-            return 'vendor-socket';
-          }
-          // Baaki sab kuch default chunking par chhod dein
-        }
-      }
+    // Increase chunk size warning limit
+    chunkSizeWarningLimit: 1000,
+    // Enable minification
+    minify: 'esbuild',
+  },
+  // Optimize dev server
+  server: {
+    hmr: {
+      overlay: false
     }
+  },
+  // Pre-bundle less frequently used dependencies
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router',
+      '@reduxjs/toolkit',
+      'react-redux',
+      'axios',
+      'clsx'
+    ]
   }
 })
