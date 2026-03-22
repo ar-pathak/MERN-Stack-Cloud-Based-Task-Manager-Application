@@ -12,7 +12,6 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "../../context/AuthContext";
-import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
 import { sendVerificationEmail } from "../../service/auth.service";
 import {
     getBlockedUsers,
@@ -572,7 +571,6 @@ const SettingsPage = () => {
                 </section>
             </div>
 
-            {isMobileViewport && <MobileBottomNav activeTab="me" profileId={profileId} />}
         </div>
     );
 };

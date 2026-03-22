@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../context/AuthContext";
-import MobileBottomNav from "../main/components/navigation/MobileBottomNav";
+
 import {
     blockUser as blockUserRequest,
     getUserById,
@@ -1041,8 +1041,7 @@ const UserProfile = () => {
                 onSave={handleSaveProfile}
             />
 
-            {showOwnMobileMenu && <MobileBottomNav activeTab="me" profileId={profileId} />}
-        </div>
+       </div>
     );
 };
 

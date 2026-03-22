@@ -3,7 +3,6 @@ import { useNavigate } from "react-router";
 import { ArrowLeft, CheckCheck, Trash2 } from "lucide-react";
 
 import { useAuth } from "../../../../../context/AuthContext";
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import useNotificationCenter from "../hook/useNotificationCenter";
 import {
     formatRelativeTime,
@@ -354,9 +353,7 @@ const NotificationsPage = () => {
                 </div>
             </div>
 
-            {shouldShowBottomNav && (
-                <MobileBottomNav activeTab="notifications" profileId={profileId} />
-            )}
+            
         </div>
     );
 };

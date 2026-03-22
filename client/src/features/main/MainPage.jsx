@@ -1,15 +1,26 @@
-import { useRef, useState, useEffect } from "react";
-import MainSidebar from "./components/sidebar/MainSidebar";
-import MainHeader from "./components/header/MainHeader";
+import { useRef, useState, useEffect, lazy, Suspense } from "react";
 import AnimatedBackground from "./components/background/AnimatedBackground";
-import { Outlet } from "react-router";
+import { Outlet, useLocation } from "react-router"; // 🔥 Added useLocation
 import { useScrollDirection } from "./hook/useScrollDirection";
 import ScrollBar from "../../common/components/ScrollBar";
 import { useToggle } from "../../context/ToggleContext";
 
+// 🔥 Assuming you have useAuth for the profileId (adjust import path if needed)
+import { useAuth } from "../../context/AuthContext";
+// 🔥 Import your MobileBottomNav (adjust path according to your folder structure)
+import MobileBottomNav from "./components/navigation/MobileBottomNav";
+import { useSelector } from "react-redux";
+
+// Lazy load desktop components to prevent mobile JS loading
+const MainSidebar = lazy(() => import("./components/sidebar/MainSidebar"));
+const MainHeader = lazy(() => import("./components/header/MainHeader"));
+
 const MainPage = () => {
     const scrollRef = useRef(null);
     const scrollDirection = useScrollDirection(scrollRef);
+    const location = useLocation(); // 🔥 Get current URL
+    const { user } = useAuth(); // 🔥 Get user for profile ID
+    const isBottomNavVisible = useSelector((state) => state.overview.isBottomNavVisible);
     const [isHeaderVisible, setIsHeaderVisible] = useState(true);
     const hasSidebarToggleInteractedRef = useRef(false);
     const hasScrollHiddenHeaderRef = useRef(false);
@@ -20,6 +31,18 @@ const MainPage = () => {
             : false
     );
     const { isToggle } = useToggle();
+
+    // 🔥 Dynamically figure out the active tab based on the current URL
+    const getActiveTab = () => {
+        const path = location.pathname;
+        if (path.includes("/main/feed")) return "feed";
+        if (path.includes("/main/create")) return "create";
+        if (path.includes("/main/notifications")) return "notifications";
+        if (path.includes("/profile")) return "me";
+        return "overview"; // default fallback for "/main"
+    };
+
+    const activeTab = getActiveTab();
 
     useEffect(() => {
         if (typeof window === "undefined") return undefined;
@@ -73,21 +96,23 @@ const MainPage = () => {
     }, [isMobileViewport]);
 
     return (
-
-        <div className="flex h-screen min-h-0 overflow-hidden">
+        <div className="flex h-screen min-h-0 overflow-hidden relative">
             <ScrollBar />
             <AnimatedBackground />
-            <MainSidebar />
+            <Suspense fallback={null}>
+                <MainSidebar />
+            </Suspense>
 
             {/* Right Column */}
             <div className="flex flex-col h-full min-h-0 flex-1 w-full relative">
                 {!isMobileViewport && (
                     <div
-                        className={`transition-all duration-300 ease-in-out ${
-                            isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
-                        }`}
+                        className={`transition-all duration-300 ease-in-out ${isHeaderVisible ? "h-[12vh] opacity-100 mb-6" : "h-0 opacity-0"
+                            }`}
                     >
-                        <MainHeader />
+                        <Suspense fallback={null}>
+                            <MainHeader />
+                        </Suspense>
                     </div>
                 )}
                 <div
@@ -97,6 +122,14 @@ const MainPage = () => {
                     <Outlet />
                 </div>
             </div>
+
+            {isMobileViewport && (
+                <MobileBottomNav
+                    activeTab={activeTab}
+                    profileId={user?._id || user?.id}
+                    hidden={!isBottomNavVisible} // 🔥 Redux state se connect kar diya
+                />
+            )}
         </div>
     );
 };

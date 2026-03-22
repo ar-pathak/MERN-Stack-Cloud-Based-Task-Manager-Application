@@ -7,7 +7,6 @@ import { createPost } from "../../../../../service/post.service";
 import { createStory } from "../../../../../service/story.service";
 import { uploadService } from "../../../../../service/upload.service";
 import { searchMentionCandidates } from "../../../../../service/user.service";
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -523,8 +522,7 @@ const CreatePostPage = () => {
                 )}
             </div>
 
-            {shouldShowBottomNav && <MobileBottomNav activeTab="create" profileId={profileId} />}
-
+           
             {toast && (
                 <div
                     className={`fixed right-6 z-50 rounded-xl bg-emerald-500/90 px-4 py-2 text-sm text-white ${

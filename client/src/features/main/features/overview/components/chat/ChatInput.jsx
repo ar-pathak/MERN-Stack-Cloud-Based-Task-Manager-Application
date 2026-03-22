@@ -232,6 +232,15 @@ const ChatInput = ({
         setMentionCandidates([]);
 
         if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+        // Keep keyboard open on mobile after sending
+        if (typeof window !== "undefined" && window.innerWidth < 768) {
+            setTimeout(() => {
+                if (textareaRef.current) {
+                    textareaRef.current.focus();
+                }
+            }, 100);
+        }
     };
 
     return (

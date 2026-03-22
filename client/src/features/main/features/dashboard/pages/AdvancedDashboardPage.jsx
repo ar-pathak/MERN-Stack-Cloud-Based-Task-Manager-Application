@@ -3,7 +3,6 @@ import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
 import { useAuth } from "../../../../../context/AuthContext";
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
 // Lazy-load dashboard section components (loaded progressively as user scrolls)
 const CoreMetricsSection = lazy(() => import("../components/CoreMetricsSection"));
@@ -217,7 +216,6 @@ const AdvancedDashboardPage = () => {
                 ) : null}
             </div>
 
-            {showBottom ? <MobileBottomNav activeTab="dashboard" profileId={profileId} /> : null}
         </div>
     );
 };

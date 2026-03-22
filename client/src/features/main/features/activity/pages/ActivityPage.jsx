@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "../../../../../context/AuthContext";
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import {
     getActivityDashboard,
     getMyActivities
@@ -790,10 +789,6 @@ const ActivityPage = () => {
                     </div>
                 )}
             </div>
-
-            {shouldShowBottomNav && (
-                <MobileBottomNav activeTab="activity" profileId={profileId} />
-            )}
         </div>
     );
 };

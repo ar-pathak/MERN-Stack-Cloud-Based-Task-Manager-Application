@@ -1,8 +1,16 @@
+// overviewSlice.js
 import { createSlice } from '@reduxjs/toolkit'
 
 const overviewSlice = createSlice({
     name: "overview",
-    initialState: { overviewData: null, workspacePopupOpen: false, taskPopupOpen: false, isProjectPopupOpen: false, isSubtaskPopupOpen: false },
+    initialState: {
+        overviewData: null,
+        workspacePopupOpen: false,
+        taskPopupOpen: false,
+        isProjectPopupOpen: false,
+        isSubtaskPopupOpen: false,
+        isBottomNavVisible: true // 🔥 Naya state add kiya
+    },
     reducers: {
         setOverviewData: (state, action) => {
             state.overviewData = action.payload;
@@ -19,10 +27,21 @@ const overviewSlice = createSlice({
         setIsSubtaskPopupOpen: (state, action) => {
             state.isSubtaskPopupOpen = action.payload;
         },
+        // 🔥 Naya reducer action add kiya
+        setIsBottomNavVisible: (state, action) => {
+            state.isBottomNavVisible = action.payload;
+        }
     },
 });
 
+// 🔥 Action ko export karna mat bhoolna
+export const {
+    setOverviewData,
+    setWorkspacePopupOpen,
+    setTaskPopupOpen,
+    setIsProjectPopupOpen,
+    setIsSubtaskPopupOpen,
+    setIsBottomNavVisible // <-- Yahan
+} = overviewSlice.actions;
 
-
-export const { setOverviewData, setWorkspacePopupOpen, setTaskPopupOpen, setIsProjectPopupOpen, setIsSubtaskPopupOpen } = overviewSlice.actions;
-export default overviewSlice.reducer
+export default overviewSlice.reducer;

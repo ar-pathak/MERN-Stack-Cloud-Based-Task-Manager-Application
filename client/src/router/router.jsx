@@ -44,12 +44,15 @@ const withSuspense = (Component) => {
   );
 };
 
-// Preload critical routes on app start
+// Preload critical routes on app start VERY aggressively
 const preloadCriticalRoutes = () => {
-  // Preload main app routes that users are likely to visit
-  import("../features/main/features/feed/pages/FeedPage.jsx");
-  import("../features/main/features/notifications/pages/NotificationsPage.jsx");
-  import("../features/main/features/create/pages/CreatePostPage.jsx");
+  // Promise.all ensures they start downloading in parallel instantly
+  Promise.all([
+    import("../features/main/features/feed/pages/FeedPage.jsx"),
+    import("../features/main/features/notifications/pages/NotificationsPage.jsx"),
+    import("../features/main/features/create/pages/CreatePostPage.jsx"),
+    import("../features/main/features/overview/pages/OverviewLayout.jsx")
+  ]).catch(console.error);
 };
 
 // Preload on first user interaction

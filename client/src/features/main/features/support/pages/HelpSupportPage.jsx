@@ -1,6 +1,5 @@
 import { ArrowLeft, CircleAlert, Loader2, RefreshCcw } from "lucide-react";
 import { useNavigate } from "react-router";
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import HelpCenterSection from "../components/HelpCenterSection";
 import TicketsSection from "../components/TicketsSection";
 import ContactFeedbackSection from "../components/ContactFeedbackSection";
@@ -78,10 +77,6 @@ const HelpSupportPage = () => {
                     </span>
                 </div>
             </div>
-
-            {shouldShowBottomNav && (
-                <MobileBottomNav activeTab="support" profileId={profileId} />
-            )}
         </div>
     );
 };

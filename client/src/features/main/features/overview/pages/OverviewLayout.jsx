@@ -13,6 +13,7 @@ import {
   setWorkspacePopupOpen,
   setIsProjectPopupOpen,
   setIsSubtaskPopupOpen,
+  setIsBottomNavVisible
 } from "../../../../../store/slice/overviewSlice";
 
 import ChatPanel from "../components/chat/ChatPanel";
@@ -28,7 +29,6 @@ const WorkspacePopup = lazy(() => import("../../../components/popup/WorkspacePop
 const TaskPopup = lazy(() => import("../../../components/popup/TaskPopup"));
 const SubtaskPopup = lazy(() => import("../../../components/popup/SubtaskPopup"));
 const ProjectPopup = lazy(() => import("../../../components/popup/ProjectPopup"));
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 
 import { useChatLogic } from "../hook/useChatLogic";
 import { useOverviewRealtime } from "../hook/useOverviewRealtime";
@@ -120,7 +120,21 @@ const OverviewLayout = memo(() => {
       setMobilePane("overview");
     }
   }, [isMobileViewport]);
+  useEffect(() => {
+    if (isMobileViewport) {
+      if (mobilePane === "chat") {
+        dispatch(setIsBottomNavVisible(false));
+      } else {
+        dispatch(setIsBottomNavVisible(true));
+      }
+    } else {
+      dispatch(setIsBottomNavVisible(true));
+    }
 
+    return () => {
+      dispatch(setIsBottomNavVisible(true));
+    };
+  }, [isMobileViewport, mobilePane, dispatch]);
   useEffect(() => {
     if (isMobileViewport && mobilePane === "chat" && !selectedItem) {
       setMobilePane("overview");
@@ -516,9 +530,8 @@ const OverviewLayout = memo(() => {
   return (
     <div className={`flex h-full min-h-0 bg-slate-950 overflow-hidden ${shouldShowBottomMenu ? "pb-[5.25rem]" : ""}`}>
       <div
-        className={`${showOverviewPane ? "flex" : "hidden"} ${
-          isMobileViewport ? "w-full" : "w-[22rem]"
-        } border-r border-slate-800/50 bg-slate-950/40 backdrop-blur-xl flex-col overflow-hidden`}
+        className={`${showOverviewPane ? "flex" : "hidden"} ${isMobileViewport ? "w-full" : "w-[22rem]"
+          } border-r border-slate-800/50 bg-slate-950/40 backdrop-blur-xl flex-col overflow-hidden`}
       >
         <SidebarHeader
           searchQuery={searchQuery}
@@ -626,14 +639,6 @@ const OverviewLayout = memo(() => {
         </AnimatePresence>
       </div>
 
-      {isMobileViewport && (
-        <MobileBottomNav
-          activeTab="overview"
-          profileId={profileId}
-          hidden={mobilePane === "chat"}
-        />
-      )}
-
       <TaskPopup
         isOpen={taskPopupOpen}
         onClose={() => dispatch(setTaskPopupOpen(false))}
@@ -708,9 +713,8 @@ const OverviewLayout = memo(() => {
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className={`fixed right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm ${
-              shouldShowBottomMenu ? "bottom-24 left-6" : "bottom-6"
-            }`}
+            className={`fixed right-6 z-50 px-4 py-2.5 rounded-xl bg-emerald-500/90 text-white text-sm shadow-lg backdrop-blur-sm ${shouldShowBottomMenu ? "bottom-24 left-6" : "bottom-6"
+              }`}
           >
             {toast}
           </motion.div>

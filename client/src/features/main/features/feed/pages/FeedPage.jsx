@@ -1,7 +1,6 @@
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";
 
-import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { FEED_TABS, SORT_OPTIONS } from "../constants/feed.constants";
 import FeedEmptyState from "../components/FeedEmptyState";
 import FeedFilters from "../components/FeedFilters";
@@ -191,13 +190,6 @@ const FeedPage = () => {
                 </div>
             </div>
 
-            {shouldShowBottomNav && (
-                <MobileBottomNav
-                    activeTab="feed"
-                    profileId={profileId}
-                    hidden={Boolean(storyViewer)}
-                />
-            )}
 
             {/* Lazy-loaded modals - only load when opened */}
             {repostComposer?.postId && (
