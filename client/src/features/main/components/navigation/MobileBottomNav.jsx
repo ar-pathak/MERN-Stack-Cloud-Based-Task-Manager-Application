@@ -18,7 +18,7 @@ const preloadPage = (path) => {
     if (path.includes("/feed")) import("../../features/feed/pages/FeedPage.jsx");
     else if (path.includes("/create")) import("../../features/create/pages/CreatePostPage.jsx");
     else if (path.includes("/notifications")) import("../../features/notifications/pages/NotificationsPage.jsx");
-    else if (path.includes("/profile")) import("../../../profile/UserProfile.jsx");
+    else if (path.includes("/profile")) import("../../features/profile/UserProfile.jsx");
     else if (path === "/main") import("../../features/overview/pages/OverviewLayout.jsx");
 };
 
@@ -69,7 +69,7 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
     const handleMeNavigation = () => {
         if (!profileId) return;
         setOptimisticTab("me"); // 🔥 Click karte hi turant highlight karo (No Wait)
-        navigate(`/profile/${profileId}`);
+        navigate(`/main/profile/${profileId}`);
     };
 
     // 🔥 Konsa tab active manana hai uska decision (Priority optimistic state ko milegi)

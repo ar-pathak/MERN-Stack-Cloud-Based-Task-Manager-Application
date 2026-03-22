@@ -27,7 +27,7 @@ let notifTimestamp = 0;
 let overviewCache = null;
 let overviewTimestamp = 0;
 
-let feedCache = null; 
+let feedCache = null;
 let feedTimestamp = 0;
 
 export const profileLoader = async ({ params }) => {
@@ -117,7 +117,7 @@ const ActivityPage = lazy(() => import("../features/main/features/activity/pages
 const AdvancedDashboardPage = lazy(() => import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx"));
 const HelpSupportPage = lazy(() => import("../features/main/features/support/pages/HelpSupportPage.jsx"));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage.jsx"));
-const UserProfile = lazy(() => import("../features/profile/UserProfile.jsx"));
+const UserProfile = lazy(() => import("../features/main/features/profile/UserProfile.jsx"));
 const ChatPage = lazy(() => import("../features/chat/ChatPage.jsx"));
 const WorkspaceInviteAcceptPage = lazy(() => import("../features/workspace/WorkspaceInviteAcceptPage.jsx"));
 const AdminApp = lazy(() => import("../features/admin/AdminApp.jsx"));
@@ -224,12 +224,17 @@ const router = createBrowserRouter([
               {
                 path: "feed",
                 element: withSubtleSuspense(FeedPage),
-                loader: feedLoader 
+                loader: feedLoader
               },
               {
                 path: "notifications",
                 element: withSubtleSuspense(NotificationsPage),
                 loader: notificationsLoader
+              },
+              {
+                path: "profile/:id",
+                element: withSubtleSuspense(UserProfile),
+                loader: profileLoader,
               },
               { path: "activity", element: withSubtleSuspense(ActivityPage) },
               { path: "dashboard", element: withSubtleSuspense(AdvancedDashboardPage) },
@@ -237,11 +242,6 @@ const router = createBrowserRouter([
               { path: "create", element: withSubtleSuspense(CreatePostPage) },
               { path: "settings", element: withSubtleSuspense(SettingsPage) },
             ],
-          },
-          {
-            path: "profile/:id",
-            element: withSubtleSuspense(UserProfile),
-            loader: profileLoader,
           },
           {
             path: "chat/:id",

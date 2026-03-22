@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ImagePlus, Loader2, X } from "lucide-react";
-import { uploadService } from "../../../service/upload.service";
+import { uploadService } from "../../../../../service/upload.service";
 
 const ProfileEditModal = ({ open, profile, saving, onClose, onSave }) => {
     const [form, setForm] = useState({

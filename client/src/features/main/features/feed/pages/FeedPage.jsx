@@ -153,7 +153,7 @@ const FeedPage = () => {
                                     <FeedPostCard
                                         key={postId}
                                         post={post}
-                                        navigateToProfile={(id) => navigate(`/profile/${id}`)}
+                                        navigateToProfile={(id) => navigate(`/main/profile/${id}`)}
                                         formatRelativeTime={formatRelativeTime}
                                         actionState={actionState}
                                         onToggleLike={handleToggleLike}

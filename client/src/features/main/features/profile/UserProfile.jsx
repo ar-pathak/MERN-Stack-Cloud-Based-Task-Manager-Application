@@ -5,15 +5,15 @@ import {
     Activity, ArrowLeft, BarChart3, Calendar, Check, Copy, ExternalLink, LifeBuoy, Loader2, Lock, MapPin, MessageSquare, MoreHorizontal, Settings, ShieldCheck, UserX, UserPlus2, UserRound, Users
 } from "lucide-react";
 
-import { useAuth } from "../../context/AuthContext";
+import { useAuth } from "../../../../context/AuthContext";
 
 import {
     blockUser as blockUserRequest, getUserById, unblockUser as unblockUserRequest, updateProfile as updateProfileRequest
-} from "../../service/user.service";
-import { deletePost, getPostLikes, getUserPosts } from "../../service/post.service";
+} from "../../../../service/user.service";
+import { deletePost, getPostLikes, getUserPosts } from "../../../../service/post.service";
 import {
     approveFollowRequest, followUser, getFollowers, getFollowing, getFollowSuggestions, getMutualFollowers, getPendingRequests, rejectFollowRequest, unfollowUser
-} from "../../service/follow.service";
+} from "../../../../service/follow.service";
 import ProfileEditModal from "./components/ProfileEditModal";
 // Lazy-load modals
 const PostDetailModal = lazy(() => import("./components/PostDetailModal"));

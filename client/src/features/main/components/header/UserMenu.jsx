@@ -95,7 +95,7 @@ const UserMenu = ({ user }) => {
                             toast.error("Profile not available");
                             return;
                         }
-                        navigate(`/profile/${profileId}`);
+                        navigate(`/main/profile/${profileId}`);
                     }
                 },
                 {

@@ -49,7 +49,7 @@ const MemberCard = ({ item, member, canManageMembers, onRemove, onUpdateRole, pr
 
     const openProfile = () => {
         if (!memberId) return;
-        navigate(`/profile/${memberId}`);
+        navigate(`/main/profile/${memberId}`);
     };
 
     const handleCopyEmail = () => {
