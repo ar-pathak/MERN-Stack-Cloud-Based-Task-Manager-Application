@@ -32,9 +32,9 @@ const PostItem = React.memo(({
                     onOpenPost?.(post);
                 }
             }}
-            className="group rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition hover:border-slate-700 hover:bg-slate-900/80"
+            className="group rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-left transition hover:border-slate-700 hover:bg-slate-900/80 max-[360px]:p-2.5"
         >
-            <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3 max-[360px]:flex-col">
                 <div className="min-w-0">
                     <p className="text-[11px] text-slate-500">
                         {getPostDateLabel?.(post?.publishedAt || post?.createdAt || post?.scheduledFor)}
@@ -50,7 +50,7 @@ const PostItem = React.memo(({
                         type="button"
                         onClick={(event) => onDeletePost?.(post, event)}
                         disabled={postActionLoadingId === postId}
-                        className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex flex-shrink-0 items-center gap-1 rounded-md border border-rose-500/35 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60 max-[360px]:self-start"
                     >
                         {postActionLoadingId === postId ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -67,7 +67,7 @@ const PostItem = React.memo(({
                     <img
                         src={post.media[0]?.url}
                         alt="Post media"
-                        className="h-56 w-full object-cover"
+                        className="h-48 w-full object-cover sm:h-56"
                     />
                 </div>
             )}

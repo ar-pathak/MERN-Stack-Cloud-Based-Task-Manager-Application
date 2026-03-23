@@ -258,10 +258,15 @@ const removeCommentFromThread = (comments = [], commentId) => {
     };
 };
 
-const useFeedPageLogic = () => {
+const useFeedPageLogic = ({ initialFeed = null } = {}) => {
     const { user } = useAuth();
     const navigate = useNavigate();
     const profileId = user?._id || user?.id;
+    const initialFeedPosts = Array.isArray(initialFeed?.posts) ? initialFeed.posts : [];
+    const hasInitialFeed = Boolean(initialFeed);
+    const initialFeedPagination = hasInitialFeed
+        ? normalizePagination(initialFeed?.pagination, 1, initialFeedPosts.length)
+        : DEFAULT_PAGINATION;
 
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
@@ -270,9 +275,9 @@ const useFeedPageLogic = () => {
     const [sortMode, setSortMode] = useState("latest");
     const [searchTerm, setSearchTerm] = useState("");
 
-    const [posts, setPosts] = useState([]);
-    const [pagination, setPagination] = useState(DEFAULT_PAGINATION);
-    const [feedLoading, setFeedLoading] = useState(true);
+    const [posts, setPosts] = useState(() => initialFeedPosts);
+    const [pagination, setPagination] = useState(() => initialFeedPagination);
+    const [feedLoading, setFeedLoading] = useState(() => !hasInitialFeed);
     const [feedLoadingMore, setFeedLoadingMore] = useState(false);
 
     const [storiesLoading, setStoriesLoading] = useState(false);
@@ -317,6 +322,7 @@ const useFeedPageLogic = () => {
     const storyRequestRef = useRef(0);
     const viewedStoryIdsRef = useRef(new Set());
     const storyGroupsRef = useRef([]);
+    const hasHydratedInitialFeedRef = useRef(hasInitialFeed);
 
     useEffect(() => {
         const onResize = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
@@ -416,12 +422,12 @@ const useFeedPageLogic = () => {
     );
 
     const loadFeed = useCallback(
-        async ({ page = 1, append = false } = {}) => {
+        async ({ page = 1, append = false, keepVisibleData = false } = {}) => {
             const requestId = ++feedRequestRef.current;
             if (append) {
                 setFeedLoadingMore(true);
             } else {
-                setFeedLoading(true);
+                setFeedLoading(!keepVisibleData);
             }
 
             try {
@@ -438,7 +444,7 @@ const useFeedPageLogic = () => {
                 setPagination(nextPagination);
             } catch (error) {
                 if (requestId !== feedRequestRef.current) return;
-                if (!append) {
+                if (!append && !keepVisibleData) {
                     setPosts([]);
                     setPagination(DEFAULT_PAGINATION);
                 }
@@ -463,7 +469,10 @@ const useFeedPageLogic = () => {
         setReplySubmittingByComment({});
         setReplyLoadingByComment({});
         setReplyPaginationByComment({});
-        loadFeed({ page: 1, append: false });
+        const keepVisibleData =
+            hasHydratedInitialFeedRef.current && activeTab === "following";
+        loadFeed({ page: 1, append: false, keepVisibleData });
+        hasHydratedInitialFeedRef.current = false;
     }, [activeTab, loadFeed]);
 
     useEffect(() => {
@@ -1539,7 +1548,10 @@ const useFeedPageLogic = () => {
     }, [feedLoadingMore, loadFeed, pagination]);
 
     const handleRefresh = useCallback(async () => {
-        await Promise.all([loadFeed({ page: 1, append: false }), loadStories()]);
+        await Promise.all([
+            loadFeed({ page: 1, append: false, keepVisibleData: true }),
+            loadStories()
+        ]);
         showToast("Feed refreshed");
     }, [loadFeed, loadStories, showToast]);
 

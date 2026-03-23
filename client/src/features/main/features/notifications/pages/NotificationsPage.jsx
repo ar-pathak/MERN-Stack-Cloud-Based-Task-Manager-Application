@@ -29,7 +29,11 @@ const NotificationsPage = () => {
     const { user } = useAuth();
     
     // 🔥 1. Turant loader data get karein
-    const initialData = useLoaderData(); 
+    const initialData = useLoaderData();
+    const initialNotifications = Array.isArray(initialData?.notifications)
+        ? initialData.notifications
+        : [];
+    const initialUnreadCount = Number(initialData?.unreadCount || 0);
 
     const [isMobileViewport, setIsMobileViewport] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
@@ -50,7 +54,13 @@ const NotificationsPage = () => {
         projectStatusRequestAction,
         taskAssigneeRequestAction,
         ensureRead
-    } = useNotificationCenter({ enabled: true, limit: 50 });
+    } = useNotificationCenter({
+        enabled: true,
+        limit: 50,
+        initialNotifications,
+        initialUnreadCount,
+        initialDataLoaded: Boolean(initialData)
+    });
 
     useEffect(() => {
         const onResize = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
@@ -60,8 +70,8 @@ const NotificationsPage = () => {
 
     // 🔥 2. Stale-While-Revalidate (SWR) Logic
     // Jab tak real-time hook data la raha hai, purana cached data dikhayein
-    const displayNotifications = (loading && notifications.length === 0) 
-        ? (initialData || []) 
+    const displayNotifications = (loading && notifications.length === 0)
+        ? initialNotifications
         : notifications;
 
     // 🔥 3. Skeleton sirf tab dikhega jab dono (cache + hook) khali honge

@@ -74,7 +74,7 @@ const PostLikesModal = ({
                                             key={entryKey}
                                             type="button"
                                             onClick={() => onUserClick?.(entry)}
-                                            className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900/45 px-3 py-2 text-left hover:bg-slate-900"
+                                            className="flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-900/45 px-3 py-2 text-left hover:bg-slate-900 max-[360px]:flex-col max-[360px]:items-start max-[360px]:gap-2"
                                         >
                                             <div className="flex min-w-0 items-center gap-2.5">
                                                 <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-700 bg-slate-800">
@@ -103,7 +103,7 @@ const PostLikesModal = ({
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1 max-[360px]:flex-wrap">
                                                 {isPostAuthor && (
                                                     <span className="rounded-full bg-sky-500/15 px-2 py-1 text-[10px] font-semibold text-sky-300">
                                                         Author

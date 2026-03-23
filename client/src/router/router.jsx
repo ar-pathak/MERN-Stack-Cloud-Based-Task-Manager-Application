@@ -9,97 +9,15 @@ import AdminProtectedRoute from "../features/admin/components/AdminProtectedRout
 import AdminPublicRoute from "../features/admin/components/AdminPublicRoute";
 
 // 🔥 IMPORT SERVICES FOR LOADERS
-import { getUserById } from "../service/user.service";
-import { getNotifications } from "../service/notification.service";
-import { getOverviewActivity } from "../service/overview.service";
-import { getUserFeed } from "../service/post.service";
+import {
+  feedLoader,
+  notificationsLoader,
+  overviewLoader,
+  profileLoader
+} from "./routeDataCache";
 
 // 🚀 SWR CACHES WITH TTL (Time-To-Live)
 // Yeh loops aur duplicate requests ko 100% block karega
-const CACHE_TTL = 15000; // 15 Seconds
-
-const profileCache = new Map();
-const profileTimestamps = new Map();
-
-let notificationsCache = null;
-let notifTimestamp = 0;
-
-let overviewCache = null;
-let overviewTimestamp = 0;
-
-let feedCache = null;
-let feedTimestamp = 0;
-
-export const profileLoader = async ({ params }) => {
-  const id = params.id;
-  if (!id) return null;
-
-  const now = Date.now();
-  // Agar data 15 sec ke andar ka hai, toh API call mat karo
-  if (profileCache.has(id) && (now - profileTimestamps.get(id) < CACHE_TTL)) {
-    return profileCache.get(id);
-  }
-
-  try {
-    const payload = await getUserById(id);
-    const data = payload?.user || payload;
-    profileCache.set(id, data);
-    profileTimestamps.set(id, Date.now());
-    return data;
-  } catch {
-    return profileCache.get(id) || null;
-  }
-};
-
-export const notificationsLoader = async () => {
-  const now = Date.now();
-  if (notificationsCache && (now - notifTimestamp < CACHE_TTL)) {
-    return notificationsCache;
-  }
-
-  try {
-    const payload = await getNotifications({ limit: 50 });
-    notificationsCache = payload?.notifications || payload?.data || payload || [];
-    notifTimestamp = Date.now();
-    return notificationsCache;
-  } catch {
-    return notificationsCache || [];
-  }
-};
-
-export const overviewLoader = async () => {
-  const now = Date.now();
-  if (overviewCache && (now - overviewTimestamp < CACHE_TTL)) {
-    return overviewCache;
-  }
-
-  try {
-    const res = await getOverviewActivity();
-    const payload = res?.data?.data || res?.data || res;
-    overviewCache = Array.isArray(payload) ? payload : [];
-    overviewTimestamp = Date.now();
-    return overviewCache;
-  } catch {
-    return overviewCache || [];
-  }
-};
-
-export const feedLoader = async () => {
-  const now = Date.now();
-  if (feedCache && (now - feedTimestamp < CACHE_TTL)) {
-    return feedCache;
-  }
-
-  try {
-    const payload = await getUserFeed({ page: 1, limit: 20 });
-    feedCache = payload?.posts || payload?.data || payload || [];
-    feedTimestamp = Date.now();
-    return feedCache;
-  } catch {
-    return feedCache || [];
-  }
-};
-
 // Critical routes - load immediately
 const AuthPage = lazy(() => import("../features/authentication/pages/AuthPage"));
 const HomePage = lazy(() => import("../features/home/pages/HomePage"));

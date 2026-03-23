@@ -193,7 +193,7 @@ const CommentItem = ({
                     )}
 
                     {allowReply && replyComposerOpen && (
-                        <div className="mt-3 flex items-end gap-2">
+                        <div className="mt-3 flex items-end gap-2 max-[360px]:flex-col max-[360px]:items-stretch">
                             <textarea
                                 value={replyDraft}
                                 onChange={(event) =>
@@ -207,7 +207,7 @@ const CommentItem = ({
                                 type="button"
                                 onClick={() => onReplySubmit(postId, commentId)}
                                 disabled={!canSubmitReply}
-                                className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60 max-[360px]:w-full max-[360px]:min-w-0"
                             >
                                 {replySubmitting ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -281,12 +281,12 @@ const FeedPostCard = React.memo(({
     }
 
     return (
-        <article className="rounded-2xl border border-slate-800/80 bg-slate-900/55 p-4">
-            <header className="mb-3 flex items-start justify-between gap-3">
+        <article className="rounded-2xl border border-slate-800/80 bg-slate-900/55 p-4 max-[360px]:p-3">
+            <header className="mb-3 flex items-start justify-between gap-3 max-[360px]:flex-col">
                 <button
                     type="button"
                     onClick={() => navigateToProfile(post?.author?._id || post?.author?.id)}
-                    className="flex min-w-0 items-center gap-3 text-left"
+                    className="flex w-full min-w-0 items-center gap-3 text-left"
                 >
                     <div className="h-10 w-10 overflow-hidden rounded-full border border-slate-700 bg-slate-800">
                         {post?.author?.avatar ? (
@@ -311,13 +311,13 @@ const FeedPostCard = React.memo(({
                     </div>
                 </button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
                     {!isOwnPost && (
                         <button
                             type="button"
                             onClick={() => onToggleFollowAuthor(post)}
                             disabled={Boolean(actionState?.[followActionKey])}
-                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${followButtonClass}`}
+                            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 max-[360px]:px-2 max-[360px]:text-[10px] ${followButtonClass}`}
                         >
                             {actionState?.[followActionKey] ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -330,7 +330,7 @@ const FeedPostCard = React.memo(({
                         </button>
                     )}
 
-                    <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400">
+                    <span className="rounded-full bg-slate-800/80 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-slate-400 max-[360px]:px-1.5">
                         {post?.visibility || "public"}
                     </span>
 
@@ -339,7 +339,7 @@ const FeedPostCard = React.memo(({
                             type="button"
                             onClick={() => onDeletePost(post)}
                             disabled={Boolean(actionState?.[deletePostActionKey])}
-                            className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex items-center gap-1 rounded-full border border-rose-500/40 px-2.5 py-1 text-[11px] font-semibold text-rose-300 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60 max-[360px]:px-2 max-[360px]:text-[10px]"
                         >
                             {actionState?.[deletePostActionKey] ? (
                                 <Loader2 className="h-3 w-3 animate-spin" />
@@ -466,7 +466,7 @@ const FeedPostCard = React.memo(({
 
             {isCommentsOpen && (
                 <section className="mt-3 rounded-xl border border-slate-800 bg-slate-900/80 p-3">
-                    <div className="mb-3 flex items-center justify-between">
+                    <div className="mb-3 flex items-center justify-between gap-2 max-[360px]:flex-wrap">
                         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                             Comments ({Number(post?.commentsCount || 0)})
                         </p>
@@ -512,7 +512,7 @@ const FeedPostCard = React.memo(({
                         )}
                     </div>
 
-                    <div className="mt-3 flex items-end gap-2">
+                    <div className="mt-3 flex items-end gap-2 max-[360px]:flex-col max-[360px]:items-stretch">
                         <textarea
                             value={commentDraft || ""}
                             onChange={(event) => onCommentDraftChange(postId, event.target.value)}
@@ -524,7 +524,7 @@ const FeedPostCard = React.memo(({
                             type="button"
                             onClick={() => onCommentSubmit(postId)}
                             disabled={!canSubmitComment}
-                            className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex h-10 min-w-10 items-center justify-center rounded-lg bg-sky-500 text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60 max-[360px]:w-full max-[360px]:min-w-0"
                         >
                             {commentsSubmitting ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />

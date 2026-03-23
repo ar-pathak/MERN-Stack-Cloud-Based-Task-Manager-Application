@@ -22,7 +22,8 @@ import { formatRelativeTime } from "../utils/feed.helpers";
 
 const FeedPage = () => {
     // 🔥 1. Turant loader se cached data get karein
-    const initialData = useLoaderData();
+    const initialFeed = useLoaderData();
+    const initialPosts = Array.isArray(initialFeed?.posts) ? initialFeed.posts : [];
 
     const {
         navigate,
@@ -92,15 +93,14 @@ const FeedPage = () => {
         handleLoadMoreReplies,
         handleLoadMore,
         handleRefresh
-    } = useFeedPageLogic();
+    } = useFeedPageLogic({ initialFeed });
 
     // 🔥 2. Stale-While-Revalidate (SWR) Logic
     // Jab tak custom hook fetch kar raha hai, loader ka cached data dikhayein
     const displayPosts = (feedLoading && filteredPosts.length === 0)
-        ? (initialData || [])
+        ? initialPosts
         : filteredPosts;
 
-    // 🔥 3. Skeleton sirf tab aayega jab initialData bhi null ho (Pehli baar app open hone par)
     const showSkeleton = feedLoading && displayPosts.length === 0;
 
     return (
@@ -132,10 +132,8 @@ const FeedPage = () => {
                             currentUser={user}
                         />
 
-                        {/* 🔥 Updated Skeleton Logic */}
                         {showSkeleton && <FeedSkeletonList />}
 
-                        {/* 🔥 Updated Empty State Logic */}
                         {!showSkeleton && displayPosts.length === 0 && (
                             <FeedEmptyState
                                 activeTab={activeTab}
@@ -144,7 +142,6 @@ const FeedPage = () => {
                         )}
 
                         <div className="space-y-3">
-                            {/* 🔥 Render displayPosts instead of filteredPosts */}
                             {displayPosts.map((post) => {
                                 const postId = String(post?._id || "");
                                 const isCommentsOpen = expandedCommentsPostId === postId;

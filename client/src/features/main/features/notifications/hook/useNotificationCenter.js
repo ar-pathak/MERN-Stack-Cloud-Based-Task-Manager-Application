@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
     deleteNotification,
@@ -19,11 +19,19 @@ import { respondTaskAssigneeRequest } from "../../../../../service/task.service"
 import { respondWorkspaceInvite } from "../../../../../service/workspace.service";
 import * as socketService from "../../../../../service/Chat.socket.service";
 
-const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
-    const [loading, setLoading] = useState(false);
-    const [notifications, setNotifications] = useState([]);
-    const [unreadCount, setUnreadCount] = useState(0);
+const useNotificationCenter = ({
+    enabled = true,
+    limit = 25,
+    initialNotifications = [],
+    initialUnreadCount = 0,
+    initialDataLoaded = false
+} = {}) => {
+    const [loading, setLoading] = useState(() => enabled && !initialDataLoaded);
+    const [notifications, setNotifications] = useState(() => initialNotifications);
+    const [unreadCount, setUnreadCount] = useState(() => Number(initialUnreadCount || 0));
     const [actionLoadingKey, setActionLoadingKey] = useState("");
+    const skipInitialUnreadCountLoadRef = useRef(initialDataLoaded);
+    const hasHydratedInitialDataRef = useRef(initialDataLoaded);
 
     const unreadInList = useMemo(
         () => notifications.reduce((count, item) => count + (item.read ? 0 : 1), 0),
@@ -79,14 +87,14 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
     const loadUnreadCount = useCallback(async () => {
         try {
             const count = await getUnreadNotificationCount();
-            setUnreadCount(count);
+            setUnreadCount(Number(count || 0));
         } catch (error) {
             console.error("Failed to load unread notification count", error);
         }
     }, []);
 
-    const loadNotifications = useCallback(async () => {
-        setLoading(true);
+    const loadNotifications = useCallback(async ({ keepVisibleData = false } = {}) => {
+        setLoading(!keepVisibleData);
         try {
             const payload = await getNotifications({ limit });
             const hydrated = await hydrateFollowBackStates(payload?.notifications || []);
@@ -100,12 +108,18 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
     }, [hydrateFollowBackStates, limit]);
 
     useEffect(() => {
+        if (skipInitialUnreadCountLoadRef.current) {
+            skipInitialUnreadCountLoadRef.current = false;
+            return;
+        }
         loadUnreadCount();
     }, [loadUnreadCount]);
 
     useEffect(() => {
         if (!enabled) return;
-        loadNotifications();
+        const keepVisibleData = hasHydratedInitialDataRef.current;
+        loadNotifications({ keepVisibleData });
+        hasHydratedInitialDataRef.current = false;
     }, [enabled, loadNotifications]);
 
     useEffect(() => {
@@ -137,7 +151,7 @@ const useNotificationCenter = ({ enabled = true, limit = 25 } = {}) => {
         });
 
         const offBulk = socketService.onNotificationBulk(() => {
-            if (enabled) loadNotifications();
+            if (enabled) loadNotifications({ keepVisibleData: true });
         });
 
         const offAllRead = socketService.onNotificationAllRead(() => {

@@ -37,7 +37,7 @@ const PostDetailModal = ({
                         exit={{ opacity: 0, y: 16 }}
                         className="relative z-10 w-full max-w-2xl rounded-t-2xl border border-slate-800 bg-slate-950 shadow-2xl sm:rounded-2xl"
                     >
-                        <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-4 py-3 max-[360px]:flex-col max-[360px]:items-stretch">
                             <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold text-slate-100">
                                     {post?.author?.name || post?.author?.username || "User"}
@@ -47,7 +47,7 @@ const PostDetailModal = ({
                                     {getPostDateLabel?.(post?.publishedAt || post?.createdAt || post?.scheduledFor)}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 max-[360px]:w-full max-[360px]:justify-between">
                                 {(isOwnProfile ||
                                     String(currentUserId || "") ===
                                         String(toId(post?.author) || "")) && (

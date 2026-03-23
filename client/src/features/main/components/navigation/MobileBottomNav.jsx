@@ -4,6 +4,7 @@ import { Bell, Grid2x2, Newspaper, SquarePen, UserRound } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { getUnreadNotificationCount } from "../../../../service/notification.service";
+import { preloadMainRouteData } from "../../../../router/routeDataCache";
 import * as socketService from "../../../../service/Chat.socket.service";
 
 const ITEMS = [
@@ -12,15 +13,6 @@ const ITEMS = [
     { id: "create", label: "Create", icon: SquarePen, path: "/main/create" },
     { id: "notifications", label: "Alerts", icon: Bell, path: "/main/notifications" }
 ];
-
-// "Intent to Navigate" Preloading Map
-const preloadPage = (path) => {
-    if (path.includes("/feed")) import("../../features/feed/pages/FeedPage.jsx");
-    else if (path.includes("/create")) import("../../features/create/pages/CreatePostPage.jsx");
-    else if (path.includes("/notifications")) import("../../features/notifications/pages/NotificationsPage.jsx");
-    else if (path.includes("/profile")) import("../../features/profile/UserProfile.jsx");
-    else if (path === "/main") import("../../features/overview/pages/OverviewLayout.jsx");
-};
 
 const MobileBottomNav = ({ activeTab = null, profileId, hidden = false }) => {
     const navigate = useNavigate();
@@ -92,8 +84,8 @@ const MobileBottomNav = ({ activeTab = null, profileId, hidden = false }) => {
                             key={item.id}
                             type="button"
                             onClick={() => handleNavigation(item.path, item.id)} // 🔥 Pass ID here
-                            onMouseEnter={() => preloadPage(item.path)}
-                            onTouchStart={() => preloadPage(item.path)}
+                            onMouseEnter={() => preloadMainRouteData(item.path, { profileId })}
+                            onTouchStart={() => preloadMainRouteData(item.path, { profileId })}
                             className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] md:py-2.5 ${isActive
                                 ? "bg-sky-500/15 text-sky-300"
                                 : "text-slate-400 hover:bg-slate-800/70"
@@ -115,8 +107,12 @@ const MobileBottomNav = ({ activeTab = null, profileId, hidden = false }) => {
                 <button
                     type="button"
                     onClick={handleMeNavigation}
-                    onMouseEnter={() => profileId && preloadPage(`/profile/${profileId}`)}
-                    onTouchStart={() => profileId && preloadPage(`/profile/${profileId}`)}
+                    onMouseEnter={() =>
+                        profileId && preloadMainRouteData(`/main/profile/${profileId}`, { profileId })
+                    }
+                    onTouchStart={() =>
+                        profileId && preloadMainRouteData(`/main/profile/${profileId}`, { profileId })
+                    }
                     className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1.5 py-2 text-[10px] font-medium transition-colors sm:px-2 sm:text-[11px] md:py-2.5 ${displayTab === "me" // 🔥 Use displayTab here
                         ? "bg-sky-500/15 text-sky-300"
                         : "text-slate-400 hover:bg-slate-800/70"
