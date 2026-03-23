@@ -644,6 +644,7 @@ const OverviewLayout = memo(() => {
                 chatEndRef={chat.refs.chatEndRef}
                 fileInputRef={chat.refs.fileInputRef}
                 messageInputRef={chat.refs.messageInputRef}
+                messagesContainerRef={chat.refs.messagesContainerRef}
                 onUpdate={refreshTimeline}
                 onRefreshChatMeta={refreshChatMetadata}
                 presenceByUserId={presenceByUserId}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
@@ -45,6 +45,7 @@ const ChatPanel = ({
     typingUsers,
     fileInputRef,
     messageInputRef,
+    messagesContainerRef,
     uploadingFile,
     showEmojiPicker,
     setShowEmojiPicker,
@@ -127,6 +128,33 @@ const ChatPanel = ({
         (viewerRoleBlocked ? "You do not have permission to send messages." : "");
     const sendDisabled = Boolean(sendBlockedReason) || !canSendMessages;
 
+    const restoreComposerFocus = useCallback((moveCaretToEnd = true) => {
+        const input = messageInputRef?.current;
+        if (!input) return;
+
+        const focusInput = () => {
+            try {
+                input.focus({ preventScroll: true });
+            } catch {
+                input.focus();
+            }
+
+            if (!moveCaretToEnd) {
+                return;
+            }
+
+            const nextPosition = String(input.value || "").length;
+            try {
+                input.setSelectionRange(nextPosition, nextPosition);
+            } catch {
+                // Mobile browsers can reject selection updates during layout.
+            }
+        };
+
+        requestAnimationFrame(focusInput);
+        setTimeout(focusInput, 80);
+    }, [messageInputRef]);
+
     const filteredMessages = useMemo(() => {
         let filtered = messages;
         if (searchQuery) {
@@ -172,6 +200,12 @@ const ChatPanel = ({
         setChatMessage(value);
         if (value?.trim() && handleTyping) handleTyping();
     };
+
+    const handleReplySelection = useCallback((message) => {
+        setReplyingTo(message);
+        setShowEmojiPicker?.(false);
+        restoreComposerFocus(true);
+    }, [restoreComposerFocus, setShowEmojiPicker]);
 
     const handleMobileBackPress = () => {
         if (messageInputRef?.current && typeof messageInputRef.current.blur === "function") {
@@ -356,7 +390,7 @@ const ChatPanel = ({
                             />
                         </div>
 
-                        <div className="relative z-0 flex-1 min-h-0 overflow-y-auto custom-scrollbar scroll-smooth">
+                        <div className="relative z-0 flex-1 min-h-0 overflow-hidden">
                             {isLoadingMessages ? (
                                 <ChatMessagesSkeleton />
                             ) : (
@@ -369,8 +403,9 @@ const ChatPanel = ({
                                     handlePinMessage={handlePinMessage}
                                     handleEditMessage={handleEditMessage}
                                     onReact={(messageId, emoji) => handleReaction?.(messageId, emoji)}
-                                    onReply={setReplyingTo}
+                                    onReply={handleReplySelection}
                                     chatEndRef={chatEndRef}
+                                    messagesContainerRef={messagesContainerRef}
                                     jumpToMessageId={localJumpMessageId || jumpToMessageId}
                                     onJumpHandled={handleJumpHandled}
                                 />

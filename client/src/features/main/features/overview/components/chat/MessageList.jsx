@@ -22,6 +22,7 @@ const MessageList = ({
   onReact,
   onReply,
   chatEndRef,
+  messagesContainerRef,
   jumpToMessageId,
   onJumpHandled
 }) => {
@@ -37,8 +38,19 @@ const MessageList = ({
   }, []);
 
   const scrollToBottom = useCallback((behavior = "smooth") => {
+    const container = containerRef.current;
+    if (container && typeof container.scrollTo === "function") {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior
+      });
+      setShowScrollBottom(false);
+      return;
+    }
+
     if (chatEndRef?.current) {
       chatEndRef.current.scrollIntoView({ behavior, block: "end" });
+      setShowScrollBottom(false);
     }
   }, [chatEndRef]);
 
@@ -80,13 +92,20 @@ const MessageList = ({
     if (nextCount === 0) return;
 
     if (nextCount > prevCount) {
-      if (isNearBottom() || prevCount === 0) {
-        scrollToBottom("smooth");
+      const latestMessage = messages[nextCount - 1] || null;
+      const latestIsOwnMessage = Boolean(
+        latestMessage?.isOwn ||
+        latestMessage?.status === "sending" ||
+        latestMessage?.status === "pending"
+      );
+
+      if (latestIsOwnMessage || isNearBottom() || prevCount === 0) {
+        scrollToBottom(latestIsOwnMessage ? "auto" : "smooth");
       } else {
         setShowScrollBottom(true);
       }
     }
-  }, [messages.length, isNearBottom, scrollToBottom]);
+  }, [messages, isNearBottom, scrollToBottom]);
 
   // ---- Mention jump: open chat and jump to first unread mention message ----
   useEffect(() => {
@@ -117,6 +136,22 @@ const MessageList = ({
 
     return cleanup;
   }, [handleScroll]);
+
+  useEffect(() => {
+    if (!messagesContainerRef) {
+      return undefined;
+    }
+
+    if (typeof messagesContainerRef === "function") {
+      messagesContainerRef(containerRef.current);
+      return () => messagesContainerRef(null);
+    }
+
+    messagesContainerRef.current = containerRef.current;
+    return () => {
+      messagesContainerRef.current = null;
+    };
+  }, [messagesContainerRef]);
 
   // ---- Group messages by date + Improved Sequence Logic ----
   const messageGroups = useMemo(() => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router";
-import { Loader2, ArrowLeft, Phone, Video, AlertCircle } from "lucide-react";
+import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import MessageList from "../main/features/overview/components/chat/MessageList";
 import ChatInput from "../main/features/overview/components/chat/ChatInput";
@@ -254,10 +254,6 @@ const ChatPage = () => {
                             </div>
                         </div>
                     )}
-                </div>
-                <div className="flex gap-1">
-                    <button className="p-2.5 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-full transition-all"><Phone className="h-5 w-5" /></button>
-                    <button className="p-2.5 text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 rounded-full transition-all"><Video className="h-5 w-5" /></button>
                 </div>
             </header>
 

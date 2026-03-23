@@ -141,6 +141,15 @@ const ChatInput = ({
         focusComposer(true);
     }, [chatMessage, focusComposer, setChatMessage, updateEmojiPickerOpen]);
 
+    useEffect(() => {
+        if (!replyingTo || sendDisabled) {
+            return;
+        }
+
+        focusComposer(true);
+        scheduleComposerFocus();
+    }, [focusComposer, replyingTo, scheduleComposerFocus, sendDisabled]);
+
     // Auto-resize textarea
     useEffect(() => {
         if (textareaRef.current) {
@@ -321,6 +330,7 @@ const ChatInput = ({
         updateEmojiPickerOpen(false);
 
         if (textareaRef.current) textareaRef.current.style.height = "auto";
+        focusComposer(true);
         scheduleComposerFocus();
     };
 
@@ -344,7 +354,13 @@ const ChatInput = ({
                                     {replyingTo.content || "Attachment"}
                                 </p>
                             </div>
-                            <button onClick={() => setReplyingTo(null)} className="p-1 hover:bg-slate-800 rounded text-slate-400 max-[300px]:p-0.5">
+                            <button
+                                type="button"
+                                onMouseDown={keepComposerFocusedWithMouse}
+                                onTouchStart={restoreComposerOnTouch}
+                                onClick={() => setReplyingTo(null)}
+                                className="p-1 hover:bg-slate-800 rounded text-slate-400 max-[300px]:p-0.5"
+                            >
                                 <X className="h-4 w-4 max-[300px]:h-3.5 max-[300px]:w-3.5" />
                             </button>
                         </div>

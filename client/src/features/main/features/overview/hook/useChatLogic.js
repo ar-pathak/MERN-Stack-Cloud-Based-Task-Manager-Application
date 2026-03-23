@@ -351,6 +351,15 @@ export const useChatLogic = (selectedChat) => {
     // -------------------------------------------------------------------------
 
     const scrollToBottom = useCallback((behavior = "smooth") => {
+        const container = messagesContainerRef.current;
+        if (container && typeof container.scrollTo === "function") {
+            container.scrollTo({
+                top: container.scrollHeight,
+                behavior
+            });
+            return;
+        }
+
         if (chatEndRef.current) {
             chatEndRef.current.scrollIntoView({ behavior, block: "end" });
         }
