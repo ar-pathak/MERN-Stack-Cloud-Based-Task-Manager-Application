@@ -37,7 +37,7 @@ const PostItem = React.memo(({
             <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                     <p className="text-[11px] text-slate-500">
-                        {getPostDateLabel?.(post?.createdAt)}
+                        {getPostDateLabel?.(post?.publishedAt || post?.createdAt || post?.scheduledFor)}
                     </p>
                     {post?.content && (
                         <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-200">

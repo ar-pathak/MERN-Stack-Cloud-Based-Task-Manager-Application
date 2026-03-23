@@ -38,6 +38,18 @@ class PostService {
         return String(action || "").toLowerCase().startsWith("view");
     }
 
+    getEffectivePostDate(post = null) {
+        if (!post || typeof post !== "object") {
+            return null;
+        }
+
+        if (post.status === "scheduled") {
+            return post.scheduledFor || post.createdAt || null;
+        }
+
+        return post.publishedAt || post.createdAt || null;
+    }
+
     async publishDueScheduledPosts(referenceDate = new Date()) {
         const publishAt = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
         if (!Number.isFinite(publishAt.getTime())) {
@@ -49,14 +61,22 @@ class PostService {
                 status: "scheduled",
                 scheduledFor: { $lte: publishAt }
             },
-            {
-                $set: {
-                    status: "active",
-                    publishedAt: publishAt
+            [
+                {
+                    $set: {
+                        status: "active",
+                        publishedAt: {
+                            $ifNull: ["$scheduledFor", publishAt]
+                        },
+                        updatedAt: publishAt
+                    }
                 },
-                $unset: {
-                    scheduledFor: 1
+                {
+                    $unset: "scheduledFor"
                 }
+            ],
+            {
+                updatePipeline: true
             }
         );
 
@@ -802,7 +822,7 @@ class PostService {
 
         const [posts, total] = await Promise.all([
             Post.find(query)
-                .sort({ createdAt: -1 })
+                .sort({ publishedAt: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
@@ -863,7 +883,7 @@ class PostService {
 
         const [posts, total] = await Promise.all([
             Post.find(query)
-                .sort({ createdAt: -1 })
+                .sort({ publishedAt: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
@@ -945,7 +965,7 @@ class PostService {
 
         const [posts, total] = await Promise.all([
             Post.find(query)
-                .sort({ isPinned: -1, createdAt: -1 }) // Pinned posts first
+                .sort({ isPinned: -1, publishedAt: -1, createdAt: -1 }) // Pinned posts first
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
@@ -1013,7 +1033,7 @@ class PostService {
             status: 'active',
             visibility: 'public',
             author: { $in: accessibleAuthorIds },
-            createdAt: { $gte: since }
+            publishedAt: { $gte: since }
         };
 
         const [posts, total] = await Promise.all([
@@ -1022,6 +1042,7 @@ class PostService {
                     likesCount: -1,
                     commentsCount: -1,
                     viewsCount: -1,
+                    publishedAt: -1,
                     createdAt: -1
                 })
                 .skip(skip)
@@ -1082,7 +1103,7 @@ class PostService {
 
         const [posts, total] = await Promise.all([
             Post.find(searchQuery)
-                .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
+                .sort({ score: { $meta: 'textScore' }, publishedAt: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
@@ -1142,7 +1163,7 @@ class PostService {
 
         const [posts, total] = await Promise.all([
             Post.find(query)
-                .sort({ createdAt: -1 })
+                .sort({ publishedAt: -1, createdAt: -1 })
                 .skip(skip)
                 .limit(limit)
                 .populate('author', 'username name avatar isVerified')
@@ -1285,6 +1306,7 @@ class PostService {
         } = options;
 
         const query = { author: userId };
+        let startDate = null;
 
         // Apply status filter
         if (statusFilter && statusFilter !== 'all') {
@@ -1294,7 +1316,6 @@ class PostService {
         // Apply date filter
         if (dateFilter && dateFilter !== 'all') {
             const now = new Date();
-            let startDate;
 
             switch (dateFilter) {
                 case 'last7':
@@ -1311,10 +1332,6 @@ class PostService {
                     break;
                 default:
                     break;
-            }
-
-            if (startDate) {
-                query.createdAt = { $gte: startDate };
             }
         }
 
@@ -1338,8 +1355,11 @@ class PostService {
             const engagementScore = likes + comments * 2 + reposts * 3 + shares * 2 + Math.round(views * 0.05);
             const engagementRate = views ? Number(((engagementScore / views) * 100).toFixed(2)) : 0;
 
+            const timelineAt = this.getEffectivePostDate(post);
+
             return {
                 ...post,
+                timelineAt,
                 likesCount: likes,
                 commentsCount: comments,
                 sharesCount: shares,
@@ -1351,6 +1371,13 @@ class PostService {
             };
         });
 
+        if (startDate) {
+            posts = posts.filter((post) => {
+                const timelineDate = new Date(post?.timelineAt || 0);
+                return !Number.isNaN(timelineDate.getTime()) && timelineDate >= startDate;
+            });
+        }
+
         // Apply sorting
         if (sortBy === 'likes_desc') {
             posts.sort((a, b) => b.likesCount - a.likesCount);
@@ -1361,10 +1388,10 @@ class PostService {
         } else if (sortBy === 'views_desc') {
             posts.sort((a, b) => b.viewsCount - a.viewsCount);
         } else if (sortBy === 'date_asc') {
-            posts.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+            posts.sort((a, b) => new Date(a.timelineAt || 0) - new Date(b.timelineAt || 0));
         } else {
             // default: date_desc
-            posts.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            posts.sort((a, b) => new Date(b.timelineAt || 0) - new Date(a.timelineAt || 0));
         }
 
         // Calculate totals
@@ -1388,5 +1415,3 @@ class PostService {
 }
 
 module.exports = new PostService();
-
-

@@ -8,7 +8,8 @@ import {
 import {
     formatDateTime,
     formatNumber,
-    formatPercent
+    formatPercent,
+    getPostTimelineValue
 } from "../utils/dashboard.utils";
 
 const PostAnalyticsSection = ({
@@ -92,7 +93,7 @@ const PostAnalyticsSection = ({
                                         {post?.contentPreview || "Post"}
                                     </p>
                                     <p className="text-[11px] text-slate-500">
-                                        {formatDateTime(post?.createdAt)}
+                                        {formatDateTime(getPostTimelineValue(post))}
                                     </p>
                                 </td>
                                 <td className="px-3 py-2 text-right">{formatNumber(post?.views)}</td>

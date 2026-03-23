@@ -44,7 +44,7 @@ const PostDetailModal = ({
                                 </p>
                                 <p className="truncate text-xs text-slate-500">
                                     @{post?.author?.username || "user"} -{" "}
-                                    {getPostDateLabel?.(post?.createdAt)}
+                                    {getPostDateLabel?.(post?.publishedAt || post?.createdAt || post?.scheduledFor)}
                                 </p>
                             </div>
                             <div className="flex items-center gap-2">

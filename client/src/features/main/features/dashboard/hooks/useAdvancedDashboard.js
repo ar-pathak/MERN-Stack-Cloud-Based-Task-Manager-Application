@@ -13,6 +13,7 @@ import {
 } from "../constants/dashboard.constants";
 import {
     isPostWithinDateFilter,
+    getPostTimelineValue,
     readLocalDrafts,
     toInteractionEntry,
     toLocalInputDateTime,
@@ -215,7 +216,7 @@ const useAdvancedDashboard = ({ profileId = "" } = {}) => {
         }
         if (dateFilter !== "all") {
             rows = rows.filter((post) =>
-                isPostWithinDateFilter(post?.createdAt, dateFilter)
+                isPostWithinDateFilter(getPostTimelineValue(post), dateFilter)
             );
         }
 
@@ -226,14 +227,14 @@ const useAdvancedDashboard = ({ profileId = "" } = {}) => {
         } else if (sortBy === "date_asc") {
             rows.sort(
                 (left, right) =>
-                    new Date(left?.createdAt || 0).getTime() -
-                    new Date(right?.createdAt || 0).getTime()
+                    new Date(getPostTimelineValue(left) || 0).getTime() -
+                    new Date(getPostTimelineValue(right) || 0).getTime()
             );
         } else {
             rows.sort(
                 (left, right) =>
-                    new Date(right?.createdAt || 0).getTime() -
-                    new Date(left?.createdAt || 0).getTime()
+                    new Date(getPostTimelineValue(right) || 0).getTime() -
+                    new Date(getPostTimelineValue(left) || 0).getTime()
             );
         }
         return rows;

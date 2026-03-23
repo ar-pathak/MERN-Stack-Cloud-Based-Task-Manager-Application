@@ -14,6 +14,11 @@ export const formatDateTime = (value) => {
     return Number.isNaN(dateValue.getTime()) ? "" : dateValue.toLocaleString();
 };
 
+export const getPostTimelineValue = (post) => {
+    if (!post || typeof post !== "object") return "";
+    return post.timelineAt || post.publishedAt || post.createdAt || post.scheduledFor || "";
+};
+
 export const toLocalInputDateTime = (value) => {
     const dateValue = new Date(value || Date.now() + 30 * 60 * 1000);
     if (Number.isNaN(dateValue.getTime())) return "";

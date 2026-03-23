@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import PostMediaPreview from "./PostMediaPreview";
-import { getInitial } from "../utils/feed.helpers";
+import { getInitial, getPostTimelineValue } from "../utils/feed.helpers";
 
 const CommentItem = ({
     comment,
@@ -306,7 +306,7 @@ const FeedPostCard = React.memo(({
                             {post?.author?.name || post?.author?.username || "User"}
                         </p>
                         <p className="truncate text-xs text-slate-500">
-                            @{post?.author?.username || "user"} - {formatRelativeTime(post?.createdAt)}
+                            @{post?.author?.username || "user"} - {formatRelativeTime(getPostTimelineValue(post))}
                         </p>
                     </div>
                 </button>

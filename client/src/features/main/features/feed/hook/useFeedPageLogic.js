@@ -42,6 +42,7 @@ import {
 import {
     extractTopHashtags,
     getStoryStats,
+    getPostTimelineValue,
     mergeUniquePosts,
     normalizePagination,
     postMatchesQuery,
@@ -475,7 +476,9 @@ const useFeedPageLogic = () => {
             return [...filtered].sort((a, b) => scorePost(b) - scorePost(a));
         }
         return [...filtered].sort(
-            (a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime()
+            (a, b) =>
+                new Date(getPostTimelineValue(b) || 0).getTime() -
+                new Date(getPostTimelineValue(a) || 0).getTime()
         );
     }, [posts, searchTerm, sortMode]);
 

@@ -24,6 +24,11 @@ export const mergeUniquePosts = (items = []) => {
     return Array.from(byId.values());
 };
 
+export const getPostTimelineValue = (post) => {
+    if (!post || typeof post !== "object") return "";
+    return post.publishedAt || post.createdAt || post.scheduledFor || "";
+};
+
 export const formatRelativeTime = (value) => {
     if (!value) return "";
     const date = new Date(value);

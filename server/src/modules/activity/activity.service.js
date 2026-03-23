@@ -822,6 +822,16 @@ const buildCreatorInsights = async ({
             date: path
         }
     });
+    const activeTimelineDate = {
+        $ifNull: ["$publishedAt", "$createdAt"]
+    };
+    const analyticsTimelineDate = {
+        $cond: [
+            { $eq: ["$status", "scheduled"] },
+            { $ifNull: ["$scheduledFor", "$createdAt"] },
+            activeTimelineDate
+        ]
+    };
 
     const [
         totalPostCount,
@@ -877,23 +887,32 @@ const buildCreatorInsights = async ({
             author: userId,
             status: { $in: ["active", "scheduled"] }
         })
-            .sort({ createdAt: -1 })
+            .sort({ publishedAt: -1, createdAt: -1 })
             .limit(postListLimit)
             .select(
-                "_id content createdAt status scheduledFor visibility postType viewsCount likesCount commentsCount sharesCount repostsCount"
+                "_id content createdAt publishedAt status scheduledFor visibility postType viewsCount likesCount commentsCount sharesCount repostsCount"
             )
             .lean(),
         Post.aggregate([
             {
                 $match: {
                     author: userId,
-                    status: { $in: ["active", "scheduled"] },
-                    createdAt: { $gte: trendWindowStart }
+                    status: { $in: ["active", "scheduled"] }
+                }
+            },
+            {
+                $addFields: {
+                    timelineAt: analyticsTimelineDate
+                }
+            },
+            {
+                $match: {
+                    timelineAt: { $gte: trendWindowStart }
                 }
             },
             {
                 $group: {
-                    _id: dateGroupId("$createdAt"),
+                    _id: dateGroupId("$timelineAt"),
                     count: { $sum: 1 }
                 }
             }
@@ -1054,13 +1073,22 @@ const buildCreatorInsights = async ({
             {
                 $match: {
                     author: userId,
-                    status: "active",
-                    createdAt: { $gte: trendWindowStart }
+                    status: "active"
+                }
+            },
+            {
+                $addFields: {
+                    timelineAt: activeTimelineDate
+                }
+            },
+            {
+                $match: {
+                    timelineAt: { $gte: trendWindowStart }
                 }
             },
             {
                 $group: {
-                    _id: { $hour: "$createdAt" },
+                    _id: { $hour: "$timelineAt" },
                     posts: { $sum: 1 },
                     likes: { $sum: { $ifNull: ["$likesCount", 0] } },
                     comments: { $sum: { $ifNull: ["$commentsCount", 0] } },
@@ -1154,8 +1182,12 @@ const buildCreatorInsights = async ({
         return {
             _id: post?._id,
             createdAt: post?.createdAt || null,
+            publishedAt: post?.publishedAt || null,
             status: post?.status || "active",
             scheduledFor: post?.scheduledFor || null,
+            timelineAt: post?.status === "scheduled"
+                ? post?.scheduledFor || post?.createdAt || null
+                : post?.publishedAt || post?.createdAt || null,
             visibility: post?.visibility || "public",
             postType: post?.postType || "text",
             content: String(post?.content || ""),
@@ -1170,7 +1202,9 @@ const buildCreatorInsights = async ({
                 ? Number(((engagementScore / views) * 100).toFixed(2))
                 : 0
         };
-    });
+    }).sort(
+        (a, b) => new Date(b?.timelineAt || 0).getTime() - new Date(a?.timelineAt || 0).getTime()
+    );
 
     const topPerformingPosts = [...postAnalytics]
         .filter((post) => post.status === "active")
