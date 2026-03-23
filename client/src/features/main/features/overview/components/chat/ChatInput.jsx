@@ -50,12 +50,24 @@ const ChatInput = ({
     mentionEnabled = true
 }) => {
     const textareaRef = useRef(null);
+    const internalFileInputRef = useRef(null);
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [localShowEmojiPicker, setLocalShowEmojiPicker] = useState(false);
+    const [localSelectedFile, setLocalSelectedFile] = useState(null);
 
     const [mentionContext, setMentionContext] = useState(null);
     const [mentionCandidates, setMentionCandidates] = useState([]);
     const [mentionLoading, setMentionLoading] = useState(false);
     const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+
+    const activeFileInputRef = fileInputRef || internalFileInputRef;
+    const currentSelectedFile = selectedFile !== undefined ? selectedFile : localSelectedFile;
+    const updateSelectedFile =
+        typeof setSelectedFile === "function" ? setSelectedFile : setLocalSelectedFile;
+    const emojiPickerOpen =
+        typeof showEmojiPicker === "boolean" ? showEmojiPicker : localShowEmojiPicker;
+    const updateEmojiPickerOpen =
+        typeof setShowEmojiPicker === "function" ? setShowEmojiPicker : setLocalShowEmojiPicker;
 
     const focusComposer = useCallback((moveCaretToEnd = false) => {
         const input = textareaRef.current;
@@ -105,21 +117,29 @@ const ChatInput = ({
         });
     }, [focusComposer, isMobile]);
 
-    const keepComposerFocusedOnPress = useCallback((event) => {
-        if (!isMobile || sendDisabled) {
+    const keepComposerFocusedWithMouse = useCallback((event) => {
+        if (sendDisabled) {
             return;
         }
 
         event.preventDefault();
         focusComposer(true);
+    }, [focusComposer, sendDisabled]);
+
+    const restoreComposerOnTouch = useCallback(() => {
+        if (!isMobile || sendDisabled) {
+            return;
+        }
+
+        requestAnimationFrame(() => focusComposer(true));
     }, [focusComposer, isMobile, sendDisabled]);
 
     const handleEmojiSelect = useCallback((emoji) => {
         const nextValue = `${chatMessage}${emoji}`;
         setChatMessage(nextValue);
-        setShowEmojiPicker(false);
+        updateEmojiPickerOpen(false);
         focusComposer(true);
-    }, [chatMessage, focusComposer, setChatMessage, setShowEmojiPicker]);
+    }, [chatMessage, focusComposer, setChatMessage, updateEmojiPickerOpen]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -171,9 +191,9 @@ const ChatInput = ({
 
     // Generate Preview when file is selected
     useEffect(() => {
-        if (selectedFile) {
-            if (selectedFile.type.startsWith("image/")) {
-                const url = URL.createObjectURL(selectedFile);
+        if (currentSelectedFile) {
+            if (currentSelectedFile.type.startsWith("image/")) {
+                const url = URL.createObjectURL(currentSelectedFile);
                 setPreviewUrl(url);
                 return () => URL.revokeObjectURL(url);
             }
@@ -181,7 +201,7 @@ const ChatInput = ({
         } else {
             setPreviewUrl(null);
         }
-    }, [selectedFile]);
+    }, [currentSelectedFile]);
 
     const updateMentionFromValue = (value, caretPos) => {
         if (!mentionEnabled) {
@@ -201,23 +221,32 @@ const ChatInput = ({
         updateMentionFromValue(value, caretPos);
     };
 
-    const onFileSelect = (e) => {
+    const onFileSelect = useCallback((e) => {
         if (sendDisabled) {
-            if (fileInputRef.current) {
-                fileInputRef.current.value = "";
+            if (activeFileInputRef.current) {
+                activeFileInputRef.current.value = "";
             }
             return;
         }
         if (e.target.files && e.target.files[0]) {
-            setSelectedFile(e.target.files[0]);
+            updateSelectedFile(e.target.files[0]);
         }
-    };
+    }, [activeFileInputRef, sendDisabled, updateSelectedFile]);
 
     const removeFile = () => {
-        setSelectedFile(null);
+        updateSelectedFile(null);
         setPreviewUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        if (activeFileInputRef.current) activeFileInputRef.current.value = "";
     };
+
+    const handleEmojiToggle = useCallback(() => {
+        const nextState = !emojiPickerOpen;
+        updateEmojiPickerOpen(nextState);
+
+        if (nextState) {
+            restoreComposerOnTouch();
+        }
+    }, [emojiPickerOpen, restoreComposerOnTouch, updateEmojiPickerOpen]);
 
     const applyMention = useCallback((candidate) => {
         if (!candidate || !mentionContext) return;
@@ -277,18 +306,19 @@ const ChatInput = ({
 
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
-            if (chatMessage.trim() || selectedFile) {
+            if (chatMessage.trim() || currentSelectedFile) {
                 onSendClick();
             }
         }
     };
 
     const onSendClick = () => {
-        if ((!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled) return;
-        handleSend(selectedFile);
+        if ((!chatMessage.trim() && !currentSelectedFile) || uploadingFile || sendDisabled) return;
+        handleSend(currentSelectedFile);
 
         setMentionContext(null);
         setMentionCandidates([]);
+        updateEmojiPickerOpen(false);
 
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         scheduleComposerFocus();
@@ -323,7 +353,7 @@ const ChatInput = ({
             </AnimatePresence>
 
             <AnimatePresence>
-                {selectedFile && !uploadingFile && (
+                {currentSelectedFile && !uploadingFile && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -335,7 +365,7 @@ const ChatInput = ({
                                 <img loading="lazy" src={previewUrl} alt="Preview" className="h-16 w-16 object-cover rounded-lg border border-slate-700 max-[300px]:h-12 max-[300px]:w-12" />
                             ) : (
                                 <div className="h-16 w-16 rounded-lg bg-slate-700/60 flex items-center justify-center border border-slate-700 max-[300px]:h-12 max-[300px]:w-12">
-                                    {selectedFile.type.startsWith("image/") ? (
+                                    {currentSelectedFile.type.startsWith("image/") ? (
                                         <ImageIcon className="h-8 w-8 text-slate-400 max-[300px]:h-6 max-[300px]:w-6" />
                                     ) : (
                                         <FileText className="h-8 w-8 text-slate-400 max-[300px]:h-6 max-[300px]:w-6" />
@@ -343,8 +373,8 @@ const ChatInput = ({
                                 </div>
                             )}
                             <div className="min-w-0">
-                                <p className="text-sm text-slate-200 truncate max-w-[120px] max-[340px]:max-w-[84px] max-[300px]:max-w-[62px] max-[300px]:text-xs sm:max-w-[200px]">{selectedFile.name}</p>
-                                <p className="text-xs text-slate-500 max-[300px]:text-[11px]">{Math.round(selectedFile.size / 1024)} KB</p>
+                                <p className="text-sm text-slate-200 truncate max-w-[120px] max-[340px]:max-w-[84px] max-[300px]:max-w-[62px] max-[300px]:text-xs sm:max-w-[200px]">{currentSelectedFile.name}</p>
+                                <p className="text-xs text-slate-500 max-[300px]:text-[11px]">{Math.round(currentSelectedFile.size / 1024)} KB</p>
                             </div>
                         </div>
                         <button
@@ -374,15 +404,16 @@ const ChatInput = ({
             <div className="flex items-end gap-2 rounded-[1.4rem] border border-slate-800/70 bg-slate-900/85 p-1.5 shadow-[0_-14px_36px_rgba(2,6,23,0.22)] max-[340px]:gap-1.5 max-[340px]:rounded-[1.2rem] max-[340px]:p-1.5 max-[300px]:gap-1 max-[300px]:rounded-[1.05rem] max-[300px]:p-1 sm:gap-2 sm:rounded-[1.55rem] sm:bg-slate-900/70">
                 <input
                     type="file"
-                    ref={fileInputRef}
+                    ref={activeFileInputRef}
                     onChange={onFileSelect}
                     className="hidden"
                 />
 
                 <ActionButton
                     icon={Paperclip}
-                    onClick={() => fileInputRef.current?.click()}
-                    onPressStart={keepComposerFocusedOnPress}
+                    onClick={() => activeFileInputRef.current?.click()}
+                    onMouseDown={keepComposerFocusedWithMouse}
+                    onTouchStart={restoreComposerOnTouch}
                     disabled={uploadingFile || sendDisabled}
                     title="Attach file"
                 />
@@ -399,7 +430,7 @@ const ChatInput = ({
                         placeholder={
                             sendDisabled
                                 ? (sendDisabledReason || "You cannot send messages in this chat.")
-                                : selectedFile
+                                : currentSelectedFile
                                     ? "Add a caption..."
                                     : mentionEnabled
                                         ? "Type a message... Use @ to mention"
@@ -469,15 +500,16 @@ const ChatInput = ({
                 <div className="relative">
                     <ActionButton
                         icon={Smile}
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        onPressStart={keepComposerFocusedOnPress}
-                        active={showEmojiPicker}
+                        onClick={handleEmojiToggle}
+                        onMouseDown={keepComposerFocusedWithMouse}
+                        onTouchStart={restoreComposerOnTouch}
+                        active={emojiPickerOpen}
                         disabled={uploadingFile || sendDisabled}
                         title="Emoji"
                     />
 
                     <AnimatePresence>
-                        {showEmojiPicker && (
+                        {emojiPickerOpen && (
                             <EmojiPicker
                                 onSelect={handleEmojiSelect}
                             />
@@ -488,10 +520,11 @@ const ChatInput = ({
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onPointerDown={keepComposerFocusedOnPress}
+                    onMouseDown={keepComposerFocusedWithMouse}
+                    onTouchStart={restoreComposerOnTouch}
                     onClick={onSendClick}
-                    disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled}
-                    className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] transition-all max-[340px]:h-10 max-[340px]:w-10 max-[300px]:h-9 max-[300px]:w-9 max-[300px]:rounded-[0.85rem] sm:h-11 sm:w-11 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                    disabled={(!chatMessage.trim() && !currentSelectedFile) || uploadingFile || sendDisabled}
+                    className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] transition-all max-[340px]:h-10 max-[340px]:w-10 max-[300px]:h-9 max-[300px]:w-9 max-[300px]:rounded-[0.85rem] sm:h-11 sm:w-11 ${(chatMessage.trim() || currentSelectedFile) && !uploadingFile
                         ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-lg shadow-sky-500/25 hover:from-sky-600 hover:to-blue-700"
                         : "bg-slate-800/50 text-slate-600 cursor-not-allowed"
                         }`}
@@ -503,11 +536,12 @@ const ChatInput = ({
     );
 };
 
-const ActionButton = ({ icon: Icon, onClick, onPressStart, title, active, disabled }) => (
+const ActionButton = ({ icon: Icon, onClick, onMouseDown, onTouchStart, title, active, disabled }) => (
     <motion.button
         whileHover={!disabled ? { scale: 1.05 } : {}}
         whileTap={!disabled ? { scale: 0.95 } : {}}
-        onPointerDown={onPressStart}
+        onMouseDown={onMouseDown}
+        onTouchStart={onTouchStart}
         onClick={onClick}
         disabled={disabled}
         className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] transition-colors max-[340px]:h-10 max-[340px]:w-10 max-[300px]:h-9 max-[300px]:w-9 max-[300px]:rounded-[0.85rem] sm:h-11 sm:w-11 ${active
@@ -532,10 +566,10 @@ const EmojiPicker = ({ onSelect }) => (
     >
         <div className="grid grid-cols-6 sm:grid-cols-8 gap-1.5 sm:gap-2 w-max">
             {[
-                "??", "??", "??", "??", "??", "?", "??", "??",
-                "??", "??", "??", "??", "?", "??", "??", "?",
-                "??", "??", "??", "??", "??", "??", "??", "??",
-                "??", "??", "??", "??", "??", "?", "??", "??"
+                "\u{1F600}", "\u{1F602}", "\u{1F60D}", "\u{1F44D}", "\u{1F389}", "\u{1F525}", "\u{1F680}", "\u{1F64C}",
+                "\u{1F60A}", "\u{1F60E}", "\u{1F914}", "\u{1F62E}", "\u{1F44F}", "\u{2764}\u{FE0F}", "\u{1F49C}", "\u{1F44C}",
+                "\u{1F44B}", "\u{1F525}", "\u{1F4A1}", "\u{1F4AF}", "\u{1F31F}", "\u{1F973}", "\u{1F917}", "\u{1F923}",
+                "\u{1F92F}", "\u{1F62D}", "\u{1F621}", "\u{1F970}", "\u{1F929}", "\u{1F60C}", "\u{1F914}", "\u{1F60F}"
             ].map((emoji) => (
                 <motion.button
                     key={emoji}

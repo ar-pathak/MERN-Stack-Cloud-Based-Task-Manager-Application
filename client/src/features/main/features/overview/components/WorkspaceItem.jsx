@@ -158,7 +158,7 @@ const WorkspaceItem = React.memo(({
                 </div>
 
                 {/* 3. Actions */}
-                <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 transition-opacity mt-0.5">
+                <div className={`flex gap-0.5 transition-opacity mt-0.5 ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                     {canCreateProject && (
                         <button
                             onClick={(e) => {
@@ -308,7 +308,7 @@ const WorkspaceItem = React.memo(({
                                                     e.stopPropagation();
                                                     handleCreate(workspace, 'task', 'project', project);
                                                 }}
-                                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                                                className={`p-1 hover:bg-slate-700/50 rounded transition-opacity ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                                 title="Add Task"
                                             >
                                                 <Plus className="h-3.5 w-3.5 text-slate-400" />

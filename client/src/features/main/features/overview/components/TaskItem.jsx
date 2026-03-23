@@ -177,7 +177,7 @@ const TaskItem = ({
                                     e.stopPropagation();
                                     onCreateSubtask(task);
                                 }}
-                                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                                className={`p-1 hover:bg-slate-700/50 rounded transition-opacity ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                 title="Add Subtask"
                             >
                                 <Plus className="h-3.5 w-3.5 text-slate-400" />
@@ -345,7 +345,7 @@ const TaskItem = ({
                                 onCreateSubtask(task);
                                 dispatch(setIsSubtaskPopupOpen(true));
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-slate-700/50 rounded transition-opacity"
+                            className={`p-1 hover:bg-slate-700/50 rounded transition-opacity ${isMobile ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                             title="Add Subtask"
                         >
                             <Plus className="h-3.5 w-3.5 text-slate-400" />
