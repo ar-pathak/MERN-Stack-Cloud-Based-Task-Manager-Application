@@ -35,11 +35,12 @@ const MainPage = () => {
     // 🔥 Dynamically figure out the active tab based on the current URL
     const getActiveTab = () => {
         const path = location.pathname;
-        if (path.includes("/main/feed")) return "feed";
-        if (path.includes("/main/create")) return "create";
-        if (path.includes("/main/notifications")) return "notifications";
-        if (path.includes("/profile")) return "me";
-        return "overview"; // default fallback for "/main"
+        if (path === "/main") return "overview";
+        if (path.startsWith("/main/feed")) return "feed";
+        if (path.startsWith("/main/create")) return "create";
+        if (path.startsWith("/main/notifications")) return "notifications";
+        if (path.startsWith("/main/profile/")) return "me";
+        return null;
     };
 
     const activeTab = getActiveTab();

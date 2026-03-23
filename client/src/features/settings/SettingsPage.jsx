@@ -5,6 +5,7 @@ import {
     Bell,
     Loader2,
     Lock,
+    LogOut,
     ShieldCheck,
     UserRound,
     UserX
@@ -48,12 +49,13 @@ const ToggleRow = ({ label, description, checked, onChange, disabled }) => (
 
 const SettingsPage = () => {
     const navigate = useNavigate();
-    const { user, refreshUser } = useAuth();
+    const { user, refreshUser, logout } = useAuth();
 
     const [isMobileViewport, setIsMobileViewport] = useState(
         typeof window !== "undefined" ? window.innerWidth < MOBILE_BREAKPOINT : false
     );
     const [loading, setLoading] = useState(true);
+    const [loggingOut, setLoggingOut] = useState(false);
     const [savingKey, setSavingKey] = useState("");
     const [emailVerified, setEmailVerified] = useState(Boolean(user?.emailVerified));
 
@@ -301,6 +303,20 @@ const SettingsPage = () => {
         }
     };
 
+    const handleLogout = async () => {
+        if (loggingOut) return;
+
+        setLoggingOut(true);
+        try {
+            await logout();
+            toast.success("Logged out successfully");
+        } catch (error) {
+            toast.error(error?.message || "Logout failed");
+        } finally {
+            setLoggingOut(false);
+        }
+    };
+
     const loadingState = useMemo(
         () => ({
             private: savingKey === "profile.private",
@@ -495,7 +511,7 @@ const SettingsPage = () => {
                     </div>
                 </section>
 
-                <section className="rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
+                <section className="mb-4 rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
                     <div className="mb-3 flex items-center gap-2">
                         <UserX className="h-4 w-4 text-rose-300" />
                         <h2 className="text-sm font-semibold text-slate-100">Blocked Users</h2>
@@ -568,6 +584,34 @@ const SettingsPage = () => {
                             {blockedLoading ? "Loading..." : "Load more blocked users"}
                         </button>
                     )}
+                </section>
+
+                <section className="rounded-2xl border border-slate-800/70 bg-slate-900/55 p-4">
+                    <div className="mb-3 flex items-center gap-2">
+                        <LogOut className="h-4 w-4 text-rose-300" />
+                        <h2 className="text-sm font-semibold text-slate-100">Session</h2>
+                    </div>
+
+                    <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+                        <p className="text-sm font-semibold text-slate-100">Log out from this device</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                            Sign out of your account from settings whenever you need to switch users or secure your session.
+                        </p>
+
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            disabled={loggingOut}
+                            className="mt-3 inline-flex min-w-[10rem] items-center justify-center gap-2 rounded-lg border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-60"
+                        >
+                            {loggingOut ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                                <LogOut className="h-4 w-4" />
+                            )}
+                            {loggingOut ? "Logging out..." : "Log out"}
+                        </button>
+                    </div>
                 </section>
             </div>
 

@@ -22,7 +22,7 @@ const preloadPage = (path) => {
     else if (path === "/main") import("../../features/overview/pages/OverviewLayout.jsx");
 };
 
-const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) => {
+const MobileBottomNav = ({ activeTab = null, profileId, hidden = false }) => {
     const navigate = useNavigate();
     const [unreadCount, setUnreadCount] = useState(0);
 
@@ -73,7 +73,7 @@ const MobileBottomNav = ({ activeTab = "overview", profileId, hidden = false }) 
     };
 
     // 🔥 Konsa tab active manana hai uska decision (Priority optimistic state ko milegi)
-    const displayTab = optimisticTab || activeTab;
+    const displayTab = optimisticTab ?? activeTab;
 
     const navContent = (
         <div
