@@ -340,7 +340,7 @@ const MainHeader = () => {
                           <button
                             key={profile._id}
                             onClick={() => {
-                              navigate(`/profile/${profile._id}`);
+                              navigate(`/main/profile/${profile._id}`);
                               setShowSearchResults(false);
                             }}
                             className="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-800/60 transition-colors text-left"

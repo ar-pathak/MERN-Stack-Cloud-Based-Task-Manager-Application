@@ -19,7 +19,7 @@ const NoResultsState = ({ searchQuery }) => {
       </div>
       <h3 className="text-sm font-medium text-slate-300 mb-1">No results found</h3>
       <p className="text-xs text-slate-500">
-        {searchQuery ? "Try changing your search query" : "Try changing your filter"}
+        {searchQuery ? "Try changing your search query" : "Search your conversations to narrow results"}
       </p>
     </motion.div>
   );

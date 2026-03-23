@@ -60,7 +60,7 @@ const ChatHeader = ({
 
     const handleIdentityClick = () => {
         if (isDirectMessage && profileUserId) {
-            navigate(`/profile/${profileUserId}`);
+            navigate(`/main/profile/${profileUserId}`);
             return;
         }
 

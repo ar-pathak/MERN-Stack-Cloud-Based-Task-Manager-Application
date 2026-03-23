@@ -233,7 +233,7 @@ const ChatPage = () => {
                         <ArrowLeft className="h-6 w-6" />
                     </button>
                     {targetUserProfile && (
-                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/profile/${targetUserProfile._id}`)}>
+                        <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate(`/main/profile/${targetUserProfile._id}`)}>
                             <div className="relative">
                                 <div className="h-10 w-10 rounded-full bg-slate-800 overflow-hidden flex items-center justify-center text-slate-200">
                                     {targetUserProfile.avatar ? (

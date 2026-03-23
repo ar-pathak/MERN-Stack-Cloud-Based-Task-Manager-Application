@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
@@ -44,6 +44,7 @@ const ChatPanel = ({
     isTyping,
     typingUsers,
     fileInputRef,
+    messageInputRef,
     uploadingFile,
     showEmojiPicker,
     setShowEmojiPicker,
@@ -170,6 +171,15 @@ const ChatPanel = ({
     const handleMessageChange = (value) => {
         setChatMessage(value);
         if (value?.trim() && handleTyping) handleTyping();
+    };
+
+    const handleMobileBackPress = () => {
+        if (messageInputRef?.current && typeof messageInputRef.current.blur === "function") {
+            messageInputRef.current.blur();
+        }
+
+        setShowEmojiPicker?.(false);
+        onMobileBack?.();
     };
 
     const handleToggleMute = async () => {
@@ -303,7 +313,7 @@ const ChatPanel = ({
                                 onAddMembers={handleAddMembers}
                                 onLeave={handleLeave}
                                 onRequestInfo={handleRequestInfo}
-                                onBack={onMobileBack}
+                                onBack={handleMobileBackPress}
                             />
                         </div>
 
@@ -377,6 +387,7 @@ const ChatPanel = ({
                                 chatMessage={chatMessage}
                                 setChatMessage={handleMessageChange}
                                 handleSend={handleSendWithContext}
+                                messageInputRef={messageInputRef}
                                 fileInputRef={fileInputRef}
                                 uploadingFile={uploadingFile}
                                 replyingTo={replyingTo}
@@ -390,6 +401,7 @@ const ChatPanel = ({
                                 setSelectedFile={setSelectedFile}
                                 sendDisabled={sendDisabled}
                                 sendDisabledReason={sendBlockedReason}
+                                isMobile={Boolean(onMobileBack)}
                                 mentionEnabled={mentionEnabled}
                             />
                         </div>

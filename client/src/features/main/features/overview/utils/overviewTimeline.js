@@ -298,23 +298,11 @@ const enrichTimelineFallback = (
   return recurse(timeline || []);
 };
 
-export const filterTimelineItems = (items, searchQuery, filterType) => {
+export const filterTimelineItems = (items, searchQuery) => {
   return (items || []).filter((item) => {
     const label = item.name || item.title || "";
 
-    if (searchQuery) {
-      return label.toLowerCase().includes(searchQuery.toLowerCase());
-    }
-
-    if (filterType === "unread") {
-      return item.unreadCount > 0 || item.hasChildUnread;
-    }
-
-    if (filterType === "starred") {
-      return item.starred || item.isStarred;
-    }
-
-    return true;
+    return !searchQuery || label.toLowerCase().includes(searchQuery.toLowerCase());
   });
 };
 

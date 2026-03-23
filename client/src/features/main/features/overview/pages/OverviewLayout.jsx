@@ -71,7 +71,6 @@ const OverviewLayout = memo(() => {
   const [expandedItems, setExpandedItems] = useState(new Set());
   const [selectedItem, setSelectedItem] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filterType, setFilterType] = useState("all");
   const [overview] = useState(null);
   const [toast, setToast] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
@@ -422,8 +421,8 @@ const OverviewLayout = memo(() => {
   );
 
   const filteredItems = useMemo(
-    () => filterTimelineItems(enrichedTimeline, searchQuery, filterType),
-    [enrichedTimeline, searchQuery, filterType]
+    () => filterTimelineItems(enrichedTimeline, searchQuery),
+    [enrichedTimeline, searchQuery]
   );
 
   const handleCreateGlobalTask = () => {
@@ -565,8 +564,7 @@ const OverviewLayout = memo(() => {
         <SidebarHeader
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          filterType={filterType}
-          setFilterType={setFilterType}
+          isMobile={isMobileViewport}
           onCreateGlobalTask={handleCreateGlobalTask}
         />
 

@@ -34,6 +34,7 @@ const ChatInput = ({
     chatMessage,
     setChatMessage,
     handleSend,
+    messageInputRef,
     fileInputRef,
     uploadingFile,
     replyingTo,
@@ -43,6 +44,7 @@ const ChatInput = ({
     selectedFile,
     setSelectedFile,
     chatId,
+    isMobile = false,
     sendDisabled = false,
     sendDisabledReason = "",
     mentionEnabled = true
@@ -55,12 +57,69 @@ const ChatInput = ({
     const [mentionLoading, setMentionLoading] = useState(false);
     const [activeMentionIndex, setActiveMentionIndex] = useState(0);
 
+    const focusComposer = useCallback((moveCaretToEnd = false) => {
+        const input = textareaRef.current;
+        if (!input) return;
+
+        try {
+            input.focus({ preventScroll: true });
+        } catch {
+            input.focus();
+        }
+
+        if (moveCaretToEnd) {
+            const nextPosition = input.value.length;
+            try {
+                input.setSelectionRange(nextPosition, nextPosition);
+            } catch {
+                // Some mobile browsers can throw when selection is unavailable.
+            }
+        }
+    }, []);
+
+    const setComposerRef = useCallback((node) => {
+        textareaRef.current = node;
+
+        if (!messageInputRef) {
+            return;
+        }
+
+        if (typeof messageInputRef === "function") {
+            messageInputRef(node);
+            return;
+        }
+
+        messageInputRef.current = node;
+    }, [messageInputRef]);
+
+    const scheduleComposerFocus = useCallback(() => {
+        if (!isMobile) {
+            return;
+        }
+
+        const restoreFocus = () => focusComposer(true);
+
+        requestAnimationFrame(() => {
+            restoreFocus();
+            setTimeout(restoreFocus, 80);
+        });
+    }, [focusComposer, isMobile]);
+
+    const keepComposerFocusedOnPress = useCallback((event) => {
+        if (!isMobile || sendDisabled) {
+            return;
+        }
+
+        event.preventDefault();
+        focusComposer(true);
+    }, [focusComposer, isMobile, sendDisabled]);
+
     const handleEmojiSelect = useCallback((emoji) => {
         const nextValue = `${chatMessage}${emoji}`;
         setChatMessage(nextValue);
         setShowEmojiPicker(false);
-        textareaRef.current?.focus();
-    }, [chatMessage, setChatMessage]);
+        focusComposer(true);
+    }, [chatMessage, focusComposer, setChatMessage, setShowEmojiPicker]);
 
     // Auto-resize textarea
     useEffect(() => {
@@ -160,7 +219,7 @@ const ChatInput = ({
         if (fileInputRef.current) fileInputRef.current.value = "";
     };
 
-    const applyMention = (candidate) => {
+    const applyMention = useCallback((candidate) => {
         if (!candidate || !mentionContext) return;
 
         const before = chatMessage.slice(0, mentionContext.start);
@@ -175,10 +234,10 @@ const ChatInput = ({
         requestAnimationFrame(() => {
             if (!textareaRef.current) return;
             const nextCaret = before.length + inserted.length;
-            textareaRef.current.focus();
+            focusComposer();
             textareaRef.current.setSelectionRange(nextCaret, nextCaret);
         });
-    };
+    }, [chatMessage, focusComposer, mentionContext, setChatMessage]);
 
     const handleKeyDown = (e) => {
         const mentionOpen = mentionEnabled && mentionContext && (mentionLoading || mentionCandidates.length > 0);
@@ -232,19 +291,11 @@ const ChatInput = ({
         setMentionCandidates([]);
 
         if (textareaRef.current) textareaRef.current.style.height = "auto";
-
-        // Keep keyboard open on mobile after sending
-        if (typeof window !== "undefined" && window.innerWidth < 768) {
-            setTimeout(() => {
-                if (textareaRef.current) {
-                    textareaRef.current.focus();
-                }
-            }, 100);
-        }
+        scheduleComposerFocus();
     };
 
     return (
-        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/80 backdrop-blur-xl p-2.5 max-[340px]:p-1.5 max-[300px]:p-1 sm:p-3 md:p-4">
+        <div className="flex-shrink-0 border-t border-slate-800/50 bg-slate-950/90 px-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] pt-2.5 backdrop-blur-xl max-[340px]:px-2 max-[340px]:pt-2 max-[300px]:px-1.5 max-[300px]:pt-1.5 sm:p-3 md:p-4">
             <AnimatePresence>
                 {replyingTo && (
                     <motion.div
@@ -320,7 +371,7 @@ const ChatInput = ({
                 )}
             </AnimatePresence>
 
-            <div className="flex items-end gap-1.5 max-[340px]:gap-1 max-[300px]:gap-0.5 sm:gap-2">
+            <div className="flex items-end gap-2 rounded-[1.4rem] border border-slate-800/70 bg-slate-900/85 p-1.5 shadow-[0_-14px_36px_rgba(2,6,23,0.22)] max-[340px]:gap-1.5 max-[340px]:rounded-[1.2rem] max-[340px]:p-1.5 max-[300px]:gap-1 max-[300px]:rounded-[1.05rem] max-[300px]:p-1 sm:gap-2 sm:rounded-[1.55rem] sm:bg-slate-900/70">
                 <input
                     type="file"
                     ref={fileInputRef}
@@ -331,18 +382,20 @@ const ChatInput = ({
                 <ActionButton
                     icon={Paperclip}
                     onClick={() => fileInputRef.current?.click()}
+                    onPressStart={keepComposerFocusedOnPress}
                     disabled={uploadingFile || sendDisabled}
                     title="Attach file"
                 />
 
                 <div className="flex-1 relative">
                     <textarea
-                        ref={textareaRef}
+                        ref={setComposerRef}
                         value={chatMessage}
                         onChange={onInputChange}
                         onClick={(e) => updateMentionFromValue(e.target.value, e.target.selectionStart)}
                         onKeyUp={(e) => updateMentionFromValue(e.target.value, e.target.selectionStart)}
                         onKeyDown={handleKeyDown}
+                        enterKeyHint="send"
                         placeholder={
                             sendDisabled
                                 ? (sendDisabledReason || "You cannot send messages in this chat.")
@@ -354,8 +407,8 @@ const ChatInput = ({
                         }
                         rows={1}
                         disabled={uploadingFile || sendDisabled}
-                        className="w-full rounded-xl border border-slate-800/60 bg-slate-900/60 px-3 py-2.5 text-sm text-slate-300 placeholder:text-slate-500 transition-all resize-none focus:outline-none focus:border-sky-500/50 focus:ring-2 focus:ring-sky-500/20 max-[340px]:px-2.5 max-[340px]:py-2 max-[300px]:rounded-lg max-[300px]:px-2 max-[300px]:py-1.5 max-[300px]:text-[13px]"
-                        style={{ minHeight: "42px", maxHeight: "120px" }}
+                        className="w-full rounded-[1rem] border border-transparent bg-transparent px-3 py-2.5 text-sm leading-6 text-slate-200 placeholder:text-slate-500 transition-all resize-none focus:border-sky-500/30 focus:bg-slate-950/25 focus:outline-none focus:ring-2 focus:ring-sky-500/15 max-[340px]:px-2.5 max-[340px]:py-2 max-[300px]:rounded-[0.85rem] max-[300px]:px-2 max-[300px]:py-1.5 max-[300px]:text-[13px]"
+                        style={{ minHeight: "44px", maxHeight: "136px" }}
                     />
 
                     <AnimatePresence>
@@ -417,6 +470,7 @@ const ChatInput = ({
                     <ActionButton
                         icon={Smile}
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        onPressStart={keepComposerFocusedOnPress}
                         active={showEmojiPicker}
                         disabled={uploadingFile || sendDisabled}
                         title="Emoji"
@@ -434,31 +488,33 @@ const ChatInput = ({
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
+                    onPointerDown={keepComposerFocusedOnPress}
                     onClick={onSendClick}
                     disabled={(!chatMessage.trim() && !selectedFile) || uploadingFile || sendDisabled}
-                    className={`rounded-xl p-2 max-[340px]:p-1.5 max-[300px]:rounded-lg max-[300px]:p-1 sm:p-3 transition-all flex-shrink-0 ${(chatMessage.trim() || selectedFile) && !uploadingFile
-                        ? "bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white shadow-lg shadow-sky-500/25"
-                        : "bg-slate-800/40 text-slate-600 cursor-not-allowed"
+                    className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] transition-all max-[340px]:h-10 max-[340px]:w-10 max-[300px]:h-9 max-[300px]:w-9 max-[300px]:rounded-[0.85rem] sm:h-11 sm:w-11 ${(chatMessage.trim() || selectedFile) && !uploadingFile
+                        ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-lg shadow-sky-500/25 hover:from-sky-600 hover:to-blue-700"
+                        : "bg-slate-800/50 text-slate-600 cursor-not-allowed"
                         }`}
                 >
-                    {uploadingFile ? <Loader2 className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5 animate-spin" /> : <Send className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5" />}
+                    {uploadingFile ? <Loader2 className="h-4 w-4 animate-spin max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5" /> : <Send className="h-4 w-4 max-[340px]:h-3.5 max-[340px]:w-3.5 max-[300px]:h-3 max-[300px]:w-3 sm:h-5 sm:w-5" />}
                 </motion.button>
             </div>
         </div>
     );
 };
 
-const ActionButton = ({ icon: Icon, onClick, title, active, disabled }) => (
+const ActionButton = ({ icon: Icon, onClick, onPressStart, title, active, disabled }) => (
     <motion.button
         whileHover={!disabled ? { scale: 1.05 } : {}}
         whileTap={!disabled ? { scale: 0.95 } : {}}
+        onPointerDown={onPressStart}
         onClick={onClick}
         disabled={disabled}
-        className={`rounded-xl p-2 max-[340px]:p-1.5 max-[300px]:rounded-lg max-[300px]:p-1 sm:p-2.5 transition-colors flex-shrink-0 ${active
+        className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[1rem] transition-colors max-[340px]:h-10 max-[340px]:w-10 max-[300px]:h-9 max-[300px]:w-9 max-[300px]:rounded-[0.85rem] sm:h-11 sm:w-11 ${active
             ? "bg-sky-500/20 text-sky-400"
             : disabled
                 ? "text-slate-600 cursor-not-allowed"
-                : "hover:bg-slate-800/60 text-slate-400 hover:text-slate-300"
+                : "bg-slate-950/20 text-slate-400 hover:bg-slate-800/60 hover:text-slate-300"
             }`}
         title={title}
     >
