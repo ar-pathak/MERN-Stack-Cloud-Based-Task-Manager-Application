@@ -247,6 +247,23 @@ const ChatHeader = ({
                                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
                                         className="absolute right-0 top-full z-50 mt-2 w-48 max-w-[min(18rem,calc(100vw-1rem))] overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-2xl"
                                     >
+                                        <DropdownItem
+                                            icon={Phone}
+                                            label="Start voice call"
+                                            onClick={() => {
+                                                onStartAudioCall?.();
+                                                setShowDropdown(false);
+                                            }}
+                                        />
+                                        <DropdownItem
+                                            icon={Video}
+                                            label="Start video call"
+                                            onClick={() => {
+                                                onStartVideoCall?.();
+                                                setShowDropdown(false);
+                                            }}
+                                        />
+                                        <div className="my-1 h-px bg-slate-800" />
                                         {!isDirectMessage && (
                                             <DropdownItem
                                                 icon={UserPlus}

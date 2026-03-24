@@ -32,16 +32,35 @@ const buildIceConfig = () => {
 };
 
 const ICE_CONFIG = buildIceConfig();
+const MOBILE_DEVICE_REGEX = /android|iphone|ipad|ipod|mobile/i;
+const isLikelyMobileDevice = () => {
+    if (typeof navigator === 'undefined') return false;
+
+    const userAgent = String(navigator.userAgent || navigator.vendor || '');
+    if (MOBILE_DEVICE_REGEX.test(userAgent)) {
+        return true;
+    }
+
+    return Number(navigator.maxTouchPoints || 0) > 1 && /macintosh/i.test(userAgent);
+};
+
 const DEFAULT_AUDIO_CONSTRAINTS = {
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
-    volume: 1.0
+    volume: 1.0,
+    channelCount: { ideal: 1, max: 2 }
 };
-const DEFAULT_VIDEO_CONSTRAINTS = {
+const DESKTOP_VIDEO_CONSTRAINTS = {
     width: { ideal: 1280, max: 1920 },
     height: { ideal: 720, max: 1080 },
     frameRate: { ideal: 24, max: 30 }
+};
+const MOBILE_VIDEO_CONSTRAINTS = {
+    facingMode: { ideal: 'user' },
+    width: { ideal: 640, max: 1280 },
+    height: { ideal: 480, max: 720 },
+    frameRate: { ideal: 18, max: 24 }
 };
 const MAX_AUDIO_BITRATE_BPS = 64000;
 const MAX_VIDEO_BITRATE_BPS = 1200000;
@@ -51,7 +70,9 @@ const ACTIVE_SPEAKER_POLL_MS = 220;
 const ACTIVE_SPEAKER_THRESHOLD = 18;
 const MIC_GAIN_BOOST = 1.8;
 const getCallMediaConstraints = (type = 'video') => ({
-    video: type === 'video' ? DEFAULT_VIDEO_CONSTRAINTS : false,
+    video: type === 'video'
+        ? (isLikelyMobileDevice() ? MOBILE_VIDEO_CONSTRAINTS : DESKTOP_VIDEO_CONSTRAINTS)
+        : false,
     audio: DEFAULT_AUDIO_CONSTRAINTS
 });
 
@@ -129,6 +150,61 @@ const useWebRTC = (chatId) => {
         if (!user) return null;
         return connectSocket();
     }, [user]);
+
+    const ensureSocketConnected = useCallback((socket) => {
+        if (!socket) {
+            return Promise.reject(new Error('Realtime connection unavailable.'));
+        }
+
+        if (socket.connected) {
+            return Promise.resolve(socket);
+        }
+
+        if (typeof socket.connect === 'function') {
+            try {
+                socket.connect();
+            } catch {
+                // Ignore manual connect failures and fall back to listener timeout.
+            }
+        }
+
+        return new Promise((resolve, reject) => {
+            let settled = false;
+            let timeoutId = null;
+
+            const cleanup = () => {
+                if (typeof socket.off === 'function') {
+                    socket.off('connect', handleConnect);
+                    socket.off('connect_error', handleError);
+                }
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            };
+
+            const finish = (callback) => (value) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                callback(value);
+            };
+
+            const handleConnect = finish(() => resolve(socket));
+            const handleError = finish((error) => {
+                reject(new Error(error?.message || 'Realtime connection unavailable.'));
+            });
+
+            timeoutId = setTimeout(
+                finish(() => reject(new Error('Realtime connection unavailable.'))),
+                8000
+            );
+
+            if (typeof socket.on === 'function') {
+                socket.on('connect', handleConnect);
+                socket.on('connect_error', handleError);
+            }
+        });
+    }, []);
 
     useEffect(() => {
         callStatusRef.current = callStatus;
@@ -404,13 +480,51 @@ const useWebRTC = (chatId) => {
         const socket = sock();
         if (!socket || !activeChatId) return;
 
-        socket.emit('join-chat', activeChatId);
-        console.log(`[WebRTC] Joined socket room: ${activeChatId}`);
+        const joinActiveChatRoom = () => {
+            socket.emit('join-chat', activeChatId);
+            console.log(`[WebRTC] Joined socket room: ${activeChatId}`);
+        };
+
+        joinActiveChatRoom();
+        socket.on('connect', joinActiveChatRoom);
 
         return () => {
+            socket.off('connect', joinActiveChatRoom);
             socket.emit('leave-chat', activeChatId);
         };
     }, [activeChatId, sock]);
+
+    const getCurrentMediaState = useCallback(() => ({
+        audio: Boolean(localStreamRef.current?.getAudioTracks?.()[0]?.enabled ?? isAudioEnabled),
+        video: currentCallTypeRef.current === 'video'
+            ? Boolean(localStreamRef.current?.getVideoTracks?.()[0]?.enabled ?? isVideoEnabled)
+            : false,
+        screenShare: Boolean(isScreenSharing)
+    }), [isAudioEnabled, isScreenSharing, isVideoEnabled]);
+
+    useEffect(() => {
+        const socket = sock();
+        if (!socket) return;
+
+        const syncActiveCallAfterReconnect = () => {
+            if (!currentCallIdRef.current || !localStreamRef.current) return;
+            if (!['initiating', 'ongoing'].includes(callStatusRef.current)) return;
+
+            socket.emit('call:join', {
+                callId: currentCallIdRef.current,
+                mediaState: getCurrentMediaState()
+            });
+        };
+
+        socket.on('connect', syncActiveCallAfterReconnect);
+        if (socket.connected) {
+            syncActiveCallAfterReconnect();
+        }
+
+        return () => {
+            socket.off('connect', syncActiveCallAfterReconnect);
+        };
+    }, [getCurrentMediaState, sock]);
 
     // If user opens chat late (after ring event), hydrate from active call API.
     useEffect(() => {
@@ -460,6 +574,10 @@ const useWebRTC = (chatId) => {
     // ── 2. Call Actions ──────────────────────────────────────────────────
     const initializeLocalStream = useCallback(async (constraints) => {
         try {
+            if (!navigator.mediaDevices?.getUserMedia) {
+                throw new Error('Calling is not supported in this browser.');
+            }
+
             if (localStreamRef.current) {
                 localStreamRef.current.getTracks().forEach(t => t.stop());
             }
@@ -469,11 +587,14 @@ const useWebRTC = (chatId) => {
             await destroyAudioProcessor();
 
             let stream;
+            const isMobileCapture = isLikelyMobileDevice();
             try {
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
             } catch (err) {
                 const fallbackConstraints = {
-                    video: Boolean(constraints?.video),
+                    video: constraints?.video
+                        ? (isMobileCapture ? { facingMode: 'user' } : true)
+                        : false,
                     audio: true
                 };
                 stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
@@ -488,7 +609,7 @@ const useWebRTC = (chatId) => {
                     ? (window.AudioContext || window.webkitAudioContext)
                     : null;
 
-            if (rawAudioTrack && AudioContextCtor) {
+            if (rawAudioTrack && AudioContextCtor && !isMobileCapture) {
                 try {
                     const audioContext = new AudioContextCtor();
                     if (audioContext.state === 'suspended') {
@@ -547,10 +668,11 @@ const useWebRTC = (chatId) => {
     }, [destroyAudioProcessor]);
 
     const startCall = useCallback(async (type = 'video') => {
-        const s = sock();
-        if (!s) return setCallError("No connection");
+        const socket = sock();
+        if (!socket) return setCallError("No connection");
         if (!activeChatId) return setCallError("No chat selected");
         try {
+            const s = await ensureSocketConnected(socket);
             currentCallTypeRef.current = type;
             setCallError(null);
             setCallStatus('initiating');
@@ -571,12 +693,13 @@ const useWebRTC = (chatId) => {
             setCallStatus('idle');
             callStatusRef.current = 'idle';
         }
-    }, [activeChatId, sock, initializeLocalStream, currentUserId]);
+    }, [activeChatId, sock, ensureSocketConnected, initializeLocalStream, currentUserId]);
 
     const joinCall = useCallback(async (callId, type = 'video') => {
-        const s = sock();
-        if (!s) return;
+        const socket = sock();
+        if (!socket) return setCallError("No connection");
         try {
+            const s = await ensureSocketConnected(socket);
             currentCallTypeRef.current = type;
             setCallError(null);
             setCallStatus('initiating');
@@ -584,14 +707,18 @@ const useWebRTC = (chatId) => {
             await initializeLocalStream(getCallMediaConstraints(type));
             s.emit('call:join', { 
                 callId, 
-                mediaState: { video: type === 'video', audio: true } 
+                mediaState: {
+                    video: type === 'video',
+                    audio: true,
+                    screenShare: false
+                }
             });
         } catch (err) {
             setCallError(err.message);
             setCallStatus('idle');
             callStatusRef.current = 'idle';
         }
-    }, [sock, initializeLocalStream]);
+    }, [sock, ensureSocketConnected, initializeLocalStream]);
 
     const leaveCall = useCallback(() => {
         const s = sock();
@@ -770,6 +897,7 @@ const useWebRTC = (chatId) => {
             setActiveSpeakerId(null);
             setParticipants([]);
             setCurrentCall(null);
+            setCallError(null);
             setCallStatus('idle');
             callStatusRef.current = 'idle';
             setIncomingCall(null);

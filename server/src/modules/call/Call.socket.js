@@ -7,6 +7,11 @@ const parsedCallRingTimeoutMs = Number.parseInt(process.env.CALL_RING_TIMEOUT_MS
 const CALL_RING_TIMEOUT_MS = Number.isFinite(parsedCallRingTimeoutMs) && parsedCallRingTimeoutMs > 0
     ? parsedCallRingTimeoutMs
     : 60000;
+const parsedCallDisconnectGraceMs = Number.parseInt(process.env.CALL_DISCONNECT_GRACE_MS || "15000", 10);
+const CALL_DISCONNECT_GRACE_MS = Number.isFinite(parsedCallDisconnectGraceMs) && parsedCallDisconnectGraceMs > 0
+    ? parsedCallDisconnectGraceMs
+    : 15000;
+const pendingDisconnectTimers = new Map();
 
 // ============================================================================
 // HELPER FUNCTIONS
@@ -120,6 +125,33 @@ function isIgnorableCallMutationError(error) {
         || name === "MongoNotConnectedError"
         || message.includes("no matching document found for id")
     );
+}
+
+function getDisconnectTimerKey(callId, userId) {
+    return `${String(callId)}:${String(userId)}`;
+}
+
+function clearPendingDisconnect(callId, userId) {
+    const key = getDisconnectTimerKey(callId, userId);
+    const timer = pendingDisconnectTimers.get(key);
+    if (!timer) return;
+
+    clearTimeout(timer);
+    pendingDisconnectTimers.delete(key);
+}
+
+function clearPendingDisconnectsForUser(userId) {
+    const suffix = `:${String(userId)}`;
+    pendingDisconnectTimers.forEach((timer, key) => {
+        if (!key.endsWith(suffix)) return;
+        clearTimeout(timer);
+        pendingDisconnectTimers.delete(key);
+    });
+}
+
+function hasActiveSocketForUser(io, userId) {
+    const room = io?.sockets?.adapter?.rooms?.get(`user:${String(userId)}`);
+    return Boolean(room?.size);
 }
 
 async function emitSystemMessageToChatMembers(io, chat, senderId, messageId) {
@@ -265,11 +297,14 @@ module.exports = (io, socket) => {
         return;
     }
 
+    clearPendingDisconnectsForUser(userId);
+
     // ========================================================================
     // 1. INITIATE CALL
     // ========================================================================
     socket.on("call:start", async ({ chatId, type = "video" }) => {
         try {
+            clearPendingDisconnectsForUser(userId);
             const chat = await loadAndAuthorize(socket, chatId, userId);
             if (!chat) return;
             socket.join(String(chat._id));
@@ -405,6 +440,7 @@ module.exports = (io, socket) => {
     // ========================================================================
     socket.on("call:join", async ({ callId, mediaState = {} }) => {
         try {
+            clearPendingDisconnect(callId, userId);
             const call = await Call.findById(callId).populate("chatId");
             if (!call || !["ringing", "ongoing"].includes(call.status)) {
                 socket.emit("call:error", { reason: "Call ended or invalid" });
@@ -690,6 +726,7 @@ module.exports = (io, socket) => {
     });
 
     socket.on("call:leave", async ({ callId }) => {
+        clearPendingDisconnect(callId, userId);
         const call = await Call.findById(callId);
         if (call) {
             await call.removeParticipant(userId);
@@ -708,6 +745,7 @@ module.exports = (io, socket) => {
     });
 
     socket.on("call:end", async ({ callId }) => {
+        clearPendingDisconnect(callId, userId);
         const call = await Call.findById(callId);
         if (call && String(call.callerId) === String(userId)) {
             call.status = "ended";
@@ -722,16 +760,53 @@ module.exports = (io, socket) => {
             const activeCalls = await Call.find({ "participants.userId": userId, status: { $in: ["ringing", "ongoing"] } });
             for (const call of activeCalls) {
                 try {
-                    await call.removeParticipant(userId);
-                    io.to(`call:${call._id}`).emit("call:participant-left", { callId: call._id, userId });
+                    clearPendingDisconnect(call._id, userId);
 
-                    const active = call.participants.filter(p => !p.leftAt);
-                    if (active.length === 0) {
-                        call.status = "ended";
-                        call.endedAt = new Date();
-                        await call.save();
-                        await emitCallEnded(io, call, "all_left", userId);
+                    const timer = setTimeout(async () => {
+                        pendingDisconnectTimers.delete(getDisconnectTimerKey(call._id, userId));
+
+                        if (hasActiveSocketForUser(io, userId)) {
+                            return;
+                        }
+
+                        try {
+                            const freshCall = await Call.findById(call._id);
+                            if (!freshCall || !["ringing", "ongoing"].includes(freshCall.status)) {
+                                return;
+                            }
+
+                            const isStillActiveParticipant = freshCall.participants.some(
+                                (participant) =>
+                                    String(participant.userId) === String(userId)
+                                    && !participant.leftAt
+                            );
+
+                            if (!isStillActiveParticipant) {
+                                return;
+                            }
+
+                            await freshCall.removeParticipant(userId);
+                            io.to(`call:${freshCall._id}`).emit("call:participant-left", { callId: freshCall._id, userId });
+
+                            const active = freshCall.participants.filter((participant) => !participant.leftAt);
+                            if (active.length === 0) {
+                                freshCall.status = "ended";
+                                freshCall.endedAt = new Date();
+                                await freshCall.save();
+                                await emitCallEnded(io, freshCall, "all_left", userId);
+                            }
+                        } catch (callMutationError) {
+                            if (!isIgnorableCallMutationError(callMutationError)) {
+                                console.error("call:disconnect participant cleanup error", callMutationError);
+                            }
+                        }
+                    }, CALL_DISCONNECT_GRACE_MS);
+
+                    if (typeof timer.unref === "function") {
+                        timer.unref();
                     }
+
+                    pendingDisconnectTimers.set(getDisconnectTimerKey(call._id, userId), timer);
                 } catch (callMutationError) {
                     if (!isIgnorableCallMutationError(callMutationError)) {
                         console.error("call:disconnect participant cleanup error", callMutationError);

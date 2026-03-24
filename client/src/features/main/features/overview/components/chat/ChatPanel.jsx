@@ -93,6 +93,7 @@ const ChatPanel = ({
         isScreenSharing,
         connectionQuality,
         activeSpeakerId,
+        callError,
         invitingUserIds,
         startCall,
         joinCall,
@@ -379,6 +380,12 @@ const ChatPanel = ({
                                 )}
                             </AnimatePresence>
                         </div>
+
+                        {callError ? (
+                            <div className="z-30 mx-3 mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 sm:mx-4 md:mx-6">
+                                {callError}
+                            </div>
+                        ) : null}
 
                         <div className="z-10 flex-shrink-0">
                             <PinnedBanner

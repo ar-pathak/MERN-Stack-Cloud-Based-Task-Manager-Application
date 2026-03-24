@@ -31,6 +31,11 @@ const attachMediaStream = (element, stream, { muted } = {}) => {
     if (element.srcObject !== stream) {
         element.srcObject = stream;
     }
+    element.autoplay = true;
+    element.playsInline = true;
+    element.setAttribute("playsinline", "true");
+    element.setAttribute("webkit-playsinline", "true");
+    element.disablePictureInPicture = true;
     if (typeof muted === "boolean") {
         element.muted = muted;
     }
