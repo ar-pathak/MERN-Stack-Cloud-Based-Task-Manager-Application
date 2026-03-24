@@ -38,7 +38,10 @@ const createTimedResource = ({ keyFromArgs, loadData }) => {
                 if (valueCache.has(key)) {
                     return valueCache.get(key);
                 }
-                throw error;
+                // FIX: Returning null instead of throwing an error so the router doesn't crash 
+                // into an ErrorBoundary before ProtectedRoute can handle the auth redirect.
+                console.warn(`Loader fetch failed for key ${key}, passing null to allow ProtectedRoute to handle navigation.`);
+                return null;
             })
             .finally(() => {
                 inflightCache.delete(key);
