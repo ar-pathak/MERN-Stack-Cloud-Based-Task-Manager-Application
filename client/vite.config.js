@@ -24,6 +24,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 1000,
     // Enable minification
     minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
   },
   // Optimize dev server
   server: {

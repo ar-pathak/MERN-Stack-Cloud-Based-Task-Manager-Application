@@ -7,6 +7,31 @@ import router from "./router/router.jsx";
 import { Provider } from "react-redux";
 import { store } from "./store";
 
+const CHUNK_RECOVERY_FLAG = "aurora:chunk-recovery-attempted";
+
+const resetChunkRecoveryFlag = () => {
+  try {
+    sessionStorage.removeItem(CHUNK_RECOVERY_FLAG);
+  } catch {
+    // Ignore storage failures in restricted browsers.
+  }
+};
+
+const attemptChunkRecoveryReload = () => {
+  try {
+    if (sessionStorage.getItem(CHUNK_RECOVERY_FLAG) === "1") {
+      resetChunkRecoveryFlag();
+      return;
+    }
+
+    sessionStorage.setItem(CHUNK_RECOVERY_FLAG, "1");
+  } catch {
+    // If storage is unavailable, still attempt a single reload.
+  }
+
+  window.location.reload();
+};
+
 // Defer non-critical styles and scripts
 const loadDeferredAssets = () => {
   // Load additional styles after initial render
@@ -16,6 +41,17 @@ const loadDeferredAssets = () => {
     });
   }, 1000);
 };
+
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event) => {
+    event.preventDefault();
+    attemptChunkRecoveryReload();
+  });
+
+  window.addEventListener("pageshow", () => {
+    resetChunkRecoveryFlag();
+  });
+}
 
 // Initialize app
 const root = createRoot(document.getElementById("root"));

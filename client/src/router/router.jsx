@@ -105,6 +105,7 @@ const router = createBrowserRouter([
     path: "/",
     element: <App />,
     errorElement: <ErrorPage />,
+    hydrateFallbackElement: <LoadingPage />,
     children: [
       {
         path: "email-verification/:token",
@@ -177,6 +178,7 @@ const router = createBrowserRouter([
     path: "/admin",
     element: withSuspense(AdminApp),
     errorElement: <ErrorPage />,
+    hydrateFallbackElement: <LoadingPage />,
     children: [
       { index: true, element: <Navigate to="/admin/panel" replace /> },
       { path: "verify-email/:token", element: withSuspense(AdminVerifyEmailPage) },
