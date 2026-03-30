@@ -120,7 +120,7 @@ const MainPage = () => {
                 )}
                 <div
                     ref={scrollRef}
-                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-0 lg:px-5 custom-scrollbar scroll-smooth"
+                    className="app-scroll-container flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-0 lg:px-5 custom-scrollbar scroll-smooth"
                 >
                     <Outlet />
                 </div>

@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
     Briefcase,
     CheckSquare,
@@ -151,18 +153,50 @@ const SharePostModal = ({
     onNoteChange,
     onSubmit
 }) => {
+    useEffect(() => {
+        if (!isOpen || typeof document === "undefined") return undefined;
+
+        const scrollContainer = document.querySelector(".app-scroll-container");
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousScrollOverflow = scrollContainer?.style.overflow ?? "";
+
+        document.body.style.overflow = "hidden";
+
+        if (scrollContainer instanceof HTMLElement) {
+            scrollContainer.style.overflow = "hidden";
+        }
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+
+            if (scrollContainer instanceof HTMLElement) {
+                scrollContainer.style.overflow = previousScrollOverflow;
+            }
+        };
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const hasTargets = Array.isArray(targets) && targets.length > 0;
     const selectedSet = new Set((selectedChatIds || []).map((id) => String(id || "")));
     const selectedCount = selectedSet.size;
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 px-3 backdrop-blur-sm">
-            <div className="w-full max-w-2xl rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="share-post-modal-title"
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl"
+            >
                 <header className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
                     <div>
-                        <h3 className="text-sm font-semibold text-slate-100">Share Post In Chats</h3>
+                        <h3
+                            id="share-post-modal-title"
+                            className="text-sm font-semibold text-slate-100"
+                        >
+                            Share Post In Chats
+                        </h3>
                         {postPreview && (
                             <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                                 @{postPreview?.authorLabel || "user"}:{" "}
@@ -179,7 +213,7 @@ const SharePostModal = ({
                     </button>
                 </header>
 
-                <div className="space-y-3 px-4 py-3">
+                <div className="space-y-3 overflow-y-auto px-4 py-3">
                     <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5">
                         <div className="mb-2 flex items-center justify-between">
                             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
@@ -254,6 +288,12 @@ const SharePostModal = ({
             </div>
         </div>
     );
+
+    if (typeof document !== "undefined") {
+        return createPortal(modalContent, document.body);
+    }
+
+    return modalContent;
 };
 
 export default SharePostModal;

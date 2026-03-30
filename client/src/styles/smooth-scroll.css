@@ -25,14 +25,6 @@ html {
   will-change: scroll-position;
 }
 
-/* Smooth scrolling for message containers */
-div[class*="overflow-y-auto"] {
-  scroll-behavior: smooth;
-  /* GPU acceleration for smooth scrolling */
-  transform: translateZ(0);
-  backface-visibility: hidden;
-}
-
 /* === FEED SCROLLING === */
 .feed-container,
 .feed-page,
@@ -94,18 +86,6 @@ div[class*="overflow-y-auto"] {
 }
 
 /* === PERFORMANCE OPTIMIZATIONS === */
-
-/* Prevent jank during scroll */
-*:where([class*="scroll"]) {
-  scroll-behavior: smooth;
-}
-
-/* Use momentum scrolling on mobile */
-@supports (scroll-behavior: smooth) {
-  * {
-    scroll-behavior: smooth;
-  }
-}
 
 /* Smooth overflow scrolling on iOS */
 .scroll-smooth,

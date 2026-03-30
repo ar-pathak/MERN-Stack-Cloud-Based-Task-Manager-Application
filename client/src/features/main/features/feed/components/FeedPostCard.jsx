@@ -538,25 +538,40 @@ const FeedPostCard = React.memo(({
         </article>
     );
 }, (prevProps, nextProps) => {
-    // Check core post identity
-    if (prevProps.post._id !== nextProps.post._id) return false;
+    if (prevProps.post !== nextProps.post) return false;
     if (prevProps.isCommentsOpen !== nextProps.isCommentsOpen) return false;
     if (prevProps.currentUserId !== nextProps.currentUserId) return false;
 
-    // Check action state for this post
-    const postId = prevProps.post._id;
-    if (prevProps.actionState[`like:${postId}`] !== nextProps.actionState[`like:${postId}`]) return false;
-    if (prevProps.actionState[`save:${postId}`] !== nextProps.actionState[`save:${postId}`]) return false;
-    if (prevProps.actionState[`share:${postId}`] !== nextProps.actionState[`share:${postId}`]) return false;
+    const postId = String(prevProps.post?._id || "");
+    const prevAuthorId = String(prevProps.post?.author?._id || prevProps.post?.author?.id || "");
+    const nextAuthorId = String(nextProps.post?.author?._id || nextProps.post?.author?.id || "");
 
-    // Check comment-related props only if comments are open for this post
-    if (prevProps.isCommentsOpen) {
-        const commentId = String(prevProps.post._id);
-        if (JSON.stringify(prevProps.commentsByPost?.[commentId]) !== JSON.stringify(nextProps.commentsByPost?.[commentId])) return false;
-        if (prevProps.commentsLoadingByPost?.[commentId] !== nextProps.commentsLoadingByPost?.[commentId]) return false;
-        if (prevProps.commentsSubmittingByPost?.[commentId] !== nextProps.commentsSubmittingByPost?.[commentId]) return false;
-        if (prevProps.commentDrafts?.[commentId] !== nextProps.commentDrafts?.[commentId]) return false;
+    if (Boolean(prevProps.actionState?.[`like:${postId}`]) !== Boolean(nextProps.actionState?.[`like:${postId}`])) {
+        return false;
     }
+    if (Boolean(prevProps.actionState?.[`save:${postId}`]) !== Boolean(nextProps.actionState?.[`save:${postId}`])) {
+        return false;
+    }
+    if (Boolean(prevProps.actionState?.[`share:${postId}`]) !== Boolean(nextProps.actionState?.[`share:${postId}`])) {
+        return false;
+    }
+    if (Boolean(prevProps.actionState?.[`follow:${prevAuthorId}`]) !== Boolean(nextProps.actionState?.[`follow:${nextAuthorId}`])) {
+        return false;
+    }
+    if (Boolean(prevProps.actionState?.[`post-delete:${postId}`]) !== Boolean(nextProps.actionState?.[`post-delete:${postId}`])) {
+        return false;
+    }
+
+    if (!prevProps.isCommentsOpen) return true;
+
+    if (prevProps.comments !== nextProps.comments) return false;
+    if (prevProps.commentsLoading !== nextProps.commentsLoading) return false;
+    if (prevProps.commentsSubmitting !== nextProps.commentsSubmitting) return false;
+    if (prevProps.commentDraft !== nextProps.commentDraft) return false;
+    if (prevProps.replyDraftsByComment !== nextProps.replyDraftsByComment) return false;
+    if (prevProps.replyComposerByComment !== nextProps.replyComposerByComment) return false;
+    if (prevProps.replySubmittingByComment !== nextProps.replySubmittingByComment) return false;
+    if (prevProps.replyLoadingByComment !== nextProps.replyLoadingByComment) return false;
 
     return true;
 });
