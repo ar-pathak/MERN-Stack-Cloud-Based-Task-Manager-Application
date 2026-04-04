@@ -1,5 +1,7 @@
 import { Loader2, Repeat2, SendHorizontal } from "lucide-react";
 
+import { getRichTextPreview } from "../../../utils/richText";
+
 const RepostComposerModal = ({
     post,
     value,
@@ -31,7 +33,9 @@ const RepostComposerModal = ({
                 </div>
 
                 <div className="mb-3 rounded-xl border border-slate-800 bg-slate-900/60 p-3">
-                    <p className="line-clamp-3 text-sm text-slate-200">{post?.content}</p>
+                    <p className="line-clamp-3 text-sm text-slate-200">
+                        {getRichTextPreview(post?.content, 180)}
+                    </p>
                     <p className="mt-1 text-xs text-slate-500">
                         by @{post?.author?.username || post?.author?.name || "user"}
                     </p>

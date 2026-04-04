@@ -1,0 +1,142 @@
+@import "quill/dist/quill.snow.css";
+
+.post-rich-text-editor .ql-toolbar.ql-snow,
+.post-rich-text-editor .ql-container.ql-snow {
+    border-color: rgba(51, 65, 85, 0.9);
+}
+
+.post-rich-text-editor .ql-toolbar.ql-snow {
+    border-radius: 1rem 1rem 0 0;
+    background: rgba(15, 23, 42, 0.92);
+}
+
+.post-rich-text-editor .ql-container.ql-snow {
+    border-radius: 0 0 1rem 1rem;
+    background: rgba(2, 6, 23, 0.72);
+}
+
+.post-rich-text-editor .ql-editor {
+    min-height: 12rem;
+    padding: 0.9rem 1rem;
+    color: rgb(226 232 240);
+    font-size: 0.875rem;
+    line-height: 1.75;
+}
+
+.post-rich-text-editor.is-compact .ql-editor {
+    min-height: 9rem;
+}
+
+.post-rich-text-editor .ql-editor.ql-blank::before {
+    color: rgb(100 116 139);
+    font-style: normal;
+}
+
+.post-rich-text-editor .ql-editor a,
+.post-rich-text-content a {
+    color: rgb(125 211 252);
+    text-decoration: underline;
+}
+
+.post-rich-text-editor .ql-editor blockquote,
+.post-rich-text-content blockquote {
+    margin: 0;
+    border-left: 3px solid rgba(56, 189, 248, 0.45);
+    padding-left: 0.85rem;
+    color: rgb(186 230 253);
+}
+
+.post-rich-text-editor .ql-editor pre,
+.post-rich-text-content pre {
+    overflow-x: auto;
+    border: 1px solid rgba(51, 65, 85, 0.9);
+    border-radius: 0.9rem;
+    background: rgba(2, 6, 23, 0.95);
+    padding: 0.85rem 1rem;
+    white-space: pre-wrap;
+    color: rgb(226 232 240);
+}
+
+.post-rich-text-editor .ql-editor code:not(pre code),
+.post-rich-text-content code:not(pre code) {
+    border-radius: 0.45rem;
+    background: rgba(30, 41, 59, 0.95);
+    padding: 0.1rem 0.35rem;
+    color: rgb(226 232 240);
+}
+
+.post-rich-text-editor .ql-stroke {
+    stroke: rgb(148 163 184);
+}
+
+.post-rich-text-editor .ql-fill {
+    fill: rgb(148 163 184);
+}
+
+.post-rich-text-editor .ql-picker {
+    color: rgb(148 163 184);
+}
+
+.post-rich-text-editor .ql-picker-options {
+    border-color: rgba(51, 65, 85, 0.95);
+    background: rgb(15 23 42);
+}
+
+.post-rich-text-editor .ql-snow.ql-toolbar button:hover .ql-stroke,
+.post-rich-text-editor .ql-snow .ql-toolbar button:hover .ql-stroke,
+.post-rich-text-editor .ql-snow.ql-toolbar button.ql-active .ql-stroke,
+.post-rich-text-editor .ql-snow .ql-toolbar button.ql-active .ql-stroke,
+.post-rich-text-editor .ql-snow .ql-picker-label:hover .ql-stroke,
+.post-rich-text-editor .ql-snow .ql-picker-label.ql-active .ql-stroke {
+    stroke: rgb(125 211 252);
+}
+
+.post-rich-text-editor .ql-snow.ql-toolbar button:hover .ql-fill,
+.post-rich-text-editor .ql-snow .ql-toolbar button:hover .ql-fill,
+.post-rich-text-editor .ql-snow.ql-toolbar button.ql-active .ql-fill,
+.post-rich-text-editor .ql-snow .ql-toolbar button.ql-active .ql-fill {
+    fill: rgb(125 211 252);
+}
+
+.post-rich-text-editor .ql-snow.ql-toolbar button:hover,
+.post-rich-text-editor .ql-snow .ql-toolbar button:hover,
+.post-rich-text-editor .ql-snow.ql-toolbar button.ql-active,
+.post-rich-text-editor .ql-snow .ql-toolbar button.ql-active,
+.post-rich-text-editor .ql-snow .ql-picker-label:hover,
+.post-rich-text-editor .ql-snow .ql-picker-label.ql-active {
+    color: rgb(125 211 252);
+}
+
+.post-rich-text-content {
+    color: rgb(226 232 240);
+    line-height: 1.75;
+    word-break: break-word;
+}
+
+.post-rich-text-content > * {
+    margin: 0;
+}
+
+.post-rich-text-content > * + * {
+    margin-top: 0.75rem;
+}
+
+.post-rich-text-content ul,
+.post-rich-text-content ol {
+    padding-left: 1.25rem;
+}
+
+.post-rich-text-content li + li {
+    margin-top: 0.25rem;
+}
+
+.post-rich-text-content h1,
+.post-rich-text-content h2,
+.post-rich-text-content h3,
+.post-rich-text-content h4,
+.post-rich-text-content h5,
+.post-rich-text-content h6 {
+    color: rgb(248 250 252);
+    font-weight: 600;
+    line-height: 1.35;
+}

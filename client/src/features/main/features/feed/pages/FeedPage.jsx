@@ -20,9 +20,17 @@ import StoryRail from "../components/StoryRail";
 import useFeedPageLogic from "../hook/useFeedPageLogic";
 import { formatRelativeTime } from "../utils/feed.helpers";
 
+const useOptionalLoaderData = () => {
+    try {
+        return useLoaderData();
+    } catch {
+        return null;
+    }
+};
+
 const FeedPage = () => {
     // 🔥 1. Turant loader se cached data get karein
-    const initialFeed = useLoaderData();
+    const initialFeed = useOptionalLoaderData();
     const initialPosts = Array.isArray(initialFeed?.posts) ? initialFeed.posts : [];
 
     const {

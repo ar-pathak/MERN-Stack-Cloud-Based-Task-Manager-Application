@@ -40,6 +40,7 @@ export default defineConfig({
   },
   // Pre-bundle less frequently used dependencies
   optimizeDeps: {
+    exclude: ['quill'],
     include: [
       'react',
       'react-dom',

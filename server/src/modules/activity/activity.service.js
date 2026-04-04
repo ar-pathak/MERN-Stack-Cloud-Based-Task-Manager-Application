@@ -12,6 +12,7 @@ const Subtask = require("../../models/subtasks");
 const User = require("../../models/user");
 const RefreshToken = require("../../models/RefreshToken");
 const postService = require("../posts/post.service");
+const { getRichTextPreview } = require("../utils/richText");
 
 const escapeRegex = (value = "") =>
     String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,10 +43,7 @@ const normalizeWindowDays = (value, fallback = 30) =>
     Math.min(30, Math.max(7, toFiniteNumber(value, fallback)));
 
 const toPreviewText = (value, max = 160) => {
-    const normalized = String(value || "").trim();
-    if (!normalized) return "";
-    if (normalized.length <= max) return normalized;
-    return `${normalized.slice(0, max - 1)}...`;
+    return getRichTextPreview(value, max);
 };
 
 const formatDuration = (minutes = 0) => {

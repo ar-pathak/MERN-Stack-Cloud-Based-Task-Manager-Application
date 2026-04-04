@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
+const { getRichTextLength, stripRichTextToPlainText } = require('../modules/utils/richText');
 
 const postSchema = new Schema({
     // --- Core Fields ---
@@ -15,7 +16,21 @@ const postSchema = new Schema({
         type: String,
         required: [true, 'Post content is required'],
         trim: true,
-        maxLength: [5000, 'Post content cannot exceed 5000 characters']
+        maxLength: [20000, 'Post content cannot exceed 20,000 characters'],
+        validate: [
+            {
+                validator: function (value) {
+                    return getRichTextLength(value) > 0;
+                },
+                message: 'Post content is required'
+            },
+            {
+                validator: function (value) {
+                    return getRichTextLength(value) <= 5000;
+                },
+                message: 'Post content cannot exceed 5000 characters'
+            }
+        ]
     },
 
     // --- Media Attachments ---
@@ -318,13 +333,13 @@ postSchema.methods.incrementView = async function () {
 
 postSchema.methods.extractHashtags = function () {
     const hashtagRegex = /#(\w+)/g;
-    const matches = this.content.match(hashtagRegex) || [];
+    const matches = stripRichTextToPlainText(this.content).match(hashtagRegex) || [];
     return matches.map(tag => tag.substring(1).toLowerCase());
 };
 
 postSchema.methods.extractMentions = function () {
     const mentionRegex = /@(\w+)/g;
-    const matches = this.content.match(mentionRegex) || [];
+    const matches = stripRichTextToPlainText(this.content).match(mentionRegex) || [];
     return matches.map(mention => mention.substring(1).toLowerCase());
 };
 

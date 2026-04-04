@@ -70,12 +70,17 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', loadDeferredAssets);
 }
 
-// Performance monitoring (development only)
-if (import.meta.env.DEV) {
+const shouldLogPerformance =
+  import.meta.env.DEV &&
+  typeof window !== "undefined" &&
+  window.localStorage?.getItem("debug:perf") === "1";
+
+// Performance monitoring (development only and explicitly enabled)
+if (shouldLogPerformance && typeof PerformanceObserver !== "undefined") {
   // Monitor long tasks
   const observer = new PerformanceObserver((list) => {
     for (const entry of list.getEntries()) {
-      if (entry.duration > 50) {
+      if (entry.duration > 120) {
         console.warn('Long task detected:', entry);
       }
     }
@@ -89,4 +94,3 @@ if (import.meta.env.DEV) {
     }
   }).observe({ entryTypes: ['largest-contentful-paint'] });
 }
-

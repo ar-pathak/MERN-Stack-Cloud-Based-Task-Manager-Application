@@ -23,8 +23,15 @@ const AnimatedBackground = () => {
                 transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }}
             />
 
-            {/* subtle noise layer */}
-            <div className="absolute inset-0 opacity-[0.12] mix-blend-soft-light [background-image:url('https://grainy-gradients.vercel.app/noise.svg')]" />
+            {/* subtle texture layer */}
+            <div
+                className="absolute inset-0 opacity-[0.12] mix-blend-soft-light"
+                style={{
+                    backgroundImage:
+                        "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.18) 1px, transparent 0)",
+                    backgroundSize: "14px 14px",
+                }}
+            />
         </div>
     );
 };

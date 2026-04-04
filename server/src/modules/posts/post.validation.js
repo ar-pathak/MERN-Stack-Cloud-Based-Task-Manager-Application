@@ -1,5 +1,6 @@
 const { z } = require("zod");
 const mongoose = require("mongoose");
+const { getRichTextLength } = require("../utils/richText");
 
 /**
  * ObjectId validator
@@ -13,6 +14,19 @@ const objectIdSchema = z.string().refine(
  * URL validation
  */
 const urlSchema = z.string().url({ message: "Must be a valid URL" });
+const MAX_POST_CONTENT_LENGTH = 5000;
+const MAX_POST_HTML_LENGTH = 20000;
+
+const postContentSchema = z
+    .string()
+    .trim()
+    .max(MAX_POST_HTML_LENGTH, "Post content cannot exceed 20,000 characters")
+    .refine((value) => getRichTextLength(value) > 0, {
+        message: "Post content is required"
+    })
+    .refine((value) => getRichTextLength(value) <= MAX_POST_CONTENT_LENGTH, {
+        message: "Post content cannot exceed 5000 characters"
+    });
 
 /**
  * Media item schema
@@ -63,10 +77,7 @@ const locationSchema = z.object({
  * Create Post Schema
  */
 const createPostSchema = z.object({
-    content: z.string()
-        .min(1, "Post content is required")
-        .max(5000, "Post content cannot exceed 5000 characters")
-        .trim(),
+    content: postContentSchema,
 
     media: z.array(mediaItemSchema)
         .max(10, "Maximum 10 media items allowed")
@@ -130,11 +141,7 @@ const createPostSchema = z.object({
  * Update Post Schema
  */
 const updatePostSchema = z.object({
-    content: z.string()
-        .min(1)
-        .max(5000)
-        .trim()
-        .optional(),
+    content: postContentSchema.optional(),
 
     media: z.array(mediaItemSchema)
         .max(10)

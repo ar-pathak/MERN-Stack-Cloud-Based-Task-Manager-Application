@@ -1,5 +1,10 @@
 import { CalendarClock, Loader2, Save } from "lucide-react";
 
+import PostRichTextEditor from "../../../components/PostRichTextEditor";
+import {
+    getRichTextCharacterCount,
+    getRichTextPreview
+} from "../../../utils/richText";
 import { formatDateTime, formatNumber, toLocalInputDateTime } from "../utils/dashboard.utils";
 
 const PostManagementSection = ({
@@ -73,19 +78,20 @@ const PostManagementSection = ({
                         />
                     ) : null}
 
-                    <textarea
+                    <PostRichTextEditor
                         value={composer?.content || ""}
-                        onChange={(event) => updateComposer({ content: event.target.value })}
-                        rows={6}
+                        compact
+                        ariaLabel="Dashboard post content"
                         placeholder="Write post content..."
-                        className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-3 text-sm text-slate-200 transition-colors hover:border-slate-500 focus:border-sky-400 focus:outline-none"
+                        className="mt-2"
+                        onChange={(nextContent) => updateComposer({ content: nextContent })}
                     />
 
                     {composerError ? (
                         <p className="mt-2 text-xs text-rose-300">{composerError}</p>
                     ) : null}
                     <p className="mt-1 text-[11px] text-slate-500">
-                        {formatNumber(String(composer?.content || "").length)} / 5,000 characters
+                        {formatNumber(getRichTextCharacterCount(composer?.content || ""))} / 5,000 characters
                     </p>
 
                     <div className="mt-2 flex gap-2">
@@ -125,7 +131,9 @@ const PostManagementSection = ({
                                     key={String(post?._id || "")}
                                     className="mb-2 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800"
                                 >
-                                    <p className="line-clamp-2">{post?.contentPreview || "Post"}</p>
+                                    <p className="line-clamp-2">
+                                        {getRichTextPreview(post?.contentPreview || post?.content || "", 140) || "Post"}
+                                    </p>
                                     <p className="text-[11px] text-slate-500">
                                         {formatDateTime(post?.scheduledFor)}
                                     </p>
@@ -146,7 +154,9 @@ const PostManagementSection = ({
                                     key={String(draft.id)}
                                     className="mb-2 rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 transition-colors hover:border-slate-700 hover:bg-slate-800"
                                 >
-                                    <p className="line-clamp-2">{draft.content}</p>
+                                    <p className="line-clamp-2">
+                                        {getRichTextPreview(draft.content, 140) || "Draft"}
+                                    </p>
                                     <p className="text-[11px] text-slate-500">
                                         {formatDateTime(draft.updatedAt)}
                                     </p>

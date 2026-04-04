@@ -13,6 +13,8 @@ import {
     X
 } from "lucide-react";
 
+import { getRichTextPreview } from "../../../utils/richText";
+
 const formatActivityTime = (value) => {
     if (!value) return "";
     const date = new Date(value);
@@ -200,7 +202,7 @@ const SharePostModal = ({
                         {postPreview && (
                             <p className="mt-0.5 line-clamp-2 text-[11px] text-slate-500">
                                 @{postPreview?.authorLabel || "user"}:{" "}
-                                {String(postPreview?.content || "").trim() || `Post ${String(postId).slice(0, 8)}...`}
+                                {getRichTextPreview(postPreview?.content, 120) || `Post ${String(postId).slice(0, 8)}...`}
                             </p>
                         )}
                     </div>

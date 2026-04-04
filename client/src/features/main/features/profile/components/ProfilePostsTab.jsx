@@ -2,6 +2,7 @@ import React from "react";
 import { Loader2, Lock, Trash2 } from "lucide-react";
 
 import { toId } from "../utils/profile.helpers";
+import { getRichTextPreview } from "../../../utils/richText";
 
 const PostItem = React.memo(({
     post,
@@ -41,7 +42,7 @@ const PostItem = React.memo(({
                     </p>
                     {post?.content && (
                         <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                            {post.content}
+                            {getRichTextPreview(post.content, 280)}
                         </p>
                     )}
                 </div>

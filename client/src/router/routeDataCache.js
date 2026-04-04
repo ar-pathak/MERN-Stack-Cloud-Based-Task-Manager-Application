@@ -156,7 +156,6 @@ export const preloadMainRouteData = (path, options = {}) => {
     }
 
     if (normalizedPath.startsWith("/main/create")) {
-        void import("../features/main/features/create/pages/CreatePostPage.jsx");
         return;
     }
 

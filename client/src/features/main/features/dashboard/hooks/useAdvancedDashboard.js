@@ -19,6 +19,10 @@ import {
     toLocalInputDateTime,
     toNumber
 } from "../utils/dashboard.utils";
+import {
+    extractRichTextPlainText,
+    normalizeRichTextForSubmission
+} from "../../../utils/richText";
 
 // Use backend analytics instead of frontend computation
 const useAdvancedDashboardBackend = () => {
@@ -294,8 +298,10 @@ const useAdvancedDashboard = ({ profileId = "" } = {}) => {
     }, []);
 
     const submitComposer = useCallback(async () => {
-        const content = String(composer.content || "").trim();
-        if (!content) {
+        const content = normalizeRichTextForSubmission(composer.content);
+        const plainTextContent = extractRichTextPlainText(composer.content);
+
+        if (!plainTextContent.trim() || !content) {
             setComposerError("Post content is required");
             toast.error("Post content is required");
             return;
@@ -371,8 +377,10 @@ const useAdvancedDashboard = ({ profileId = "" } = {}) => {
     );
 
     const saveDraft = useCallback(() => {
-        const content = String(composer.content || "").trim();
-        if (!content) {
+        const content = normalizeRichTextForSubmission(composer.content);
+        const plainTextContent = extractRichTextPlainText(composer.content);
+
+        if (!plainTextContent.trim() || !content) {
             setComposerError("Write something before saving draft");
             toast.error("Write something before saving draft");
             return;

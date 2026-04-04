@@ -763,6 +763,7 @@ test("updatePost applies allowed updates and notifies only newly mentioned users
         author: { toString: () => "author-1" },
         status: "active",
         mentions: ["m1"],
+        hashtags: ["legacy"],
         save: jest.fn().mockResolvedValue({}),
         populate: jest.fn().mockResolvedValue({}),
         toPublicJSON: jest.fn().mockReturnValue({ _id: "post-1", updated: true })
@@ -778,7 +779,7 @@ test("updatePost applies allowed updates and notifies only newly mentioned users
     }));
 
     const result = await postService.updatePost("post-1", "author-1", {
-        content: "new content @m2",
+        content: "new content #Launch @m2",
         visibility: "followers",
         media: [{ url: "file.jpg" }],
         invalidField: "skip"
@@ -788,6 +789,7 @@ test("updatePost applies allowed updates and notifies only newly mentioned users
     expect(post.visibility).toBe("followers");
     expect(post.media).toEqual([{ url: "file.jpg" }]);
     expect(post.mentions).toEqual(["m1", "m2"]);
+    expect(post.hashtags).toEqual(["launch"]);
     expect(post.invalidField).toBeUndefined();
     expect(notifyMentionedUsers).toHaveBeenCalledWith(expect.objectContaining({
         actorId: "author-1",

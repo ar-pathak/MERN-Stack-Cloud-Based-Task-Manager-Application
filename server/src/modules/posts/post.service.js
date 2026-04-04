@@ -7,12 +7,22 @@ const Follow = require('../../models/follow');
 const User = require('../../models/user');
 const notificationService = require('../notification/notification.service');
 const { resolveMentionUsersFromText, notifyMentionedUsers, getMentionSnippet } = require('../utils/mentionService');
+const { stripRichTextToPlainText } = require('../utils/richText');
 
 const createError = (message, statusCode = 400) => {
     const error = new Error(message);
     error.statusCode = statusCode;
     return error;
 };
+
+const extractHashtagsFromContent = (content = "") =>
+    Array.from(
+        new Set(
+            (stripRichTextToPlainText(content).match(/#([a-z0-9_]+)/gi) || []).map((tag) =>
+                tag.replace(/^#/, "").toLowerCase()
+            )
+        )
+    );
 
 const toIdString = (value) => {
     if (!value) return "";
@@ -361,7 +371,10 @@ class PostService {
 
             mentionUsers = Array.from(mentionMap.values());
 
-            const normalizedPostData = { ...postData };
+            const normalizedPostData = {
+                ...postData,
+                hashtags: extractHashtagsFromContent(postData.content)
+            };
             delete normalizedPostData.scheduledFor;
 
             // Create post
@@ -498,6 +511,7 @@ class PostService {
             });
 
             updates.mentions = mentionUsers.map((item) => item._id);
+            updates.hashtags = extractHashtagsFromContent(updates.content);
 
             const newlyMentioned = mentionUsers.filter(
                 (item) => !previousMentionIds.has(String(item._id))

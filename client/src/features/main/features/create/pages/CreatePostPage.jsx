@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock3, Image, Loader2, Plus, Send, Sparkles, X } from "lucide-react";
 import { useNavigate } from "react-router";
 
+import PostRichTextEditor from "../../../components/PostRichTextEditor";
+import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { useAuth } from "../../../../../context/AuthContext";
 import { createPost } from "../../../../../service/post.service";
 import { createStory } from "../../../../../service/story.service";
 import { uploadService } from "../../../../../service/upload.service";
 import { searchMentionCandidates } from "../../../../../service/user.service";
+import { normalizeRichTextForSubmission } from "../../../utils/richText";
 
 const MOBILE_BREAKPOINT = 1024;
 
@@ -60,19 +63,20 @@ const CreatePostPage = () => {
     const [uploading, setUploading] = useState(false);
 
     const [content, setContent] = useState("");
+    const [contentPlainText, setContentPlainText] = useState("");
     const [visibility, setVisibility] = useState("public");
     const [publishMode, setPublishMode] = useState("now");
     const [scheduledFor, setScheduledFor] = useState(() => getDefaultScheduleValue());
     const [postFiles, setPostFiles] = useState([]);
-    const [selectedMentionIds, setSelectedMentionIds] = useState([]);
     const [mentionCandidates, setMentionCandidates] = useState([]);
+    const [mentionQuery, setMentionQuery] = useState("");
     const [showMentions, setShowMentions] = useState(false);
 
     const [storyCaption, setStoryCaption] = useState("");
     const [storyVisibility, setStoryVisibility] = useState("public");
     const [storyFile, setStoryFile] = useState(null);
 
-    const textareaRef = useRef(null);
+    const editorRef = useRef(null);
 
     useEffect(() => {
         const onResize = () => setIsMobileViewport(window.innerWidth < MOBILE_BREAKPOINT);
@@ -108,16 +112,14 @@ const CreatePostPage = () => {
 
     useEffect(() => {
         const timer = setTimeout(async () => {
-            const match = String(content).match(/(?:^|\s)@([a-z0-9_]{1,20})$/i);
-            if (!match) {
+            if (!mentionQuery) {
                 setMentionCandidates([]);
                 setShowMentions(false);
                 return;
             }
 
             try {
-                const query = match[1] || "";
-                const users = await searchMentionCandidates(query, { limit: 6 });
+                const users = await searchMentionCandidates(mentionQuery, { limit: 6 });
                 setMentionCandidates(users || []);
                 setShowMentions((users || []).length > 0);
             } catch {
@@ -127,28 +129,26 @@ const CreatePostPage = () => {
         }, 180);
 
         return () => clearTimeout(timer);
-    }, [content]);
+    }, [mentionQuery]);
 
     const handlePickMention = (candidate) => {
         const username = candidate?.username;
         if (!username) return;
 
-        setContent((previous) => previous.replace(/(?:^|\s)@([a-z0-9_]{1,20})$/i, ` @${username} `));
-        setSelectedMentionIds((previous) =>
-            previous.includes(candidate._id) ? previous : [...previous, candidate._id]
-        );
+        editorRef.current?.insertMention(candidate);
         setShowMentions(false);
-        textareaRef.current?.focus();
+        editorRef.current?.focus();
     };
 
     const resetPostForm = () => {
         setContent("");
+        setContentPlainText("");
         setVisibility("public");
         setPublishMode("now");
         setScheduledFor(getDefaultScheduleValue());
         setPostFiles([]);
-        setSelectedMentionIds([]);
         setMentionCandidates([]);
+        setMentionQuery("");
         setShowMentions(false);
     };
 
@@ -159,8 +159,10 @@ const CreatePostPage = () => {
     };
 
     const publishPost = async () => {
-        const trimmed = String(content || "").trim();
-        if (!trimmed) {
+        const trimmedPlainText = String(contentPlainText || "").trim();
+        const normalizedContent = normalizeRichTextForSubmission(content);
+
+        if (!trimmedPlainText || !normalizedContent) {
             showToast("Post content is required");
             return;
         }
@@ -199,12 +201,11 @@ const CreatePostPage = () => {
             const postType = hasVideo ? "video" : hasImage ? "image" : "text";
 
             await createPost({
-                content: trimmed,
+                content: normalizedContent,
                 visibility,
                 postType,
                 media: media.length ? media : undefined,
-                mentions: selectedMentionIds.length ? selectedMentionIds : undefined,
-                hashtags: extractHashtags(trimmed),
+                hashtags: extractHashtags(trimmedPlainText),
                 scheduledFor: scheduledForPayload
             });
 
@@ -256,8 +257,12 @@ const CreatePostPage = () => {
         }
     };
 
-    const hashtags = useMemo(() => extractHashtags(mode === "post" ? content : storyCaption), [mode, content, storyCaption]);
+    const hashtags = useMemo(
+        () => extractHashtags(mode === "post" ? contentPlainText : storyCaption),
+        [mode, contentPlainText, storyCaption]
+    );
     const shouldShowBottomNav = isMobileViewport;
+    const profileId = String(user?._id || user?.id || "");
 
     return (
         <div className={`min-h-full bg-slate-950 ${shouldShowBottomNav ? "pb-[5.25rem]" : "pb-8"}`}>
@@ -356,14 +361,29 @@ const CreatePostPage = () => {
                         )}
 
                         <div className="relative">
-                            <textarea
-                                ref={textareaRef}
+                            <PostRichTextEditor
+                                ref={editorRef}
                                 value={content}
-                                onChange={(event) => setContent(event.target.value)}
+                                ariaLabel="Post content"
                                 placeholder="Write something... use @mentions and #tags"
-                                rows={6}
-                                className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 px-3 py-3 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-slate-600"
+                                onChange={(nextContent, metadata) => {
+                                    setContent(nextContent);
+                                    setContentPlainText(metadata?.plainText || "");
+                                }}
+                                onMentionTriggerChange={(mentionState) => {
+                                    const query = String(mentionState?.query || "").trim();
+                                    setMentionQuery(query);
+                                    if (!query) {
+                                        setMentionCandidates([]);
+                                        setShowMentions(false);
+                                    }
+                                }}
                             />
+
+                            <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                                <span>Rich text supports headings, lists, quotes, code, and links.</span>
+                                <span>{contentPlainText.length} / 5000</span>
+                            </div>
 
                             {showMentions && mentionCandidates.length > 0 && (
                                 <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-slate-700 bg-slate-900 p-1">
@@ -534,6 +554,10 @@ const CreatePostPage = () => {
                 >
                     {toast}
                 </div>
+            )}
+
+            {shouldShowBottomNav && profileId && (
+                <MobileBottomNav activeTab="create" profileId={profileId} />
             )}
         </div>
     );

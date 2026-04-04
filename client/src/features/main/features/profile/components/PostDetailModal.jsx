@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Heart, Loader2, MessageSquare, Repeat2, Trash2, X } from "lucide-react";
 
+import RichTextContent from "../../../components/RichTextContent";
 import { toId } from "../utils/profile.helpers";
 
 const MotionDiv = motion.div;
@@ -77,9 +78,10 @@ const PostDetailModal = ({
 
                         <div className="max-h-[78dvh] space-y-3 overflow-y-auto p-4">
                             {post?.content && (
-                                <p className="whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                                    {post.content}
-                                </p>
+                                <RichTextContent
+                                    content={post.content}
+                                    className="text-sm leading-6 text-slate-200"
+                                />
                             )}
 
                             {(post?.media || []).length > 0 && (

@@ -27,6 +27,7 @@ import { useAuth } from "../../../../context/AuthContext";
 import { createWorkspace } from "../../../../service/workspace.service";
 import { searchUsers } from "../../../../service/user.service";
 import { searchPosts } from "../../../../service/post.service";
+import { getRichTextPreview } from "../../utils/richText";
 
 // store & services
 import { setOverviewData } from "../../../../store/slice/overviewSlice";
@@ -397,7 +398,7 @@ const MainHeader = () => {
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-slate-300 line-clamp-2 leading-relaxed">
                                 <HighlightMatch
-                                  text={post.content}
+                                  text={getRichTextPreview(post.content, 140)}
                                   highlight={searchQuery}
                                 />
                               </p>

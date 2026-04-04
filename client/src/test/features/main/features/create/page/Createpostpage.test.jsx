@@ -35,6 +35,72 @@ vi.mock('../../../../../../features/main/components/navigation/MobileBottomNav',
   ),
 }))
 
+vi.mock('../../../../../../features/main/components/PostRichTextEditor', async () => {
+  const React = await vi.importActual('react')
+
+  return {
+    default: React.forwardRef(function MockPostRichTextEditor(props, ref) {
+      const [internalValue, setInternalValue] = React.useState(props.value || '')
+
+      React.useEffect(() => {
+        setInternalValue(props.value || '')
+      }, [props.value])
+
+      const emitMentionState = (nextValue) => {
+        const match = nextValue.match(/(?:^|\s)@([a-z0-9_]{1,20})$/i)
+
+        props.onMentionTriggerChange?.(
+          match
+            ? {
+                query: match[1],
+                range: { index: nextValue.lastIndexOf(`@${match[1]}`), length: match[1].length + 1 },
+              }
+            : { query: '', range: null }
+        )
+      }
+
+      const emitChange = (nextValue) => {
+        setInternalValue(nextValue)
+        props.onChange?.(nextValue, {
+          plainText: nextValue,
+          characterCount: nextValue.length,
+        })
+        emitMentionState(nextValue)
+      }
+
+      React.useImperativeHandle(
+        ref,
+        () => ({
+          focus: vi.fn(),
+          insertMention: (candidate) => {
+            const username = String(candidate?.username || '').trim()
+            if (!username) return
+
+            const nextValue = internalValue.match(/(?:^|\s)@[a-z0-9_]{1,20}$/i)
+              ? internalValue.replace(/(^|\s)@[a-z0-9_]{1,20}$/i, `$1@${username} `)
+              : `${internalValue}@${username} `
+
+            emitChange(nextValue)
+          },
+          getPlainText: () => internalValue,
+        }),
+        [internalValue, props.onChange, props.onMentionTriggerChange]
+      )
+
+      return (
+        <textarea
+          aria-label={props.ariaLabel || 'Post content'}
+          placeholder={props.placeholder}
+          value={internalValue}
+          onChange={(event) => {
+            emitChange(event.target.value)
+          }}
+        />
+      )
+    }),
+  }
+})
+
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import CreatePostPage from '../../../../../../features/main/features/create/pages/CreatePostPage'
 import { createPost } from '../../../../../../service/post.service'
@@ -106,6 +172,30 @@ describe('CreatePostPage', () => {
 
     expect(searchMentionCandidates).toHaveBeenCalledWith('ali', { limit: 6 })
     expect(screen.getByText('Alice')).toBeInTheDocument()
+  })
+
+  it('inserts the picked mention and publishes without stale explicit mention ids', async () => {
+    vi.useFakeTimers()
+    searchMentionCandidates.mockResolvedValue([{ _id: 'u1', username: 'alice', name: 'Alice' }])
+    render(<CreatePostPage />)
+
+    fireEvent.change(screen.getByPlaceholderText('Write something... use @mentions and #tags'), {
+      target: { value: 'Hello @ali' },
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
+    })
+
+    vi.useRealTimers()
+    fireEvent.click(screen.getByText('Alice'))
+    fireEvent.click(screen.getByText('Publish Post'))
+
+    await waitFor(() => expect(createPost).toHaveBeenCalledTimes(1))
+
+    const payload = createPost.mock.calls[0][0]
+    expect(payload.content).toContain('@alice')
+    expect(payload.mentions).toBeUndefined()
   })
 
   it('validates empty post submissions', async () => {

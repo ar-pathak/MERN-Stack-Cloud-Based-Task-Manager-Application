@@ -9,6 +9,7 @@ import {
     UserRound
 } from "lucide-react";
 
+import RichTextContent from "../../../components/RichTextContent";
 import { useAuth } from "../../../../../context/AuthContext";
 import MobileBottomNav from "../../../components/navigation/MobileBottomNav";
 import { getPostById, getPostComments } from "../../../../../service/post.service";
@@ -179,9 +180,10 @@ const PostDetailPage = () => {
                     </div>
 
                     {post?.content && (
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                            {post.content}
-                        </p>
+                        <RichTextContent
+                            content={post.content}
+                            className="text-sm leading-6 text-slate-200"
+                        />
                     )}
 
                     {(post?.media || []).length > 0 && (

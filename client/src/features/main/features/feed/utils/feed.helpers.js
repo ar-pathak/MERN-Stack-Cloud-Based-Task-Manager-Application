@@ -1,3 +1,5 @@
+import { extractRichTextPlainText } from "../../../utils/richText";
+
 export const normalizePagination = (pagination, currentPage, fallbackCount) => {
     const page = Number(pagination?.page || currentPage || 1);
     const pages = Number(pagination?.pages || 1);
@@ -67,7 +69,7 @@ export const postMatchesQuery = (post, query) => {
     if (!query) return true;
     const lookup = query.toLowerCase();
     const authorName = `${post?.author?.name || ""} ${post?.author?.username || ""}`.toLowerCase();
-    const content = String(post?.content || "").toLowerCase();
+    const content = extractRichTextPlainText(post?.content || "").toLowerCase();
     const hashtags = Array.isArray(post?.hashtags) ? post.hashtags.join(" ").toLowerCase() : "";
     return authorName.includes(lookup) || content.includes(lookup) || hashtags.includes(lookup);
 };

@@ -1,5 +1,6 @@
-﻿const User = require("../../models/user");
+const User = require("../../models/user");
 const { createNotifications } = require("../notification/notification.service");
+const { stripRichTextToPlainText, getRichTextPreview } = require("./richText");
 
 const mentionRegex = /(^|[\s([{\"'`.,!?;:\-])@([a-z0-9_]{3,20})/gi;
 
@@ -18,7 +19,7 @@ const uniqueStrings = (values = []) => {
 };
 
 const extractMentionUsernames = (text = "") => {
-    const source = String(text || "");
+    const source = stripRichTextToPlainText(text);
     if (!source.includes("@")) return [];
 
     const matches = [];
@@ -85,12 +86,8 @@ const resolveMentionUsersFromText = async (
     return ordered;
 };
 
-const getMentionSnippet = (text = "", maxLength = 140) => {
-    const source = String(text || "").trim();
-    if (!source) return "";
-    if (source.length <= maxLength) return source;
-    return `${source.slice(0, maxLength - 1)}…`;
-};
+const getMentionSnippet = (text = "", maxLength = 140) =>
+    getRichTextPreview(text, maxLength).replace(/\.\.\.$/, "…");
 
 const notifyMentionedUsers = async ({
     actorId,
@@ -151,4 +148,3 @@ module.exports = {
     notifyMentionedUsers,
     getMentionSnippet
 };
-

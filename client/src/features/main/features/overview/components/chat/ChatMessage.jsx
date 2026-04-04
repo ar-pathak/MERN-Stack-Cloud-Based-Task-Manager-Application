@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../../../../context/AuthContext";
 import { useNavigate } from "react-router";
+import { getRichTextPreview } from "../../../../utils/richText";
 
 const ChatMessage = ({
     message,
@@ -212,7 +213,7 @@ const ChatMessage = ({
 
                 {sharedPost?.content ? (
                     <p className="line-clamp-3 px-3 pb-2 pt-2 text-xs leading-5 text-slate-200">
-                        {sharedPost.content}
+                        {getRichTextPreview(sharedPost.content, 180)}
                     </p>
                 ) : null}
 

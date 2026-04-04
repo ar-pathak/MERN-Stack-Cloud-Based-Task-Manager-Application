@@ -13,8 +13,10 @@ import {
     UserPlus
 } from "lucide-react";
 
+import RichTextContent from "../../../components/RichTextContent";
 import PostMediaPreview from "./PostMediaPreview";
 import { getInitial, getPostTimelineValue } from "../utils/feed.helpers";
+import { getRichTextPreview } from "../../../utils/richText";
 
 const CommentItem = ({
     comment,
@@ -359,9 +361,10 @@ const FeedPostCard = React.memo(({
             )}
 
             {post?.content && (
-                <p className="mb-3 whitespace-pre-wrap text-sm leading-6 text-slate-200">
-                    {post.content}
-                </p>
+                <RichTextContent
+                    content={post.content}
+                    className="mb-3 text-sm leading-6 text-slate-200"
+                />
             )}
 
             <PostMediaPreview post={post} />
@@ -372,7 +375,7 @@ const FeedPostCard = React.memo(({
                         Original post by @{post?.originalPost?.author?.username || "user"}
                     </p>
                     <p className="mb-2 line-clamp-3 text-sm text-slate-300">
-                        {post?.originalPost?.content}
+                        {getRichTextPreview(post?.originalPost?.content, 180)}
                     </p>
                     <PostMediaPreview post={post?.originalPost} compact />
                 </div>

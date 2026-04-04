@@ -68,24 +68,36 @@ const withSubtleSuspense = (Component) => {
   );
 };
 
+const scheduleIdleWork = (callback, timeout = 1500) => {
+  if (typeof window === "undefined") return;
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout });
+    return;
+  }
+
+  window.setTimeout(callback, timeout);
+};
+
 const preloadCriticalRoutes = () => {
-  Promise.all([
-    import("../features/main/features/feed/pages/FeedPage.jsx"),
-    import("../features/main/features/notifications/pages/NotificationsPage.jsx"),
-    import("../features/main/features/create/pages/CreatePostPage.jsx"),
-    import("../features/main/features/overview/pages/OverviewLayout.jsx")
-  ]).catch(console.error);
+  scheduleIdleWork(() => {
+    Promise.allSettled([
+      import("../features/main/features/feed/pages/FeedPage.jsx"),
+      import("../features/main/features/notifications/pages/NotificationsPage.jsx"),
+      import("../features/main/features/overview/pages/OverviewLayout.jsx")
+    ]);
+  }, 2200);
 };
 
 let preloaded = false;
 const preloadOnInteraction = () => {
   if (preloaded) return;
   preloaded = true;
-  setTimeout(() => {
-    import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx");
-    import("../features/main/features/activity/pages/ActivityPage.jsx");
-    import("../features/chat/ChatPage.jsx");
-  }, 2000);
+  scheduleIdleWork(() => {
+    void import("../features/main/features/dashboard/pages/AdvancedDashboardPage.jsx");
+    void import("../features/main/features/activity/pages/ActivityPage.jsx");
+    void import("../features/chat/ChatPage.jsx");
+  }, 3000);
 };
 
 if (typeof window !== 'undefined') {
