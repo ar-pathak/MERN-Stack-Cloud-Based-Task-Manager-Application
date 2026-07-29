@@ -107,6 +107,7 @@ const NotificationsPage = () => {
                         <button
                             type="button"
                             onClick={() => navigate(-1)}
+                            aria-label="Go back"
                             className="inline-flex items-center justify-center rounded-lg border border-slate-700 bg-slate-900/70 p-2 text-slate-300 hover:bg-slate-800"
                         >
                             <ArrowLeft className="h-4 w-4" />

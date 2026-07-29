@@ -1,6 +1,9 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }))
+const { mockNavigate, mockLoaderData } = vi.hoisted(() => ({
+    mockNavigate: vi.fn(),
+    mockLoaderData: vi.fn(),
+}))
 
 vi.mock('framer-motion', () => ({
     motion: new Proxy({}, {
@@ -15,6 +18,7 @@ vi.mock('framer-motion', () => ({
 
 vi.mock('react-router', () => ({
     useNavigate: () => mockNavigate,
+    useLoaderData: () => mockLoaderData(),
 }))
 
 vi.mock('../../../../../../context/AuthContext', () => ({
@@ -29,12 +33,6 @@ vi.mock('../../../../../../features/main/features/notifications/utils/notificati
     formatRelativeTime: vi.fn(() => '5m ago'),
     resolveNotificationPath: vi.fn((n) => `/notifications/${n?._id}`),
     toIdString: vi.fn((v) => String(v?._id || v?.id || v || '')),
-}))
-
-vi.mock('../../../../../../features/main/components/navigation/MobileBottomNav', () => ({
-    default: ({ activeTab, profileId }) => (
-        <nav data-testid="mobile-bottom-nav" data-tab={activeTab} data-profile={profileId} />
-    ),
 }))
 
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -74,6 +72,7 @@ describe('NotificationsPage', () => {
     beforeEach(() => {
         vi.clearAllMocks()
         mockNavigate.mockClear()
+        mockLoaderData.mockReturnValue(null)
         useNotificationCenter.mockReturnValue(buildHookReturn())
         Object.defineProperty(window, 'innerWidth', { writable: true, value: 1200 })
     })
@@ -89,7 +88,7 @@ describe('NotificationsPage', () => {
 
         it('renders the Back arrow button', () => {
             render(<NotificationsPage />)
-            const backBtn = screen.getByRole('button', { name: '' })
+            const backBtn = screen.getByRole('button', { name: 'Go back' })
             expect(backBtn).toBeInTheDocument()
         })
 
@@ -120,19 +119,23 @@ describe('NotificationsPage', () => {
     // Loading state
     // ────────────────────────────────────────────────────────────────────────────
     describe('loading state', () => {
-        it('shows "Loading notifications..." when loading=true', () => {
+        it('shows skeleton placeholders when loading and no cached notifications exist', () => {
             useNotificationCenter.mockReturnValue(buildHookReturn({ loading: true }))
-            render(<NotificationsPage />)
-            expect(screen.getByText('Loading notifications...')).toBeInTheDocument()
+            const { container } = render(<NotificationsPage />)
+            expect(container.querySelectorAll('.animate-pulse')).toHaveLength(6)
         })
 
-        it('does not show notification items while loading', () => {
+        it('renders loader notifications while hook data is still loading', () => {
+            mockLoaderData.mockReturnValue({
+                notifications: [makeNotification({ _id: 'n-cached', title: 'Cached item' })],
+                unreadCount: 1,
+            })
             useNotificationCenter.mockReturnValue(buildHookReturn({
                 loading: true,
-                notifications: [makeNotification()],
+                notifications: [],
             }))
             render(<NotificationsPage />)
-            expect(screen.queryByText('Test notification')).not.toBeInTheDocument()
+            expect(screen.getByText('Cached item')).toBeInTheDocument()
         })
     })
 
@@ -462,11 +465,7 @@ describe('NotificationsPage', () => {
     describe('Back button', () => {
         it('calls navigate(-1) when back arrow is clicked', () => {
             render(<NotificationsPage />)
-            // ArrowLeft button (only button with no text content initially)
-            const backBtn = screen.getAllByRole('button').find(
-                btn => btn.querySelector('svg') && !btn.textContent.includes('Mark')
-            )
-            if (backBtn) fireEvent.click(backBtn)
+            fireEvent.click(screen.getByRole('button', { name: 'Go back' }))
             expect(mockNavigate).toHaveBeenCalledWith(-1)
         })
     })
@@ -477,29 +476,47 @@ describe('NotificationsPage', () => {
     describe('hook configuration', () => {
         it('calls useNotificationCenter with enabled=true and limit=50', () => {
             render(<NotificationsPage />)
-            expect(useNotificationCenter).toHaveBeenCalledWith({ enabled: true, limit: 50 })
+            expect(useNotificationCenter).toHaveBeenCalledWith({
+                enabled: true,
+                limit: 50,
+                initialNotifications: [],
+                initialUnreadCount: 0,
+                initialDataLoaded: false,
+            })
+        })
+
+        it('passes loader payload into useNotificationCenter when route data is available', () => {
+            const loaderNotification = makeNotification({ _id: 'n-loader', title: 'From loader' })
+            mockLoaderData.mockReturnValue({
+                notifications: [loaderNotification],
+                unreadCount: 4,
+            })
+
+            render(<NotificationsPage />)
+
+            expect(useNotificationCenter).toHaveBeenCalledWith({
+                enabled: true,
+                limit: 50,
+                initialNotifications: [loaderNotification],
+                initialUnreadCount: 4,
+                initialDataLoaded: true,
+            })
         })
     })
 
     // ────────────────────────────────────────────────────────────────────────────
     // MobileBottomNav
     // ────────────────────────────────────────────────────────────────────────────
-    describe('MobileBottomNav', () => {
-        it('renders MobileBottomNav on mobile viewport', () => {
+    describe('mobile layout spacing', () => {
+        it('adds bottom spacing on mobile viewport for the shared bottom nav', () => {
             Object.defineProperty(window, 'innerWidth', { writable: true, value: 600 })
-            render(<NotificationsPage />)
-            expect(screen.getByTestId('mobile-bottom-nav')).toBeInTheDocument()
+            const { container } = render(<NotificationsPage />)
+            expect(container.firstChild).toHaveClass('pb-[5.25rem]')
         })
 
-        it('does NOT render MobileBottomNav on desktop', () => {
-            render(<NotificationsPage />)
-            expect(screen.queryByTestId('mobile-bottom-nav')).not.toBeInTheDocument()
-        })
-
-        it('passes activeTab="notifications" to MobileBottomNav', () => {
-            Object.defineProperty(window, 'innerWidth', { writable: true, value: 600 })
-            render(<NotificationsPage />)
-            expect(screen.getByTestId('mobile-bottom-nav')).toHaveAttribute('data-tab', 'notifications')
+        it('uses desktop spacing when the shared bottom nav is not visible', () => {
+            const { container } = render(<NotificationsPage />)
+            expect(container.firstChild).toHaveClass('pb-8')
         })
     })
 })
